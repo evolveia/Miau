@@ -6,6 +6,7 @@ import {
   INITIAL_GREETING,
   MIAU_AVATAR_URL,
   SHOP_ITEMS,
+  SUPPORT_WHATSAPP_NUMBER,
   XP_PER_LEVEL,
   createDefaultProfile,
 } from '../constants';
@@ -37,7 +38,9 @@ import type {
   MiauMood,
   UserPetProfile,
 } from '../types';
+import { MiauARCamera } from './MiauARCamera';
 import { renderMiauSvg } from './MiauIllustration';
+import { renderRoomScenerySvg } from './RoomScenery';
 import {
   mountFishCatchGame,
   mountMemoryGame,
@@ -51,7 +54,8 @@ export interface MiauUIXRBridge {
   syncState: (
     stats: UserPetProfile['stats'],
     equipped: UserPetProfile['equipped'],
-    speech: string
+    speech: string,
+    isSleeping?: boolean
   ) => void;
   triggerBounce: () => void;
   enterXRMode: () => void;
@@ -95,6 +99,8 @@ export class MiauAppUI {
 
   private decayTimer: number | null = null;
   private sleepTimer: number | null = null;
+  private supportDraft = '';
+  private arCamera: MiauARCamera | null = null;
 
   constructor(
     container: HTMLElement,
@@ -214,7 +220,8 @@ export class MiauAppUI {
     this.xrBridge?.syncState(
       this.profile.stats,
       this.profile.equipped,
-      `${this.currentSpeech.meowPrefix} ${this.currentSpeech.text}`.trim()
+      `${this.currentSpeech.meowPrefix} ${this.currentSpeech.text}`.trim(),
+      this.isSleeping
     );
   }
 
@@ -499,6 +506,36 @@ export class MiauAppUI {
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
     void this.persistStats();
+  }
+
+  public handleQuickPlay(): void {
+    if (this.isSleeping) {
+      this.toggleSleep();
+    }
+    this.ensureProfileDefaults();
+    soundService.playMeow(1.22);
+    this.profile.stats.fun = Math.min(100, this.profile.stats.fun + 18);
+    this.profile.stats.happiness = Math.min(
+      100,
+      this.profile.stats.happiness + 12
+    );
+    this.addRewards(10, 8);
+    this.evaluateAchievements();
+    this.mood = 'playful';
+    this.triggerMiauReaction('spin');
+    this.spawnFloatingParticle('🧶');
+    this.currentSpeech = {
+      meowPrefix: 'Miau!! 🧶',
+      text: '(Adorei brincar com o novelo de lã!)',
+    };
+    this.updateStatusBarsDOM();
+    this.updateSpeechDOM();
+    this.updateCharacterSvgDOM();
+    void this.persistStats();
+  }
+
+  public handleToggleSleepFromXR(): void {
+    this.toggleSleep();
   }
 
   private toggleSleep(): void {
@@ -1167,9 +1204,15 @@ export class MiauAppUI {
         await signInWithGoogle();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        this.authError = msg.includes('popup-closed')
-          ? 'Login com Google cancelado.'
-          : `Não foi possível entrar com o Google: ${msg}`;
+        if (msg.includes('popup-closed')) {
+          this.authError = 'Login com Google cancelado.';
+        } else if (msg.includes('unauthorized-domain')) {
+          this.authError = `Domínio (${window.location.hostname}) não autorizado no Firebase Authentication. Adicione este domínio em Authentication > Settings > Authorized domains no projeto Firebase.`;
+        } else if (msg.includes('popup-blocked')) {
+          this.authError = 'O navegador bloqueou a janela do Google. Permita pop-ups para este site e tente novamente.';
+        } else {
+          this.authError = `Não foi possível entrar com o Google: ${msg}`;
+        }
         this.renderLogin();
       }
     });
@@ -1263,22 +1306,43 @@ export class MiauAppUI {
     `;
   }
 
-  private getRoomThemeClasses(): { wall: string; floor: string } {
+  private getRoomThemeClasses(): { wall: string; floor: string; showFloor: boolean; useWallpaper: boolean } {
+    if (this.isSleeping) {
+      return {
+        wall: 'from-[#281e4f] via-[#3b2d6d] to-[#4e3d8a]',
+        floor: 'from-[#372863] to-[#231847]',
+        showFloor: true,
+        useWallpaper: false,
+      };
+    }
     switch (this.profile.equipped.background) {
       case 'bg_night':
         return {
-          wall: 'from-[#31255a] via-[#46367a] to-[#5a4696]',
-          floor: 'from-[#423175] to-[#2c1f57]',
+          wall: 'from-[#281d52] via-[#3d2d73] to-[#523d91]',
+          floor: 'from-[#3a2a6b] to-[#24184a]',
+          showFloor: true,
+          useWallpaper: false,
+        };
+      case 'bg_sunny':
+        return {
+          wall: 'from-[#56ccf2] via-[#8ee0ff] to-[#dff5ff]',
+          floor: 'from-[#4ade80] to-[#16a34a]',
+          showFloor: false,
+          useWallpaper: false,
         };
       case 'bg_peach':
         return {
           wall: 'from-[#ffe4d6] via-[#fbd3e9] to-[#ebd4ff]',
           floor: 'from-[#eab8d9] to-[#cfa3e8]',
+          showFloor: true,
+          useWallpaper: true,
         };
       default:
         return {
           wall: 'from-[#ece3ff] via-[#e2d2fc] to-[#d9c4fa]',
           floor: 'from-[#c8aaf4] to-[#b590eb]',
+          showFloor: true,
+          useWallpaper: true,
         };
     }
   }
@@ -1290,7 +1354,7 @@ export class MiauAppUI {
 
     this.root.innerHTML = `
       <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#dfd0ff] via-[#cbb1fb] to-[#b896f5] md:p-4">
-        <div class="relative w-full h-full md:max-w-[440px] md:max-h-[860px] md:rounded-[42px] md:border-[6px] md:border-white/80 md:shadow-[0_24px_70px_rgba(64,33,117,0.3)] overflow-hidden flex flex-col bg-gradient-to-b ${theme.wall} miau-wallpaper">
+        <div class="relative w-full h-full md:max-w-[440px] md:max-h-[860px] md:rounded-[42px] md:border-[6px] md:border-white/80 md:shadow-[0_24px_70px_rgba(64,33,117,0.3)] overflow-hidden flex flex-col bg-gradient-to-b ${theme.wall} ${theme.useWallpaper ? 'miau-wallpaper' : ''}">
 
           <!-- Night / Sleep Dimmer -->
           <div class="pointer-events-none absolute inset-0 transition-opacity duration-500 bg-indigo-950/35 z-10 ${this.isSleeping ? 'opacity-100' : 'opacity-0'}"></div>
@@ -1336,10 +1400,16 @@ export class MiauAppUI {
             </div>
           </section>
 
-          <!-- Living Room Floor & Miau Stage -->
+          <!-- Living Room Floor, Themed Scenery & Miau Stage -->
           <main id="miau-stage" class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
-            <!-- Floor horizon -->
-            <div class="absolute inset-x-0 bottom-0 h-[44%] bg-gradient-to-b ${theme.floor} border-t border-white/35"></div>
+            ${
+              theme.showFloor
+                ? `<div class="absolute inset-x-0 bottom-0 h-[44%] bg-gradient-to-b ${theme.floor} border-t border-white/35"></div>`
+                : ''
+            }
+            <div id="miau-room-scenery" class="absolute inset-0 pointer-events-none z-0">
+              ${renderRoomScenerySvg(this.profile.equipped.background, this.isSleeping)}
+            </div>
 
             <!-- Cleaning Banner -->
             ${
@@ -1705,9 +1775,9 @@ export class MiauAppUI {
           <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Menu do Jogo ⚙️</h2>
           <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
         </div>
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-1">
           <div class="bg-white/85 rounded-2xl p-3 border border-purple-100">
-            <div class="text-xs font-bold text-[#6b4d9e] mb-1">Conta conectada</div>
+            <div class="text-xs font-bold text-[#6b4d9e] mb-0.5">Conta conectada</div>
             <div class="text-sm font-extrabold text-[#3b1f6e]">${this.firebaseUser?.displayName || this.firebaseUser?.email || 'Modo Demonstração Local'}</div>
           </div>
 
@@ -1723,12 +1793,72 @@ export class MiauAppUI {
             </button>
           </div>
 
-          <button id="btn-enter-xr" class="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold shadow-md flex items-center justify-center gap-2 hover:brightness-110">
+          <button id="btn-open-ar" class="w-full py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-display font-bold shadow-md flex items-center justify-center gap-2 hover:brightness-110 transition">
+            📸 Realidade Aumentada (Câmera)
+          </button>
+
+          <button id="btn-enter-xr" class="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold shadow-md flex items-center justify-center gap-2 hover:brightness-110 transition">
             🥽 Abrir Sala 3D / Modo XR
           </button>
 
-          <button id="btn-logout" class="w-full py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-sm hover:bg-rose-100">
+          <button id="btn-open-support" class="w-full py-2.5 px-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-sm flex items-center justify-between hover:bg-emerald-100/70 transition">
+            <span>💬 Suporte & Dúvidas</span>
+            <span class="text-[11px] font-extrabold bg-emerald-200/80 px-2.5 py-0.5 rounded-full">WhatsApp</span>
+          </button>
+
+          <button id="btn-logout" class="w-full py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-sm hover:bg-rose-100 transition">
             🚪 Sair da Conta
+          </button>
+        </div>
+      `;
+    } else if (this.activeModal === 'support') {
+      const waHref = this.buildSupportWhatsAppUrl(this.supportDraft);
+      body = `
+        <div class="flex items-center justify-between mb-2">
+          <div>
+            <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Suporte Miau 💬</h2>
+            <p class="text-[11px] font-semibold text-[#6b4d9e]">Envie sua dúvida direto para o WhatsApp +55 91 99615-6672</p>
+          </div>
+          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+        </div>
+
+        <div class="flex flex-wrap gap-1.5 mb-2.5">
+          ${[
+            'Dúvida sobre o jogo',
+            'Problema técnico',
+            'Sugestão de recurso',
+            'Minha conta / moedas',
+          ]
+            .map(
+              (topic) =>
+                `<button type="button" data-support-topic="${topic}" class="px-2.5 py-1 rounded-full bg-purple-100/80 hover:bg-purple-200 text-[#4c2a85] text-[11px] font-bold transition">${topic}</button>`
+            )
+            .join('')}
+        </div>
+
+        <textarea
+          id="support-message-input"
+          rows="4"
+          placeholder="Escreva aqui sua pergunta ou dúvida sobre o Miau..."
+          class="w-full rounded-2xl bg-white/95 border border-purple-200 p-3 text-xs font-semibold text-[#3b1f6e] placeholder-[#947ebe] focus:outline-none focus:border-purple-500 resize-none mb-3"
+        >${this.escapeHtml(this.supportDraft)}</textarea>
+
+        <div class="flex flex-col gap-2">
+          <a
+            id="btn-send-whatsapp"
+            href="${waHref}"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-display font-bold text-sm shadow-md flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.99] transition text-center"
+          >
+            📲 Enviar no WhatsApp (+55 91 99615-6672)
+          </a>
+          <button
+            id="btn-copy-support"
+            type="button"
+            class="w-full py-2 rounded-2xl bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold hover:bg-white transition"
+          >
+            📋 Copiar Pergunta
           </button>
         </div>
       `;
@@ -2154,6 +2284,58 @@ export class MiauAppUI {
       this.xrBridge?.enterXRMode();
     });
 
+    this.root.querySelector('#btn-open-ar')?.addEventListener('click', () => {
+      this.activeModal = 'none';
+      this.render();
+      this.openARCamera();
+    });
+
+    this.root.querySelector('#btn-open-support')?.addEventListener('click', () => {
+      this.activeModal = 'support';
+      this.render();
+    });
+
+    // Support modal events
+    const supportInput = this.root.querySelector(
+      '#support-message-input'
+    ) as HTMLTextAreaElement | null;
+    const whatsappLink = this.root.querySelector(
+      '#btn-send-whatsapp'
+    ) as HTMLAnchorElement | null;
+    supportInput?.addEventListener('input', () => {
+      this.supportDraft = supportInput.value;
+      if (whatsappLink) {
+        whatsappLink.href = this.buildSupportWhatsAppUrl(this.supportDraft);
+      }
+    });
+    this.root.querySelectorAll('[data-support-topic]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const topic = btn.getAttribute('data-support-topic') || '';
+        const prefix = `[${topic}] `;
+        if (!this.supportDraft.startsWith(prefix)) {
+          this.supportDraft = `${prefix}${this.supportDraft}`.trimStart();
+          if (supportInput) {
+            supportInput.value = this.supportDraft;
+            supportInput.focus();
+          }
+          if (whatsappLink) {
+            whatsappLink.href = this.buildSupportWhatsAppUrl(this.supportDraft);
+          }
+        }
+      });
+    });
+    this.root
+      .querySelector('#btn-copy-support')
+      ?.addEventListener('click', async () => {
+        const textToCopy = this.buildSupportMessageText(this.supportDraft);
+        try {
+          await navigator.clipboard.writeText(textToCopy);
+          this.showToast('Mensagem copiada para a área de transferência!');
+        } catch {
+          this.showToast('Toque em Enviar no WhatsApp para falar com o suporte.');
+        }
+      });
+
     this.root.querySelector('#btn-logout')?.addEventListener('click', async () => {
       this.activeModal = 'none';
       this.isDemoSession = false;
@@ -2162,6 +2344,51 @@ export class MiauAppUI {
       }
       this.screen = 'login';
       this.render();
+    });
+  }
+
+  private escapeHtml(raw: string): string {
+    return raw
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  private buildSupportMessageText(draft: string): string {
+    const player =
+      this.firebaseUser?.displayName ||
+      this.firebaseUser?.email ||
+      'Jogador Miau';
+    const trimmed = draft.trim();
+    const question =
+      trimmed || 'Olá! Tenho uma dúvida sobre o jogo Miau.';
+    return `Olá, Suporte Miau! (${player} • Nível ${this.profile.level})\n\n${question}`;
+  }
+
+  private buildSupportWhatsAppUrl(draft: string): string {
+    const encoded = encodeURIComponent(this.buildSupportMessageText(draft));
+    return `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encoded}`;
+  }
+
+  private openARCamera(): void {
+    this.arCamera?.destroy();
+    this.arCamera = new MiauARCamera({
+      petName: this.profile.petName,
+      initialMood: this.mood,
+      initialEquipped: this.profile.equipped,
+      ownedItems: this.profile.ownedItems,
+      onPetReward: () => {
+        this.handlePetInteraction();
+      },
+      onEquipChange: (newEquipped) => {
+        this.profile.equipped = { ...newEquipped };
+        this.render();
+        void this.persistShop();
+      },
+      onClose: () => {
+        this.arCamera = null;
+      },
     });
   }
 
