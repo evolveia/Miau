@@ -29,6 +29,10 @@ import {
   synthesizeMiauVoice,
   transcribeUserAudio,
 } from '../services/geminiClient';
+import {
+  pwaService,
+  type CameraPermissionState,
+} from '../services/pwaService';
 import { LiveVoiceSession, soundService } from '../services/soundService';
 import type {
   AchievementDef,
@@ -36,6 +40,7 @@ import type {
   AppScreen,
   ChatMessage,
   MiauMood,
+  ScreenVisibilityPrefs,
   UserPetProfile,
 } from '../types';
 import { MiauARCamera } from './MiauARCamera';
@@ -49,6 +54,15 @@ import {
 
 const LOCAL_DEMO_KEY = 'miau_demo_profile_v1';
 const LOCAL_DEMO_MSGS_KEY = 'miau_demo_msgs_v1';
+const SCREEN_PREFS_KEY = 'miau_screen_prefs_v1';
+const CAM_PROMPTED_SESSION_KEY = 'miau_cam_prompted_v1';
+
+const DEFAULT_SCREEN_PREFS: ScreenVisibilityPrefs = {
+  showStatusBars: true,
+  showStatusBadges: true,
+  showSpeechAndChat: true,
+  showCoinsBadge: true,
+};
 
 export interface MiauUIXRBridge {
   syncState: (
@@ -101,6 +115,9 @@ export class MiauAppUI {
   private sleepTimer: number | null = null;
   private supportDraft = '';
   private arCamera: MiauARCamera | null = null;
+  private screenPrefs: ScreenVisibilityPrefs = { ...DEFAULT_SCREEN_PREFS };
+  private cameraPermission: CameraPermissionState = 'unknown';
+  private showInstallGuideModal = false;
 
   constructor(
     container: HTMLElement,
@@ -110,7 +127,58 @@ export class MiauAppUI {
     this.root.id = 'miau-2d-shell';
     this.root.className = 'fixed inset-0 z-20 flex items-center justify-center';
     container.appendChild(this.root);
+    this.loadScreenPrefs();
+    pwaService.subscribe(() => {
+      if (
+        this.screen === 'login' ||
+        this.activeModal === 'menu' ||
+        this.activeModal === 'settings' ||
+        !pwaService.isOnline
+      ) {
+        this.render();
+      }
+    });
+    void this.refreshCameraPermissionState();
     this.initLifecycle();
+  }
+
+  private loadScreenPrefs(): void {
+    try {
+      const raw = localStorage.getItem(SCREEN_PREFS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<ScreenVisibilityPrefs>;
+        this.screenPrefs = { ...DEFAULT_SCREEN_PREFS, ...parsed };
+      }
+    } catch {
+      this.screenPrefs = { ...DEFAULT_SCREEN_PREFS };
+    }
+  }
+
+  private saveScreenPrefs(): void {
+    try {
+      localStorage.setItem(SCREEN_PREFS_KEY, JSON.stringify(this.screenPrefs));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+
+  private async refreshCameraPermissionState(): Promise<void> {
+    this.cameraPermission = await pwaService.getCameraPermissionState();
+    if (this.activeModal === 'settings') {
+      this.render();
+    }
+  }
+
+  private async requestCameraPermissionOnStart(): Promise<void> {
+    if (sessionStorage.getItem(CAM_PROMPTED_SESSION_KEY) === '1') return;
+    const state = await pwaService.getCameraPermissionState();
+    this.cameraPermission = state;
+    if (state === 'granted' || state === 'denied' || state === 'unsupported') {
+      return;
+    }
+    sessionStorage.setItem(CAM_PROMPTED_SESSION_KEY, '1');
+    const result = await pwaService.requestCameraAuthorization();
+    this.cameraPermission = result;
   }
 
   private initLifecycle(): void {
@@ -185,13 +253,18 @@ export class MiauAppUI {
         if (this.screen === 'login') {
           this.screen = 'game';
           this.render();
+          void this.requestCameraPermissionOnStart();
         }
       } else if (!this.isDemoSession && preloaderFinished) {
         this.screen = 'login';
         this.render();
       }
       authResolved = true;
+      const wasPreloader = this.screen === 'preloader';
       tryAdvanceFromPreloader();
+      if (wasPreloader && this.screen === 'game') {
+        void this.requestCameraPermissionOnStart();
+      }
     });
 
     this.decayTimer = window.setInterval(() => {
@@ -421,6 +494,7 @@ export class MiauAppUI {
     this.screen = 'game';
     this.syncXR();
     this.render();
+    void this.requestCameraPermissionOnStart();
   }
 
   // Public actions usable from XR scene too
@@ -1154,13 +1228,30 @@ export class MiauAppUI {
             </button>
           </form>
 
-          <!-- Footer Links -->
-          <div class="flex items-center justify-center gap-6 text-[11px] font-semibold text-[#6e45a5]">
-            <button id="link-terms" type="button" class="underline hover:text-[#4c2a85]">Termos de Uso</button>
-            <button id="link-privacy" type="button" class="underline hover:text-[#4c2a85]">Políticas de Privacidade</button>
+          <!-- Footer Links & Optional PWA Install -->
+          <div class="flex flex-col items-center gap-2.5">
+            ${
+              !pwaService.isInstalled
+                ? `
+                  <button
+                    id="btn-login-install"
+                    type="button"
+                    class="px-4 py-1.5 rounded-full bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold shadow-sm hover:bg-white active:scale-95 transition flex items-center gap-1.5"
+                  >
+                    <span>📲</span>
+                    <span>Instalar App Miau</span>
+                  </button>
+                `
+                : ''
+            }
+            <div class="flex items-center justify-center gap-6 text-[11px] font-semibold text-[#6e45a5]">
+              <button id="link-terms" type="button" class="underline hover:text-[#4c2a85]">Termos de Uso</button>
+              <button id="link-privacy" type="button" class="underline hover:text-[#4c2a85]">Políticas de Privacidade</button>
+            </div>
           </div>
         </div>
         ${this.activeModal === 'legal' ? this.renderLegalModal() : ''}
+        ${this.showInstallGuideModal ? this.renderInstallGuideModal() : ''}
       </div>
     `;
 
@@ -1283,6 +1374,19 @@ export class MiauAppUI {
       this.activeModal = 'none';
       this.renderLogin();
     });
+
+    this.root
+      .querySelector('#btn-login-install')
+      ?.addEventListener('click', () => {
+        void this.handleInstallAppClick();
+      });
+
+    this.root
+      .querySelector('#close-install-guide')
+      ?.addEventListener('click', () => {
+        this.showInstallGuideModal = false;
+        this.render();
+      });
   }
 
   private renderLegalModal(): string {
@@ -1369,36 +1473,60 @@ export class MiauAppUI {
 
             <h1 class="font-display text-2xl font-bold ${isNight ? 'text-white' : 'text-[#2d1b4e]'} tracking-tight">Sala de Estar</h1>
 
-            <div class="flex items-center gap-1.5 bg-[#4a3566]/85 text-white rounded-full pl-1.5 pr-3 py-1 shadow-md border border-white/30">
-              <span class="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 border border-yellow-100 flex items-center justify-center text-xs font-extrabold text-amber-900 shadow-inner">$</span>
-              <span id="miau-coins" class="text-sm font-extrabold">${this.profile.coins.toLocaleString('pt-BR')}</span>
-            </div>
+            ${
+              this.screenPrefs.showCoinsBadge
+                ? `<div class="flex items-center gap-1.5 bg-[#4a3566]/85 text-white rounded-full pl-1.5 pr-3 py-1 shadow-md border border-white/30">
+                     <span class="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 border border-yellow-100 flex items-center justify-center text-xs font-extrabold text-amber-900 shadow-inner">$</span>
+                     <span id="miau-coins" class="text-sm font-extrabold">${this.profile.coins.toLocaleString('pt-BR')}</span>
+                   </div>`
+                : `<div class="w-10"></div>`
+            }
           </header>
 
-          <!-- 5 Status Bars + Level Badge -->
-          <section class="relative z-20 px-3.5 pt-1">
-            <div class="grid grid-cols-2 gap-1.5">
-              ${this.renderStatPill('hunger', 'Fome', s.hunger, '🐟', 'from-amber-400 to-orange-500', 'bg-orange-300')}
-              ${this.renderStatPill('hygiene', 'Higiene', s.hygiene, '🧼', 'from-cyan-400 to-emerald-400', 'bg-teal-300')}
-              ${this.renderStatPill('fun', 'Diversão', s.fun, '🧶', 'from-fuchsia-400 to-pink-500', 'bg-fuchsia-300')}
-              ${this.renderStatPill('sleep', 'Sono', s.sleep, '🌙', 'from-indigo-400 to-purple-500', 'bg-indigo-300')}
-              ${this.renderStatPill('happiness', 'Felicidade', s.happiness ?? 75, '💖', 'from-rose-400 to-pink-500', 'bg-rose-300', true)}
-            </div>
-            <div class="flex justify-between items-center gap-2 mt-2">
-              <button id="btn-achievements" type="button" class="glass-pill px-3 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1.5 hover:scale-105 transition">
-                <span>🏆</span>
-                <span id="achievements-count">${(this.profile.unlockedAchievements || []).length}/${ACHIEVEMENTS.length}</span>
-              </button>
-              <div class="flex items-center gap-2">
-                <button id="btn-sleep-toggle" class="glass-pill px-3 py-1 rounded-full text-xs font-bold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
-                  ${this.isSleeping ? '☀️ Acordar' : '🌙 Soneca'}
-                </button>
-                <div id="miau-level" class="glass-pill px-3.5 py-1 rounded-full text-xs font-extrabold text-[#3b1f6e]">
-                  Nível ${this.profile.level}
-                </div>
-              </div>
-            </div>
-          </section>
+          ${
+            !pwaService.isOnline
+              ? `<div class="relative z-20 mx-auto mb-1 px-3 py-0.5 rounded-full bg-amber-500/90 text-white text-[10px] font-extrabold shadow">
+                   📡 Modo Offline — dados salvos localmente
+                 </div>`
+              : ''
+          }
+
+          <!-- Status Bars & Quick Badges (Configurable Visibility) -->
+          ${
+            this.screenPrefs.showStatusBars || this.screenPrefs.showStatusBadges
+              ? `<section class="relative z-20 px-3.5 pt-1">
+                  ${
+                    this.screenPrefs.showStatusBars
+                      ? `<div class="grid grid-cols-2 gap-1.5">
+                          ${this.renderStatPill('hunger', 'Fome', s.hunger, '🐟', 'from-amber-400 to-orange-500', 'bg-orange-300')}
+                          ${this.renderStatPill('hygiene', 'Higiene', s.hygiene, '🧼', 'from-cyan-400 to-emerald-400', 'bg-teal-300')}
+                          ${this.renderStatPill('fun', 'Diversão', s.fun, '🧶', 'from-fuchsia-400 to-pink-500', 'bg-fuchsia-300')}
+                          ${this.renderStatPill('sleep', 'Sono', s.sleep, '🌙', 'from-indigo-400 to-purple-500', 'bg-indigo-300')}
+                          ${this.renderStatPill('happiness', 'Felicidade', s.happiness ?? 75, '💖', 'from-rose-400 to-pink-500', 'bg-rose-300', true)}
+                        </div>`
+                      : ''
+                  }
+                  ${
+                    this.screenPrefs.showStatusBadges
+                      ? `<div class="flex justify-between items-center gap-2 ${this.screenPrefs.showStatusBars ? 'mt-2' : ''}">
+                          <button id="btn-achievements" type="button" class="glass-pill px-3 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1.5 hover:scale-105 transition">
+                            <span>🏆</span>
+                            <span id="achievements-count">${(this.profile.unlockedAchievements || []).length}/${ACHIEVEMENTS.length}</span>
+                          </button>
+                          <div class="flex items-center gap-2">
+                            <button id="btn-sleep-toggle" class="glass-pill px-3 py-1 rounded-full text-xs font-bold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
+                              ${this.isSleeping ? '☀️ Acordar' : '🌙 Soneca'}
+                            </button>
+                            <div id="miau-level" class="glass-pill px-3.5 py-1 rounded-full text-xs font-extrabold text-[#3b1f6e]">
+                              Nível ${this.profile.level}
+                            </div>
+                          </div>
+                        </div>`
+                      : ''
+                  }
+                </section>`
+              : ''
+          }
 
           <!-- Living Room Floor, Themed Scenery & Miau Stage -->
           <main id="miau-stage" class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
@@ -1435,57 +1563,61 @@ export class MiauAppUI {
           </main>
 
           <!-- AI Speech Bubble + Input Area -->
-          <section class="relative z-20 px-3.5 pb-2 flex flex-col gap-2.5">
-            <!-- Speech Bubble -->
-            <div class="relative glass-card rounded-[24px] p-3 flex items-center gap-3">
-              <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-200 bg-purple-100 shrink-0 shadow-sm">
-                <img src="${MIAU_AVATAR_URL}" alt="Miau" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <div id="speech-prefix" class="font-display text-sm font-bold text-[#2d1b4e]">${this.currentSpeech.meowPrefix}</div>
-                <div id="speech-text" class="text-sm font-semibold text-[#473173] leading-snug break-words">${this.currentSpeech.text}</div>
-              </div>
-              <button
-                id="btn-speaker"
-                type="button"
-                aria-label="Ouvir voz do Miau"
-                class="w-11 h-11 rounded-full bg-gradient-to-br from-[#7d52bd] to-[#5d3798] text-white flex items-center justify-center shrink-0 shadow-md hover:scale-105 active:scale-95 transition"
-              >
-                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                </svg>
-              </button>
-            </div>
+          ${
+            this.screenPrefs.showSpeechAndChat
+              ? `<section class="relative z-20 px-3.5 pb-2 flex flex-col gap-2.5">
+                  <!-- Speech Bubble -->
+                  <div class="relative glass-card rounded-[24px] p-3 flex items-center gap-3">
+                    <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-200 bg-purple-100 shrink-0 shadow-sm">
+                      <img src="${MIAU_AVATAR_URL}" alt="Miau" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div id="speech-prefix" class="font-display text-sm font-bold text-[#2d1b4e]">${this.currentSpeech.meowPrefix}</div>
+                      <div id="speech-text" class="text-sm font-semibold text-[#473173] leading-snug break-words">${this.currentSpeech.text}</div>
+                    </div>
+                    <button
+                      id="btn-speaker"
+                      type="button"
+                      aria-label="Ouvir voz do Miau"
+                      class="w-11 h-11 rounded-full bg-gradient-to-br from-[#7d52bd] to-[#5d3798] text-white flex items-center justify-center shrink-0 shadow-md hover:scale-105 active:scale-95 transition"
+                    >
+                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+                      </svg>
+                    </button>
+                  </div>
 
-            <!-- Chat Input Pill -->
-            <form id="quick-chat-form" class="glass-pill rounded-full p-1.5 pl-4 flex items-center gap-2">
-              <input
-                id="quick-chat-input"
-                type="text"
-                placeholder="Fale com o Miau..."
-                class="flex-1 bg-transparent text-sm font-semibold text-[#3b1f6e] placeholder-[#8f79b5] focus:outline-none min-w-0"
-              />
-              <button
-                id="btn-mic"
-                type="button"
-                aria-label="Gravar voz para o Miau"
-                class="w-9 h-9 rounded-full ${this.isRecordingMic ? 'bg-rose-500 animate-pulse' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
-              >
-                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
-                </svg>
-              </button>
-              <button
-                type="submit"
-                aria-label="Enviar mensagem"
-                class="w-9 h-9 rounded-full bg-gradient-to-br from-[#8c64cc] to-[#633ea1] text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
-              >
-                <svg class="w-4 h-4 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                </svg>
-              </button>
-            </form>
-          </section>
+                  <!-- Chat Input Pill -->
+                  <form id="quick-chat-form" class="glass-pill rounded-full p-1.5 pl-4 flex items-center gap-2">
+                    <input
+                      id="quick-chat-input"
+                      type="text"
+                      placeholder="Fale com o Miau..."
+                      class="flex-1 bg-transparent text-sm font-semibold text-[#3b1f6e] placeholder-[#8f79b5] focus:outline-none min-w-0"
+                    />
+                    <button
+                      id="btn-mic"
+                      type="button"
+                      aria-label="Gravar voz para o Miau"
+                      class="w-9 h-9 rounded-full ${this.isRecordingMic ? 'bg-rose-500 animate-pulse' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
+                    >
+                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
+                      </svg>
+                    </button>
+                    <button
+                      type="submit"
+                      aria-label="Enviar mensagem"
+                      class="w-9 h-9 rounded-full bg-gradient-to-br from-[#8c64cc] to-[#633ea1] text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
+                    >
+                      <svg class="w-4 h-4 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+                      </svg>
+                    </button>
+                  </form>
+                </section>`
+              : ''
+          }
 
           <!-- Bottom Navigation Bar -->
           <nav class="relative z-20 px-3 pb-3 pt-1">
@@ -1506,6 +1638,7 @@ export class MiauAppUI {
 
           <!-- Active Drawer / Modal -->
           ${this.activeModal !== 'none' ? this.renderModal() : ''}
+          ${this.showInstallGuideModal ? this.renderInstallGuideModal() : ''}
         </div>
       </div>
     `;
@@ -1770,9 +1903,15 @@ export class MiauAppUI {
       `;
     } else if (this.activeModal === 'menu') {
       const unlockedCount = (this.profile.unlockedAchievements || []).length;
+      const visibleCount = [
+        this.screenPrefs.showStatusBars,
+        this.screenPrefs.showStatusBadges,
+        this.screenPrefs.showSpeechAndChat,
+        this.screenPrefs.showCoinsBadge,
+      ].filter(Boolean).length;
       body = `
         <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Menu do Jogo ⚙️</h2>
+          <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Menu do Jogo 🐾</h2>
           <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
         </div>
         <div class="flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-1">
@@ -1786,12 +1925,19 @@ export class MiauAppUI {
             <span class="text-xs font-extrabold bg-amber-200/80 px-2.5 py-0.5 rounded-full">${unlockedCount}/${ACHIEVEMENTS.length}</span>
           </button>
 
-          <div class="flex items-center justify-between bg-white/85 rounded-2xl p-3 border border-purple-100">
-            <span class="text-sm font-bold text-[#3b1f6e]">🔊 Sons e Voz do Miau</span>
-            <button id="btn-toggle-sound" class="px-3.5 py-1 rounded-full text-xs font-extrabold ${this.profile.soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
-              ${this.profile.soundEnabled ? 'Ativado' : 'Mudo'}
-            </button>
-          </div>
+          <button id="btn-open-settings" class="w-full py-2.5 px-3.5 rounded-2xl bg-white/90 border border-purple-200 text-[#3b1f6e] font-bold text-sm flex items-center justify-between hover:bg-purple-50 transition">
+            <span>⚙️ Configurações da Tela</span>
+            <span class="text-[11px] font-extrabold bg-purple-100 text-[#6e45a5] px-2.5 py-0.5 rounded-full">${visibleCount === 4 ? 'Completo' : visibleCount === 0 ? 'Limpo' : `${visibleCount}/4 itens`}</span>
+          </button>
+
+          ${
+            !pwaService.isInstalled
+              ? `<button id="btn-menu-install" class="w-full py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-sm shadow-md flex items-center justify-between hover:brightness-110 transition">
+                   <span>📲 Instalar App Miau</span>
+                   <span class="text-[10px] font-extrabold bg-white/25 px-2 py-0.5 rounded-full">PWA</span>
+                 </button>`
+              : ''
+          }
 
           <button id="btn-open-ar" class="w-full py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-display font-bold shadow-md flex items-center justify-center gap-2 hover:brightness-110 transition">
             📸 Realidade Aumentada (Câmera)
@@ -1809,6 +1955,81 @@ export class MiauAppUI {
           <button id="btn-logout" class="w-full py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-sm hover:bg-rose-100 transition">
             🚪 Sair da Conta
           </button>
+        </div>
+      `;
+    } else if (this.activeModal === 'settings') {
+      const camLabel =
+        this.cameraPermission === 'granted'
+          ? 'Autorizada'
+          : this.cameraPermission === 'denied'
+            ? 'Bloqueada'
+            : this.cameraPermission === 'unsupported'
+              ? 'Indisponível'
+              : 'Pendente';
+      const camBadgeCls =
+        this.cameraPermission === 'granted'
+          ? 'bg-emerald-100 text-emerald-700'
+          : this.cameraPermission === 'denied'
+            ? 'bg-rose-100 text-rose-700'
+            : 'bg-amber-100 text-amber-800';
+
+      body = `
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <button id="btn-settings-back" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm">←</button>
+            <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Configurações ⚙️</h2>
+          </div>
+          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+        </div>
+
+        <div class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+          <!-- Tela Principal Visibility -->
+          <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal (Sala)</span>
+              <div class="flex gap-1.5">
+                <button id="btn-preset-full" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-purple-100 text-[#4c2a85] hover:bg-purple-200">✨ Tudo</button>
+                <button id="btn-preset-clean" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 hover:bg-emerald-200">🧘 Limpo</button>
+              </div>
+            </div>
+
+            ${this.renderToggleRow('showStatusBars', '📊 Barras de Status', 'Fome, Higiene, Diversão, Sono e Felicidade')}
+            ${this.renderToggleRow('showStatusBadges', '🏆 Atalhos do Topo', 'Conquistas, Soneca e Nível')}
+            ${this.renderToggleRow('showSpeechAndChat', '💬 Balão de Fala e Chat', 'Caixa de conversa rápida na Sala')}
+            ${this.renderToggleRow('showCoinsBadge', '🪙 Moedas no Cabeçalho', 'Mostrar saldo de moedas no topo')}
+          </div>
+
+          <!-- Audio & Camera Permission -->
+          <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2.5">
+            <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Áudio e Câmera (AR)</span>
+
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-[#3b1f6e]">🔊 Sons e Voz do Miau</span>
+              <button id="btn-toggle-sound" class="px-3 py-1 rounded-full text-xs font-extrabold ${this.profile.soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
+                ${this.profile.soundEnabled ? 'Ativado' : 'Mudo'}
+              </button>
+            </div>
+
+            <div class="flex items-center justify-between gap-2 pt-1 border-t border-purple-100">
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-[#3b1f6e]">📷 Câmera (Realidade Aumentada)</div>
+                <span class="inline-block mt-0.5 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${camBadgeCls}">${camLabel}</span>
+              </div>
+              <button id="btn-auth-camera" class="px-3 py-1.5 rounded-full bg-sky-500 text-white text-xs font-extrabold shadow-sm hover:brightness-110 shrink-0">
+                ${this.cameraPermission === 'granted' ? 'Revalidar' : 'Autorizar'}
+              </button>
+            </div>
+          </div>
+
+          ${
+            !pwaService.isInstalled
+              ? `<button id="btn-settings-install" class="w-full py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold text-sm shadow flex items-center justify-center gap-2 hover:brightness-110 transition">
+                   📲 Instalar Aplicativo Miau
+                 </button>`
+              : `<div class="text-center text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-2xl py-2">
+                   ✅ Aplicativo instalado no dispositivo
+                 </div>`
+          }
         </div>
       `;
     } else if (this.activeModal === 'support') {
@@ -2261,12 +2482,101 @@ export class MiauAppUI {
         }
       });
 
-    // Menu actions
+    // Menu & Settings actions
     this.root
       .querySelector('#btn-menu-achievements')
       ?.addEventListener('click', () => {
         this.activeModal = 'achievements';
         this.render();
+      });
+
+    this.root
+      .querySelector('#btn-open-settings')
+      ?.addEventListener('click', () => {
+        this.activeModal = 'settings';
+        void this.refreshCameraPermissionState();
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-settings-back')
+      ?.addEventListener('click', () => {
+        this.activeModal = 'menu';
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-menu-install')
+      ?.addEventListener('click', () => {
+        void this.handleInstallAppClick();
+      });
+
+    this.root
+      .querySelector('#btn-settings-install')
+      ?.addEventListener('click', () => {
+        void this.handleInstallAppClick();
+      });
+
+    this.root
+      .querySelector('#close-install-guide')
+      ?.addEventListener('click', () => {
+        this.showInstallGuideModal = false;
+        this.render();
+      });
+
+    this.root.querySelectorAll('[data-screen-pref]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute(
+          'data-screen-pref'
+        ) as keyof ScreenVisibilityPrefs | null;
+        if (!key) return;
+        this.screenPrefs[key] = !this.screenPrefs[key];
+        this.saveScreenPrefs();
+        this.render();
+      });
+    });
+
+    this.root
+      .querySelector('#btn-preset-full')
+      ?.addEventListener('click', () => {
+        this.screenPrefs = {
+          showStatusBars: true,
+          showStatusBadges: true,
+          showSpeechAndChat: true,
+          showCoinsBadge: true,
+        };
+        this.saveScreenPrefs();
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-preset-clean')
+      ?.addEventListener('click', () => {
+        this.screenPrefs = {
+          showStatusBars: false,
+          showStatusBadges: false,
+          showSpeechAndChat: false,
+          showCoinsBadge: true,
+        };
+        this.saveScreenPrefs();
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-auth-camera')
+      ?.addEventListener('click', async () => {
+        const res = await pwaService.requestCameraAuthorization();
+        this.cameraPermission = res;
+        this.render();
+        if (res === 'granted') {
+          this.showToast('Câmera autorizada para Realidade Aumentada!');
+        } else if (res === 'denied') {
+          this.showToast(
+            'Permissão negada. Libere a câmera nas configurações do navegador.'
+          );
+        } else {
+          this.showToast('Câmera não suportada neste dispositivo.');
+        }
       });
 
     this.root
@@ -2371,6 +2681,73 @@ export class MiauAppUI {
     return `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encoded}`;
   }
 
+  private renderToggleRow(
+    key: keyof ScreenVisibilityPrefs,
+    title: string,
+    subtitle: string
+  ): string {
+    const enabled = this.screenPrefs[key];
+    return `
+      <div class="flex items-center justify-between gap-2 py-1 border-t border-purple-50 first:border-t-0">
+        <div class="min-w-0">
+          <div class="text-xs font-bold text-[#3b1f6e] truncate">${title}</div>
+          <div class="text-[10px] text-[#7a60a8] truncate">${subtitle}</div>
+        </div>
+        <button
+          type="button"
+          data-screen-pref="${key}"
+          aria-pressed="${enabled}"
+          class="w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${enabled ? 'bg-emerald-500' : 'bg-slate-300'}"
+        >
+          <div class="w-5 h-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}"></div>
+        </button>
+      </div>
+    `;
+  }
+
+  private renderInstallGuideModal(): string {
+    return `
+      <div class="fixed inset-0 z-50 bg-purple-950/45 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="w-full max-w-sm glass-card rounded-3xl p-5 text-[#3b1f6e] shadow-2xl">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="font-display text-lg font-bold">📲 Instalar o App Miau</h2>
+            <button id="close-install-guide" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+          </div>
+          ${
+            pwaService.isIOS
+              ? `
+                <ol class="text-xs leading-relaxed text-[#4c2a85] flex flex-col gap-2 bg-white/80 rounded-2xl p-3.5 border border-purple-100">
+                  <li><strong>1.</strong> Toque no botão <strong>Compartilhar</strong> (ícone de quadrado com seta ↑) na barra do Safari.</li>
+                  <li><strong>2.</strong> Role para baixo e toque em <strong>Adicionar à Tela de Início</strong>.</li>
+                  <li><strong>3.</strong> Confirme tocando em <strong>Adicionar</strong>!</li>
+                </ol>
+              `
+              : `
+                <ol class="text-xs leading-relaxed text-[#4c2a85] flex flex-col gap-2 bg-white/80 rounded-2xl p-3.5 border border-purple-100">
+                  <li><strong>1.</strong> No Google Chrome, abra o menu <strong>⋮</strong> (canto superior direito) ou toque no ícone de instalação na barra de endereço.</li>
+                  <li><strong>2.</strong> Selecione <strong>Instalar aplicativo</strong> (ou <strong>Adicionar à tela inicial → Instalar</strong>).</li>
+                  <li><strong>3.</strong> O Miau será instalado com ícone próprio e modo tela cheia!</li>
+                </ol>
+              `
+          }
+        </div>
+      </div>
+    `;
+  }
+
+  private async handleInstallAppClick(): Promise<void> {
+    if (pwaService.canPromptInstall()) {
+      const outcome = await pwaService.promptInstall();
+      if (outcome === 'accepted') {
+        this.showToast('Miau instalado com sucesso!');
+        this.render();
+      }
+      return;
+    }
+    this.showInstallGuideModal = true;
+    this.render();
+  }
+
   private openARCamera(): void {
     this.arCamera?.destroy();
     this.arCamera = new MiauARCamera({
@@ -2388,6 +2765,7 @@ export class MiauAppUI {
       },
       onClose: () => {
         this.arCamera = null;
+        void this.refreshCameraPermissionState();
       },
     });
   }

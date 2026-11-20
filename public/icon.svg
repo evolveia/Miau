@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="miauBg" cx="50%" cy="35%" r="70%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="65%" stop-color="#f2e8ff" />
+      <stop offset="100%" stop-color="#dec7ff" />
+    </radialGradient>
+    <linearGradient id="miauRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8b5cf6" />
+      <stop offset="100%" stop-color="#5a3696" />
+    </linearGradient>
+    <filter id="pawShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#4c2a85" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <!-- Outer Circular Frosted Badge matching Preloader -->
+  <circle cx="256" cy="256" r="236" fill="url(#miauBg)" stroke="rgba(255,255,255,0.9)" stroke-width="14" />
+  <circle cx="256" cy="256" r="218" fill="none" stroke="rgba(167,139,250,0.32)" stroke-width="24" />
+  <circle
+    cx="256"
+    cy="256"
+    r="218"
+    fill="none"
+    stroke="url(#miauRing)"
+    stroke-width="24"
+    stroke-linecap="round"
+    stroke-dasharray="1060 320"
+    transform="rotate(-90 256 256)"
+  />
+
+  <!-- Centered Preloader Paw -->
+  <g transform="translate(80 86) scale(4.4)" filter="url(#pawShadow)">
+    <path
+      d="M26 52 C26 40, 54 40, 54 52 C54 61, 46 66, 40 66 C34 66, 26 61, 26 52 Z"
+      fill="#f7c8c0"
+      stroke="#3b1f6e"
+      stroke-width="3.5"
+      stroke-linejoin="round"
+    />
+    <ellipse cx="22" cy="34" rx="6.5" ry="8" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2" transform="rotate(-14 22 34)" />
+    <ellipse cx="34" cy="25" rx="6.5" ry="8.5" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2" />
+    <ellipse cx="47" cy="25" rx="6.5" ry="8.5" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2" />
+    <ellipse cx="58" cy="34" rx="6.5" ry="8" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2" transform="rotate(14 58 34)" />
+    <path d="M33 52 Q40 46 47 52 Q45 59 40 59 Q35 59 33 52 Z" fill="#f2929c" />
+  </g>
+</svg>

@@ -464,6 +464,7 @@ export class MiauARCamera {
                   <div class="text-5xl animate-bounce">📸</div>
                   <h3 class="font-display text-xl font-bold">Autorize a Câmera</h3>
                   <p class="text-xs text-purple-200 max-w-xs">Para colocar o ${this.options.petName} no mundo real e tirar fotos, permita o acesso à câmera quando o navegador solicitar.</p>
+                  <button id="ar-retry-cam" class="mt-1 px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-xs shadow-lg hover:brightness-110 active:scale-95 transition">📷 Autorizar Câmera</button>
                 </div>
               `
               : this.cameraState === 'error'
@@ -473,7 +474,7 @@ export class MiauARCamera {
                     <h3 class="font-display text-xl font-bold">Câmera Indisponível</h3>
                     <p class="text-xs text-purple-200 max-w-xs leading-relaxed">${this.errorText}</p>
                     <div class="flex gap-2.5">
-                      <button id="ar-retry-cam" class="px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-xs shadow-lg">Tentar Novamente</button>
+                      <button id="ar-retry-cam" class="px-5 py-2.5 rounded-full bg-gradient-to-r from-violet-500 to-purple-600 text-white font-bold text-xs shadow-lg">📷 Autorizar Câmera</button>
                       <button id="ar-error-back" class="px-5 py-2.5 rounded-full bg-white/15 text-white font-bold text-xs">Voltar ao Jogo</button>
                     </div>
                   </div>

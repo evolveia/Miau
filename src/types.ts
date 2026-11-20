@@ -20,7 +20,15 @@ export type ActiveModal =
   | 'menu'
   | 'support'
   | 'ar'
+  | 'settings'
   | 'legal';
+
+export interface ScreenVisibilityPrefs {
+  showStatusBars: boolean;
+  showStatusBadges: boolean;
+  showSpeechAndChat: boolean;
+  showCoinsBadge: boolean;
+}
 
 export interface PetStats {
   hunger: number;

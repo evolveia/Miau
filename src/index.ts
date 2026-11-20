@@ -1,6 +1,14 @@
+import { registerSW } from 'virtual:pwa-register';
 import * as xb from 'xrblocks';
 import { MiauAppUI } from './ui/MiauAppUI';
 import { MiauXRScene } from './xr/MiauXRScene';
+
+registerSW({
+  immediate: true,
+  onRegisterError(error) {
+    console.warn('Falha ao registrar Service Worker PWA:', error);
+  },
+});
 
 function createXRHud(
   scene: MiauXRScene,

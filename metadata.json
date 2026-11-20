@@ -2,7 +2,8 @@
   "name": "Miau — Bichinho Virtual com IA",
   "description": "Cuide, brinque, personalize e converse por voz e texto com o Miau, seu bichinho virtual com inteligência artificial.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
