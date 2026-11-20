@@ -1,0 +1,271 @@
+import type {
+  AchievementDef,
+  FoodItem,
+  ShopItem,
+  UserPetProfile,
+} from './types';
+
+export const MIAU_AVATAR_URL = '/assets/aistudio/1795131998533_abb20848.jpg';
+
+export const SUPPORT_WHATSAPP_NUMBER = '5591996156672';
+
+export const XP_PER_LEVEL = 100;
+
+export const INITIAL_GREETING = {
+  meowPrefix: 'Miau!',
+  text: '(Oi, humano! Vamos brincar?)',
+  mood: 'playful' as const,
+};
+
+export const DEFAULT_OWNED_ITEMS = [
+  'hat_none',
+  'hat_party',
+  'acc_none',
+  'acc_bowtie',
+  'bg_lilac',
+];
+
+export const createDefaultProfile = (ownerId: string): UserPetProfile => ({
+  ownerId,
+  petName: 'Miau',
+  coins: 2500,
+  level: 5,
+  xp: 45,
+  stats: {
+    hunger: 60,
+    hygiene: 90,
+    fun: 50,
+    sleep: 70,
+    happiness: 75,
+  },
+  equipped: {
+    hat: 'hat_party',
+    accessory: 'acc_bowtie',
+    background: 'bg_lilac',
+  },
+  ownedItems: [...DEFAULT_OWNED_ITEMS],
+  soundEnabled: true,
+  unlockedAchievements: [],
+  progress: {
+    mealsFed: 0,
+    gamesPlayed: 0,
+    cleanCount: 0,
+    petsCount: 0,
+    chatsCount: 0,
+  },
+});
+
+export const ACHIEVEMENTS: AchievementDef[] = [
+  {
+    id: 'ach_first_meal',
+    title: 'Primeira Refeição',
+    description: 'Alimente o Miau pela primeira vez.',
+    emoji: '🐟',
+    coinReward: 50,
+    target: 1,
+    progressKey: 'mealsFed',
+  },
+  {
+    id: 'ach_fun_friend',
+    title: 'Amigo Divertido',
+    description: 'Complete um minijogo com o Miau.',
+    emoji: '🎮',
+    coinReward: 75,
+    target: 1,
+    progressKey: 'gamesPlayed',
+  },
+  {
+    id: 'ach_stylist',
+    title: 'Estilista',
+    description: 'Compre um novo item de personalização na loja.',
+    emoji: '👗',
+    coinReward: 80,
+    target: 1,
+    progressKey: 'shopBought',
+  },
+  {
+    id: 'ach_clean_master',
+    title: 'Mestre da Limpeza',
+    description: 'Dê banho ou limpe o Miau na Sala de Estar.',
+    emoji: '🧼',
+    coinReward: 60,
+    target: 1,
+    progressKey: 'cleanCount',
+  },
+  {
+    id: 'ach_chat_pal',
+    title: 'Papo de Gato',
+    description: 'Converse com o Miau usando o chat inteligente.',
+    emoji: '💬',
+    coinReward: 65,
+    target: 1,
+    progressKey: 'chatsCount',
+  },
+  {
+    id: 'ach_golden_pet',
+    title: 'Carinho de Ouro',
+    description: 'Faça 5 carinhos no Miau na Sala de Estar.',
+    emoji: '💖',
+    coinReward: 70,
+    target: 5,
+    progressKey: 'petsCount',
+  },
+];
+
+export const FOOD_ITEMS: FoodItem[] = [
+  {
+    id: 'food_fish',
+    name: 'Peixinho Dourado',
+    emoji: '🐟',
+    hungerBoost: 24,
+    funBoost: 6,
+    cost: 25,
+    xpReward: 15,
+    description: 'Crocante e fresquinho, o favorito do Miau!',
+  },
+  {
+    id: 'food_kibble',
+    name: 'Ração Estrelinha',
+    emoji: '🥣',
+    hungerBoost: 18,
+    funBoost: 3,
+    cost: 15,
+    xpReward: 10,
+    description: 'Nutrição balanceada para gatinhos fofos.',
+  },
+  {
+    id: 'food_milk',
+    name: 'Leite Morno',
+    emoji: '🥛',
+    hungerBoost: 15,
+    funBoost: 8,
+    cost: 20,
+    xpReward: 12,
+    description: 'Suave e aconchegante antes da soneca.',
+  },
+  {
+    id: 'food_salmon',
+    name: 'Salmão Real',
+    emoji: '🍣',
+    hungerBoost: 40,
+    funBoost: 14,
+    cost: 55,
+    xpReward: 28,
+    description: 'Banquete especial digno de um gato mimado!',
+  },
+];
+
+export const SHOP_ITEMS: ShopItem[] = [
+  {
+    id: 'hat_none',
+    category: 'hat',
+    name: 'Sem Chapéu',
+    emoji: '✨',
+    price: 0,
+    previewColor: '#ede9fe',
+  },
+  {
+    id: 'hat_party',
+    category: 'hat',
+    name: 'Chapéu de Festa',
+    emoji: '🥳',
+    price: 0,
+    previewColor: '#7dd3fc',
+  },
+  {
+    id: 'hat_crown',
+    category: 'hat',
+    name: 'Coroa Dourada',
+    emoji: '👑',
+    price: 220,
+    previewColor: '#fde047',
+  },
+  {
+    id: 'hat_wizard',
+    category: 'hat',
+    name: 'Chapéu Mágico',
+    emoji: '🧙',
+    price: 300,
+    previewColor: '#a78bfa',
+  },
+  {
+    id: 'hat_flower',
+    category: 'hat',
+    name: 'Florzinha Pastel',
+    emoji: '🌸',
+    price: 160,
+    previewColor: '#f9a8d4',
+  },
+  {
+    id: 'acc_none',
+    category: 'accessory',
+    name: 'Sem Acessório',
+    emoji: '✨',
+    price: 0,
+    previewColor: '#ede9fe',
+  },
+  {
+    id: 'acc_bowtie',
+    category: 'accessory',
+    name: 'Gravata Borboleta',
+    emoji: '🎀',
+    price: 0,
+    previewColor: '#f87171',
+  },
+  {
+    id: 'acc_glasses',
+    category: 'accessory',
+    name: 'Óculos Estrela',
+    emoji: '🕶️',
+    price: 240,
+    previewColor: '#fbbf24',
+  },
+  {
+    id: 'acc_scarf',
+    category: 'accessory',
+    name: 'Cachecol Lilás',
+    emoji: '🧣',
+    price: 180,
+    previewColor: '#c084fc',
+  },
+  {
+    id: 'acc_bell',
+    category: 'accessory',
+    name: 'Guizo Dourado',
+    emoji: '🔔',
+    price: 260,
+    previewColor: '#facc15',
+  },
+  {
+    id: 'bg_lilac',
+    category: 'background',
+    name: 'Sala Lilás',
+    emoji: '🐾',
+    price: 0,
+    previewColor: '#d8b4fe',
+  },
+  {
+    id: 'bg_night',
+    category: 'background',
+    name: 'Noite Estrelada',
+    emoji: '🌙',
+    price: 320,
+    previewColor: '#6366f1',
+  },
+  {
+    id: 'bg_peach',
+    category: 'background',
+    name: 'Tarde Pêssego',
+    emoji: '🍑',
+    price: 250,
+    previewColor: '#fdba74',
+  },
+  {
+    id: 'bg_sunny',
+    category: 'background',
+    name: 'Dia Ensolarado',
+    emoji: '☀️',
+    price: 150,
+    previewColor: '#7dd3fc',
+  },
+];

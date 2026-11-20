@@ -1,0 +1,179 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isValidStats(stats) {
+      return stats is map
+        && stats.keys().hasAll(['hunger', 'hygiene', 'fun', 'sleep'])
+        && stats.keys().hasOnly(['hunger', 'hygiene', 'fun', 'sleep', 'happiness'])
+        && stats.hunger is number && stats.hunger >= 0 && stats.hunger <= 100
+        && stats.hygiene is number && stats.hygiene >= 0 && stats.hygiene <= 100
+        && stats.fun is number && stats.fun >= 0 && stats.fun <= 100
+        && stats.sleep is number && stats.sleep >= 0 && stats.sleep <= 100
+        && (!('happiness' in stats) || (stats.happiness is number && stats.happiness >= 0 && stats.happiness <= 100));
+    }
+
+    function isValidEquipped(equipped) {
+      return equipped is map
+        && equipped.keys().hasAll(['hat', 'accessory', 'background'])
+        && equipped.keys().hasOnly(['hat', 'accessory', 'background'])
+        && equipped.hat is string && equipped.hat.size() <= 64
+        && equipped.accessory is string && equipped.accessory.size() <= 64
+        && equipped.background is string && equipped.background.size() <= 64;
+    }
+
+    function isValidProgress(p) {
+      return p is map
+        && p.keys().hasAll(['mealsFed', 'gamesPlayed', 'cleanCount', 'petsCount', 'chatsCount'])
+        && p.keys().hasOnly(['mealsFed', 'gamesPlayed', 'cleanCount', 'petsCount', 'chatsCount'])
+        && p.mealsFed is int && p.mealsFed >= 0 && p.mealsFed <= 1000000
+        && p.gamesPlayed is int && p.gamesPlayed >= 0 && p.gamesPlayed <= 1000000
+        && p.cleanCount is int && p.cleanCount >= 0 && p.cleanCount <= 1000000
+        && p.petsCount is int && p.petsCount >= 0 && p.petsCount <= 1000000
+        && p.chatsCount is int && p.chatsCount >= 0 && p.chatsCount <= 1000000;
+    }
+
+    function isValidUserPetProfile(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'petName', 'coins', 'level', 'xp',
+          'stats', 'equipped', 'ownedItems', 'soundEnabled',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'petName', 'coins', 'level', 'xp',
+          'stats', 'equipped', 'ownedItems', 'soundEnabled',
+          'unlockedAchievements', 'progress',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.petName is string && data.petName.size() >= 1 && data.petName.size() <= 32
+        && data.coins is int && data.coins >= 0 && data.coins <= 10000000
+        && data.level is int && data.level >= 1 && data.level <= 999
+        && data.xp is int && data.xp >= 0 && data.xp <= 100000
+        && isValidStats(data.stats)
+        && isValidEquipped(data.equipped)
+        && data.ownedItems is list && data.ownedItems.size() >= 1 && data.ownedItems.size() <= 50 && data.ownedItems[0] is string && data.ownedItems[0].size() <= 64
+        && data.soundEnabled is bool
+        && (!('unlockedAchievements' in data) || (data.unlockedAchievements is list && data.unlockedAchievements.size() <= 50 && (data.unlockedAchievements.size() == 0 || (data.unlockedAchievements[0] is string && data.unlockedAchievements[0].size() <= 64))))
+        && (!('progress' in data) || isValidProgress(data.progress))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidPrivateInfo(data, userId) {
+      return data.keys().hasAll(['ownerId', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'displayName', 'email', 'createdAt', 'updatedAt'])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.displayName is string && data.displayName.size() <= 80
+        && data.email is string && data.email.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidChatMessage(data, userId) {
+      return data.keys().hasAll(['ownerId', 'sender', 'meowPrefix', 'text', 'mood', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'sender', 'meowPrefix', 'text', 'mood', 'createdAt'])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.sender is string && data.sender.size() <= 16 && data.sender in ['user', 'miau']
+        && data.meowPrefix is string && data.meowPrefix.size() <= 40
+        && data.text is string && data.text.size() >= 1 && data.text.size() <= 1000
+        && data.mood is string && data.mood.size() >= 1 && data.mood.size() <= 32
+        && data.createdAt is timestamp;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserPetProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserPetProfile(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
+          || incoming().diff(existing()).affectedKeys().hasOnly(['petName', 'soundEnabled', 'updatedAt'])
+        );
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      match /private/{docId} {
+        allow get: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+        allow list: if false;
+        allow create: if isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && isValidPrivateInfo(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time;
+        allow update: if isValidId(userId)
+          && isValidId(docId)
+          && docId == 'info'
+          && isOwner(userId)
+          && isValidPrivateInfo(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']);
+        allow delete: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+      }
+
+      match /messages/{messageId} {
+        allow get: if isValidId(userId)
+          && isValidId(messageId)
+          && isOwner(userId)
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow list: if isValidId(userId)
+          && isOwner(userId)
+          && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(messageId)
+          && isOwner(userId)
+          && isValidChatMessage(incoming(), userId)
+          && incoming().createdAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isValidId(userId)
+          && isValidId(messageId)
+          && isOwner(userId)
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+      }
+    }
+  }
+}

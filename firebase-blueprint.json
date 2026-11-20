@@ -1,0 +1,166 @@
+{
+  "entities": {
+    "UserPetProfile": {
+      "title": "UserPetProfile",
+      "description": "Stores the player's Miau virtual pet state, stats, currency, level, and wardrobe customizations.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "petName": {
+          "type": "string",
+          "description": "Display name of the virtual cat.",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "coins": {
+          "type": "integer",
+          "description": "Player coin balance."
+        },
+        "level": {
+          "type": "integer",
+          "description": "Current player level."
+        },
+        "xp": {
+          "type": "integer",
+          "description": "Current experience points toward next level."
+        },
+        "stats": {
+          "type": "object",
+          "description": "Essential pet status bars (hunger, hygiene, fun, sleep, happiness from 0 to 100)."
+        },
+        "equipped": {
+          "type": "object",
+          "description": "Currently equipped hat, accessory, and room background IDs."
+        },
+        "ownedItems": {
+          "type": "array",
+          "description": "List of owned customization item IDs (max 50)."
+        },
+        "soundEnabled": {
+          "type": "boolean",
+          "description": "Whether meow/purr/TTS sound effects are enabled."
+        },
+        "unlockedAchievements": {
+          "type": "array",
+          "description": "List of unlocked achievement IDs (max 50)."
+        },
+        "progress": {
+          "type": "object",
+          "description": "Action counters for achievements (mealsFed, gamesPlayed, cleanCount, petsCount, chatsCount)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp."
+        }
+      },
+      "required": [
+        "ownerId",
+        "petName",
+        "coins",
+        "level",
+        "xp",
+        "stats",
+        "equipped",
+        "ownedItems",
+        "soundEnabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPrivateInfo": {
+      "title": "UserPrivateInfo",
+      "description": "Isolated PII storage for authenticated user email and display name.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 160
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "displayName", "email", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A conversation turn between the player and Miau.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "sender": {
+          "type": "string",
+          "enum": ["user", "miau"]
+        },
+        "meowPrefix": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 40
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "mood": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "sender", "meowPrefix", "text", "mood", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPetProfile" },
+      "description": "Player's virtual pet Miau profile, stats, coins, level, and equipped items."
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateInfo" },
+      "description": "Isolated private PII metadata for the user."
+    },
+    "/users/{userId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Persisted chat messages with Miau."
+    }
+  }
+}
