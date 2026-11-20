@@ -87,6 +87,7 @@ function buildMiauSystemInstruction(context?: {
 
 async function startServer() {
   const app = express();
+  const server = http.createServer(app);
   app.use(express.json({ limit: '15mb' }));
 
   app.post('/api/gemini/chat', async (req, res) => {
@@ -254,7 +255,15 @@ async function startServer() {
   if (!IS_PROD) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        hmr: false,
+        ws: {
+          server,
+          path: '/__vite_hmr',
+        },
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);
@@ -266,8 +275,16 @@ async function startServer() {
     });
   }
 
-  const server = http.createServer(app);
-  const wss = new WebSocketServer({ server, path: '/live' });
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req, socket, head) => {
+    const pathname = new URL(req.url || '/', 'http://localhost').pathname;
+    if (pathname === '/live') {
+      wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.emit('connection', ws, req);
+      });
+    }
+  });
 
   wss.on('connection', async (clientWs: WebSocket) => {
     let session: Awaited<ReturnType<GoogleGenAI['live']['connect']>> | null =
