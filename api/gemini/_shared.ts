@@ -10,10 +10,22 @@ export interface VercelResponse extends ServerResponse {
   json?: (data: unknown) => void;
 }
 
+export class MissingGeminiApiKeyError extends Error {
+  public readonly statusCode = 503;
+  public readonly code = 'MISSING_GEMINI_API_KEY';
+
+  constructor() {
+    super(
+      'GEMINI_API_KEY não configurada no ambiente do servidor. Adicione GEMINI_API_KEY nas Environment Variables da Vercel e faça um Redeploy.'
+    );
+    this.name = 'MissingGeminiApiKeyError';
+  }
+}
+
 export function getAIClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY não configurada no ambiente do servidor.');
+    throw new MissingGeminiApiKeyError();
   }
   return new GoogleGenAI({
     apiKey,
@@ -77,4 +89,22 @@ export function sendJson(
   res.statusCode = statusCode;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(payload));
+}
+
+export function sendGeminiRouteError(
+  res: VercelResponse,
+  routeLabel: string,
+  error: unknown
+): void {
+  if (error instanceof MissingGeminiApiKeyError) {
+    console.warn(`Configuração pendente em ${routeLabel}:`, error.message);
+    sendJson(res, error.statusCode, {
+      code: error.code,
+      error: error.message,
+    });
+    return;
+  }
+  const msg = error instanceof Error ? error.message : String(error);
+  console.error(`Erro em ${routeLabel}:`, msg);
+  sendJson(res, 500, { error: msg });
 }

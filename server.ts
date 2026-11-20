@@ -16,12 +16,22 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const IS_PROD = process.env.NODE_ENV === 'production';
 
-function getAIClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      'GEMINI_API_KEY não configurada no ambiente do servidor.'
+class MissingGeminiApiKeyError extends Error {
+  public readonly statusCode = 503;
+  public readonly code = 'MISSING_GEMINI_API_KEY';
+
+  constructor() {
+    super(
+      'GEMINI_API_KEY não configurada no ambiente do servidor. Adicione GEMINI_API_KEY nas variáveis de ambiente e reinicie/reimplante o servidor.'
     );
+    this.name = 'MissingGeminiApiKeyError';
+  }
+}
+
+function getAIClient(): GoogleGenAI {
+  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new MissingGeminiApiKeyError();
   }
   return new GoogleGenAI({
     apiKey,
@@ -157,6 +167,10 @@ async function startServer() {
         mood: parsed.mood || 'happy',
       });
     } catch (error) {
+      if (error instanceof MissingGeminiApiKeyError) {
+        res.status(error.statusCode).json({ code: error.code, error: error.message });
+        return;
+      }
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Erro em /api/gemini/chat:', msg);
       res.status(500).json({ error: msg });
@@ -210,6 +224,10 @@ async function startServer() {
 
       res.json({ audioBase64: base64Audio, mimeType: 'audio/wav' });
     } catch (error) {
+      if (error instanceof MissingGeminiApiKeyError) {
+        res.status(error.statusCode).json({ code: error.code, error: error.message });
+        return;
+      }
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Erro em /api/gemini/tts:', msg);
       res.status(500).json({ error: msg });
@@ -246,6 +264,10 @@ async function startServer() {
 
       res.json({ transcript: (response.text ?? '').trim() });
     } catch (error) {
+      if (error instanceof MissingGeminiApiKeyError) {
+        res.status(error.statusCode).json({ code: error.code, error: error.message });
+        return;
+      }
       const msg = error instanceof Error ? error.message : String(error);
       console.error('Erro em /api/gemini/transcribe:', msg);
       res.status(500).json({ error: msg });

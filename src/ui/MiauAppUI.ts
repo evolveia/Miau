@@ -25,6 +25,7 @@ import {
   subscribeAuth,
 } from '../services/firebaseService';
 import {
+  GeminiApiError,
   askMiau,
   synthesizeMiauVoice,
   transcribeUserAudio,
@@ -890,11 +891,22 @@ export class MiauAppUI {
       })();
     } catch (error) {
       hapticService.warning();
-      const msg = error instanceof Error ? error.message : String(error);
-      this.currentSpeech = {
-        meowPrefix: 'Miau?',
-        text: `(${msg})`,
-      };
+      if (
+        error instanceof GeminiApiError &&
+        error.code === 'MISSING_GEMINI_API_KEY'
+      ) {
+        this.currentSpeech = {
+          meowPrefix: 'Miau!',
+          text: '(Falta configurar a GEMINI_API_KEY nas variáveis do servidor Vercel para ativar minha IA.)',
+        };
+        this.showToast('Configure GEMINI_API_KEY na Vercel e faça um Redeploy.');
+      } else {
+        const msg = error instanceof Error ? error.message : String(error);
+        this.currentSpeech = {
+          meowPrefix: 'Miau?',
+          text: `(${msg})`,
+        };
+      }
       this.updateSpeechDOM();
     } finally {
       this.isThinking = false;

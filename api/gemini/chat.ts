@@ -2,6 +2,7 @@ import { ThinkingLevel, Type } from '@google/genai';
 import {
   getAIClient,
   readJsonBody,
+  sendGeminiRouteError,
   sendJson,
   withRetry,
   type VercelRequest,
@@ -132,8 +133,6 @@ export default async function handler(
       mood: parsed.mood || 'happy',
     });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('Erro em /api/gemini/chat:', msg);
-    sendJson(res, 500, { error: msg });
+    sendGeminiRouteError(res, '/api/gemini/chat', error);
   }
 }

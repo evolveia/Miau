@@ -6,6 +6,18 @@ export interface MiauChatResponse {
   mood: MiauMood;
 }
 
+export class GeminiApiError extends Error {
+  public readonly code?: string;
+  public readonly status: number;
+
+  constructor(message: string, status = 500, code?: string) {
+    super(message);
+    this.name = 'GeminiApiError';
+    this.status = status;
+    this.code = code;
+  }
+}
+
 interface ParsedApiResult<T> {
   data: T | null;
   rawText: string;
@@ -35,17 +47,22 @@ async function parseJsonSafely<T>(res: Response): Promise<ParsedApiResult<T>> {
 
 function buildFriendlyHttpError(
   status: number,
-  parsed: ParsedApiResult<{ error?: string }>,
+  parsed: ParsedApiResult<{ error?: string; code?: string }>,
   fallbackMessage: string
-): string {
+): GeminiApiError {
   const apiError = parsed.data?.error?.trim();
+  const code = parsed.data?.code;
   if (apiError) {
-    return apiError;
+    return new GeminiApiError(apiError, status, code);
   }
   if (status === 404 || !parsed.isJson) {
-    return 'Não foi possível conectar ao servidor de IA (/api/gemini). Verifique se o backend e a chave GEMINI_API_KEY estão ativos.';
+    return new GeminiApiError(
+      'Não foi possível conectar ao servidor de IA (/api/gemini). Verifique se o backend e a chave GEMINI_API_KEY estão ativos.',
+      status,
+      'ENDPOINT_UNAVAILABLE'
+    );
   }
-  return `${fallbackMessage} (HTTP ${status})`;
+  return new GeminiApiError(`${fallbackMessage} (HTTP ${status})`, status, code);
 }
 
 export async function askMiau(params: {
@@ -72,8 +89,10 @@ export async function askMiau(params: {
       }),
     });
   } catch {
-    throw new Error(
-      'Sem conexão com o servidor de IA no momento. Tente novamente em instantes!'
+    throw new GeminiApiError(
+      'Sem conexão com o servidor de IA no momento. Tente novamente em instantes!',
+      0,
+      'NETWORK_ERROR'
     );
   }
 
@@ -82,11 +101,14 @@ export async function askMiau(params: {
     text?: string;
     mood?: MiauMood;
     error?: string;
+    code?: string;
   }>(res);
 
   if (!res.ok || !parsed.data) {
-    throw new Error(
-      buildFriendlyHttpError(res.status, parsed, 'Erro ao conversar com o Miau.')
+    throw buildFriendlyHttpError(
+      res.status,
+      parsed,
+      'Erro ao conversar com o Miau.'
     );
   }
 
@@ -108,18 +130,25 @@ export async function synthesizeMiauVoice(
       body: JSON.stringify({ text }),
     });
   } catch {
-    throw new Error('Serviço de voz indisponível sem conexão.');
+    throw new GeminiApiError(
+      'Serviço de voz indisponível sem conexão.',
+      0,
+      'NETWORK_ERROR'
+    );
   }
 
   const parsed = await parseJsonSafely<{
     audioBase64?: string;
     mimeType?: string;
     error?: string;
+    code?: string;
   }>(res);
 
   if (!res.ok || !parsed.data?.audioBase64) {
-    throw new Error(
-      buildFriendlyHttpError(res.status, parsed, 'Erro ao gerar voz do Miau.')
+    throw buildFriendlyHttpError(
+      res.status,
+      parsed,
+      'Erro ao gerar voz do Miau.'
     );
   }
 
@@ -141,17 +170,24 @@ export async function transcribeUserAudio(
       body: JSON.stringify({ audioBase64, mimeType }),
     });
   } catch {
-    throw new Error('Transcrição de voz indisponível sem conexão.');
+    throw new GeminiApiError(
+      'Transcrição de voz indisponível sem conexão.',
+      0,
+      'NETWORK_ERROR'
+    );
   }
 
   const parsed = await parseJsonSafely<{
     transcript?: string;
     error?: string;
+    code?: string;
   }>(res);
 
   if (!res.ok || !parsed.data) {
-    throw new Error(
-      buildFriendlyHttpError(res.status, parsed, 'Erro ao transcrever áudio.')
+    throw buildFriendlyHttpError(
+      res.status,
+      parsed,
+      'Erro ao transcrever áudio.'
     );
   }
 

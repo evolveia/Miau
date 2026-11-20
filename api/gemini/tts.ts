@@ -1,6 +1,7 @@
 import {
   getAIClient,
   readJsonBody,
+  sendGeminiRouteError,
   sendJson,
   withRetry,
   type VercelRequest,
@@ -65,8 +66,6 @@ export default async function handler(
 
     sendJson(res, 200, { audioBase64: base64Audio, mimeType: 'audio/wav' });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('Erro em /api/gemini/tts:', msg);
-    sendJson(res, 500, { error: msg });
+    sendGeminiRouteError(res, '/api/gemini/tts', error);
   }
 }
