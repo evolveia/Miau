@@ -520,7 +520,42 @@ export class MiauAppUI {
     this.evaluateAchievements();
     this.triggerMiauReaction('jump');
     this.spawnFloatingParticle('💖');
+    this.currentSpeech = {
+      meowPrefix: 'Purrr~ 💖',
+      text: '(Que carinho gostoso, humano!)',
+    };
     this.updateStatusBarsDOM();
+    this.updateSpeechDOM();
+    this.updateCharacterSvgDOM();
+    void this.persistStats();
+  }
+
+  public handleMeowInteraction(): void {
+    if (this.isSleeping) {
+      this.toggleSleep();
+    }
+    this.ensureProfileDefaults();
+    const lines: Array<[string, string]> = [
+      ['Miau! 😺', '(Que alegria ter você aqui comigo!)'],
+      ['Miauuu~ ✨', '(Vamos brincar de bolinha na sala?)'],
+      ['Purrr~ 🐾', '(Estou cheio de energia e carinho!)'],
+      ['Miau! 💕', '(Você é o melhor amigo do mundo!)'],
+    ];
+    const [prefix, msg] = lines[Math.floor(Math.random() * lines.length)];
+    soundService.playMeow(1.08 + Math.random() * 0.22);
+    hapticService.tap();
+    this.mood = 'happy';
+    this.profile.stats.fun = Math.min(100, this.profile.stats.fun + 5);
+    this.profile.stats.happiness = Math.min(
+      100,
+      this.profile.stats.happiness + 6
+    );
+    this.addRewards(4, 4);
+    this.triggerMiauReaction('jump');
+    this.spawnFloatingParticle('🎵');
+    this.currentSpeech = { meowPrefix: prefix, text: msg };
+    this.updateStatusBarsDOM();
+    this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
     void this.persistStats();
   }
@@ -589,7 +624,7 @@ export class MiauAppUI {
     void this.persistStats();
   }
 
-  public handleQuickPlay(): void {
+  public handleQuickPlay(source: 'yarn' | 'ball' = 'yarn'): void {
     if (this.isSleeping) {
       this.toggleSleep();
     }
@@ -605,11 +640,17 @@ export class MiauAppUI {
     this.evaluateAchievements();
     this.mood = 'playful';
     this.triggerMiauReaction('spin');
-    this.spawnFloatingParticle('🧶');
-    this.currentSpeech = {
-      meowPrefix: 'Miau!! 🧶',
-      text: '(Adorei brincar com o novelo de lã!)',
-    };
+    this.spawnFloatingParticle(source === 'ball' ? '⚽' : '🧶');
+    this.currentSpeech =
+      source === 'ball'
+        ? {
+            meowPrefix: 'Miau!! ⚽',
+            text: '(Peguei a bolinha! Joga de novo!)',
+          }
+        : {
+            meowPrefix: 'Miau!! 🧶',
+            text: '(Adorei brincar com o novelo de lã!)',
+          };
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
@@ -1049,6 +1090,7 @@ export class MiauAppUI {
       const count = this.profile.unlockedAchievements?.length || 0;
       achEl.textContent = `${count}/${ACHIEVEMENTS.length}`;
     }
+    this.syncXR();
   }
 
   private updateSpeechDOM(): void {
@@ -1943,50 +1985,88 @@ export class MiauAppUI {
         this.screenPrefs.showCoinsBadge,
       ].filter(Boolean).length;
       body = `
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Menu do Jogo 🐾</h2>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+        <div class="flex items-start justify-between gap-2 mb-3 text-left">
+          <div class="text-left">
+            <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight">Menu do Jogo 🐾</h2>
+            <p class="text-[11px] font-semibold text-[#6b4d9e]">Modos, configurações e suporte</p>
+          </div>
+          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold shrink-0">✕</button>
         </div>
-        <div class="flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-1">
-          <div class="bg-white/85 rounded-2xl p-3 border border-purple-100">
-            <div class="text-xs font-bold text-[#6b4d9e] mb-0.5">Conta conectada</div>
-            <div class="text-sm font-extrabold text-[#3b1f6e]">${this.firebaseUser?.displayName || this.firebaseUser?.email || 'Modo Demonstração Local'}</div>
+        <div class="flex flex-col gap-2 overflow-y-auto miau-scroll pr-1 text-left">
+          <div class="bg-white/90 rounded-2xl p-3 border border-purple-100 flex items-center gap-3 text-left">
+            <span class="w-9 h-9 rounded-xl bg-purple-100 text-[#5b21b6] flex items-center justify-center text-lg shrink-0">👤</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="text-[11px] font-bold text-[#6b4d9e] leading-tight">Conta conectada</div>
+              <div class="text-sm font-extrabold text-[#3b1f6e] truncate">${this.firebaseUser?.displayName || this.firebaseUser?.email || 'Modo Demonstração Local'}</div>
+            </div>
+            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-[#6e45a5] shrink-0">${this.firebaseUser ? 'Ativa' : 'Local'}</span>
           </div>
 
-          <button id="btn-menu-achievements" class="w-full py-2.5 px-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-sm flex items-center justify-between hover:bg-amber-100/70 transition">
-            <span>🏆 Conquistas do Miau</span>
-            <span class="text-xs font-extrabold bg-amber-200/80 px-2.5 py-0.5 rounded-full">${unlockedCount}/${ACHIEVEMENTS.length}</span>
+          <button id="btn-menu-achievements" class="w-full py-2.5 px-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-sm flex items-center gap-3 text-left hover:bg-amber-100/70 transition">
+            <span class="w-9 h-9 rounded-xl bg-amber-200/70 flex items-center justify-center text-lg shrink-0">🏆</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="font-bold leading-tight">Conquistas do Miau</div>
+              <div class="text-[11px] font-semibold text-amber-700/85">Medalhas e metas desbloqueadas</div>
+            </div>
+            <span class="text-xs font-extrabold bg-amber-200/80 px-2.5 py-0.5 rounded-full shrink-0">${unlockedCount}/${ACHIEVEMENTS.length}</span>
           </button>
 
-          <button id="btn-open-settings" class="w-full py-2.5 px-3.5 rounded-2xl bg-white/90 border border-purple-200 text-[#3b1f6e] font-bold text-sm flex items-center justify-between hover:bg-purple-50 transition">
-            <span>⚙️ Configurações da Tela</span>
-            <span class="text-[11px] font-extrabold bg-purple-100 text-[#6e45a5] px-2.5 py-0.5 rounded-full">${visibleCount === 4 ? 'Completo' : visibleCount === 0 ? 'Limpo' : `${visibleCount}/4 itens`}</span>
+          <button id="btn-open-settings" class="w-full py-2.5 px-3 rounded-2xl bg-white/90 border border-purple-200 text-[#3b1f6e] font-bold text-sm flex items-center gap-3 text-left hover:bg-purple-50 transition">
+            <span class="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center text-lg shrink-0">⚙️</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="font-bold leading-tight">Configurações da Tela</div>
+              <div class="text-[11px] font-semibold text-[#6b4d9e]">Áudio, vibração, câmera e HUD</div>
+            </div>
+            <span class="text-[11px] font-extrabold bg-purple-100 text-[#6e45a5] px-2.5 py-0.5 rounded-full shrink-0">${visibleCount === 4 ? 'Completo' : visibleCount === 0 ? 'Limpo' : `${visibleCount}/4 itens`}</span>
           </button>
 
           ${
             !pwaService.isInstalled
-              ? `<button id="btn-menu-install" class="w-full py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-sm shadow-md flex items-center justify-between hover:brightness-110 transition">
-                   <span>📲 Instalar App Miau</span>
-                   <span class="text-[10px] font-extrabold bg-white/25 px-2 py-0.5 rounded-full">PWA</span>
+              ? `<button id="btn-menu-install" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-sm shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">
+                   <span class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">📲</span>
+                   <div class="flex-1 min-w-0 text-left">
+                     <div class="font-bold leading-tight">Instalar App Miau</div>
+                     <div class="text-[11px] font-normal text-white/85">Adicionar aplicativo à tela inicial</div>
+                   </div>
+                   <span class="text-[10px] font-extrabold bg-white/25 px-2 py-0.5 rounded-full shrink-0">PWA</span>
                  </button>`
               : ''
           }
 
-          <button id="btn-open-ar" class="w-full py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-display font-bold shadow-md flex items-center justify-center gap-2 hover:brightness-110 transition">
-            📸 Realidade Aumentada (Câmera)
+          <button id="btn-open-ar" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-display font-bold shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">
+            <span class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">📸</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="font-bold leading-tight">Realidade Aumentada</div>
+              <div class="text-[11px] font-normal text-white/85">Interagir com câmera e tirar foto</div>
+            </div>
+            <span class="text-xs font-extrabold text-white/90 shrink-0">›</span>
           </button>
 
-          <button id="btn-enter-xr" class="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold shadow-md flex items-center justify-center gap-2 hover:brightness-110 transition">
-            🥽 Abrir Sala 3D / Modo XR
+          <button id="btn-enter-xr" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">
+            <span class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">🥽</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="font-bold leading-tight">Sala 3D / Modo XR</div>
+              <div class="text-[11px] font-normal text-white/85">Explorar, girar e brincar em 3D</div>
+            </div>
+            <span class="text-xs font-extrabold text-white/90 shrink-0">›</span>
           </button>
 
-          <button id="btn-open-support" class="w-full py-2.5 px-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-sm flex items-center justify-between hover:bg-emerald-100/70 transition">
-            <span>💬 Suporte & Dúvidas</span>
-            <span class="text-[11px] font-extrabold bg-emerald-200/80 px-2.5 py-0.5 rounded-full">WhatsApp</span>
+          <button id="btn-open-support" class="w-full py-2.5 px-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-sm flex items-center gap-3 text-left hover:bg-emerald-100/70 transition">
+            <span class="w-9 h-9 rounded-xl bg-emerald-200/75 flex items-center justify-center text-lg shrink-0">💬</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="font-bold leading-tight">Suporte & Dúvidas</div>
+              <div class="text-[11px] font-semibold text-emerald-700/85">Atendimento direto por mensagem</div>
+            </div>
+            <span class="text-[11px] font-extrabold bg-emerald-200/80 px-2.5 py-0.5 rounded-full shrink-0">WhatsApp</span>
           </button>
 
-          <button id="btn-logout" class="w-full py-2.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-sm hover:bg-rose-100 transition">
-            🚪 Sair da Conta
+          <button id="btn-logout" class="w-full py-2.5 px-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-sm flex items-center gap-3 text-left hover:bg-rose-100 transition">
+            <span class="w-9 h-9 rounded-xl bg-rose-200/60 flex items-center justify-center text-lg shrink-0">🚪</span>
+            <div class="flex-1 min-w-0 text-left">
+              <div class="font-bold leading-tight">Sair da Conta</div>
+              <div class="text-[11px] font-semibold text-rose-600/80">Trocar de perfil ou desconectar</div>
+            </div>
+            <span class="text-xs font-extrabold text-rose-500 shrink-0">›</span>
           </button>
         </div>
       `;
@@ -2488,12 +2568,15 @@ export class MiauAppUI {
           this.liveSession.stop();
           this.liveSession = null;
           this.liveStatus = '';
+          hapticService.tap();
           this.render();
           return;
         }
+        hapticService.tap();
         this.liveStatus = 'Conectando ao Gemini Live...';
         this.liveTranscript = '';
         this.render();
+        let hadLiveError = false;
         const session = new LiveVoiceSession({
           onStatus: (status) => {
             this.liveStatus = status;
@@ -2514,13 +2597,17 @@ export class MiauAppUI {
             soundService.playPurr();
           },
           onError: (err) => {
+            hadLiveError = true;
             this.liveStatus = err;
             this.liveSession = null;
+            hapticService.warning();
             this.render();
           },
           onClosed: () => {
             this.liveSession = null;
-            this.liveStatus = 'Sessão de voz encerrada.';
+            if (!hadLiveError) {
+              this.liveStatus = 'Sessão de voz encerrada.';
+            }
             this.render();
           },
         });
@@ -2528,9 +2615,11 @@ export class MiauAppUI {
         try {
           await session.start();
         } catch (err) {
+          hadLiveError = true;
           this.liveSession = null;
           this.liveStatus =
             err instanceof Error ? err.message : 'Erro ao iniciar microfone.';
+          hapticService.warning();
           this.render();
         }
       });

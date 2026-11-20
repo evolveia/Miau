@@ -234,19 +234,85 @@ export class LiveVoiceSession {
     }
   ) {}
 
+  private hasErrored = false;
+  private manualStop = false;
+
   async start(): Promise<void> {
+    this.hasErrored = false;
+    this.manualStop = false;
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.ws = new WebSocket(`${proto}//${window.location.host}/live`);
+    const ws = new WebSocket(`${proto}//${window.location.host}/live`);
+    this.ws = ws;
 
-    this.inputCtx = new AudioContext({ sampleRate: 16000 });
-    this.outputCtx = new AudioContext({ sampleRate: 24000 });
-    this.nextStartTime = this.outputCtx.currentTime;
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try {
+          ws.close();
+        } catch {
+          // Ignore
+        }
+        this.cleanup();
+        reject(
+          new Error(
+            'Voz ao vivo em tempo real indisponível neste servidor. Use o botão 🎤 na barra de chat para falar com o Miau!'
+          )
+        );
+      }, 6000);
 
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const source = this.inputCtx.createMediaStreamSource(this.stream);
-    this.processor = this.inputCtx.createScriptProcessor(4096, 1, 1);
-    source.connect(this.processor);
-    this.processor.connect(this.inputCtx.destination);
+      ws.onopen = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        resolve();
+      };
+
+      ws.onerror = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        this.cleanup();
+        reject(
+          new Error(
+            'Voz ao vivo em tempo real indisponível neste servidor. Use o botão 🎤 na barra de chat para falar com o Miau!'
+          )
+        );
+      };
+
+      ws.onclose = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        this.cleanup();
+        reject(
+          new Error(
+            'Voz ao vivo em tempo real indisponível neste servidor. Use o botão 🎤 na barra de chat para falar com o Miau!'
+          )
+        );
+      };
+    });
+
+    try {
+      this.inputCtx = new AudioContext({ sampleRate: 16000 });
+      this.outputCtx = new AudioContext({ sampleRate: 24000 });
+      this.nextStartTime = this.outputCtx.currentTime;
+
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const source = this.inputCtx.createMediaStreamSource(this.stream);
+      this.processor = this.inputCtx.createScriptProcessor(4096, 1, 1);
+      source.connect(this.processor);
+      this.processor.connect(this.inputCtx.destination);
+    } catch (err) {
+      try {
+        ws.close();
+      } catch {
+        // Ignore
+      }
+      this.cleanup();
+      throw err;
+    }
 
     this.processor.onaudioprocess = (event) => {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
@@ -264,7 +330,7 @@ export class LiveVoiceSession {
       this.ws.send(JSON.stringify({ audio: btoa(binary) }));
     };
 
-    this.ws.onmessage = (msgEvent) => {
+    ws.onmessage = (msgEvent) => {
       try {
         const msg = JSON.parse(msgEvent.data);
         if (msg.status === 'connected') {
@@ -280,6 +346,7 @@ export class LiveVoiceSession {
         } else if (msg.turnComplete) {
           this.callbacks.onTurnComplete();
         } else if (msg.error) {
+          this.hasErrored = true;
           this.callbacks.onError(msg.error);
         }
       } catch {
@@ -287,13 +354,17 @@ export class LiveVoiceSession {
       }
     };
 
-    this.ws.onerror = () => {
+    ws.onerror = () => {
+      if (this.manualStop) return;
+      this.hasErrored = true;
       this.callbacks.onError('Erro na conexão de voz ao vivo.');
     };
 
-    this.ws.onclose = () => {
+    ws.onclose = () => {
       this.cleanup();
-      this.callbacks.onClosed();
+      if (!this.hasErrored && !this.manualStop) {
+        this.callbacks.onClosed();
+      }
     };
   }
 
@@ -337,6 +408,7 @@ export class LiveVoiceSession {
   }
 
   stop(): void {
+    this.manualStop = true;
     this.ws?.close();
     this.cleanup();
   }

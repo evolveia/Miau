@@ -1,5 +1,6 @@
 import {
   getAIClient,
+  handleCorsAndMethod,
   readJsonBody,
   sendGeminiRouteError,
   sendJson,
@@ -12,20 +13,23 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ): Promise<void> {
-  if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Método não permitido.' });
+  if (!handleCorsAndMethod(req, res, 'POST')) {
     return;
   }
 
   try {
     const body = await readJsonBody(req);
-    const audioBase64 = body.audioBase64;
+    const rawAudio = body.audioBase64;
     const mimeType =
       typeof body.mimeType === 'string' ? body.mimeType : 'audio/webm';
-    if (!audioBase64 || typeof audioBase64 !== 'string') {
+    if (!rawAudio || typeof rawAudio !== 'string') {
       sendJson(res, 400, { error: 'Áudio inválido.' });
       return;
     }
+
+    const audioBase64 = rawAudio.includes(',')
+      ? rawAudio.split(',').slice(1).join(',')
+      : rawAudio;
 
     const ai = getAIClient();
     const response = await withRetry(() =>

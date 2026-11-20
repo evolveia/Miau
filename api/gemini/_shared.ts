@@ -22,6 +22,16 @@ export class MissingGeminiApiKeyError extends Error {
   }
 }
 
+export class InvalidJsonBodyError extends Error {
+  public readonly statusCode = 400;
+  public readonly code = 'INVALID_JSON_BODY';
+
+  constructor() {
+    super('Corpo da requisição JSON inválido.');
+    this.name = 'InvalidJsonBodyError';
+  }
+}
+
 export function getAIClient(): GoogleGenAI {
   const apiKey = process.env.GEMINI_API_KEY?.trim();
   if (!apiKey) {
@@ -63,22 +73,55 @@ export async function withRetry<T>(
   throw lastError;
 }
 
+export function handleCorsAndMethod(
+  req: VercelRequest,
+  res: VercelResponse,
+  allowedMethod = 'POST'
+): boolean {
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 204;
+    res.setHeader('Allow', `${allowedMethod}, OPTIONS`);
+    res.end();
+    return false;
+  }
+  if (req.method !== allowedMethod) {
+    sendJson(res, 405, { error: 'Método não permitido.' });
+    return false;
+  }
+  return true;
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> {
+  if (!raw.trim()) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new InvalidJsonBodyError();
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err) {
+    if (err instanceof InvalidJsonBodyError) throw err;
+    throw new InvalidJsonBodyError();
+  }
+}
+
 export async function readJsonBody(
   req: VercelRequest
 ): Promise<Record<string, unknown>> {
-  if (req.body && typeof req.body === 'object') {
+  if (Buffer.isBuffer(req.body)) {
+    return parseJsonObject(req.body.toString('utf8'));
+  }
+  if (req.body && typeof req.body === 'object' && !Array.isArray(req.body)) {
     return req.body as Record<string, unknown>;
   }
-  if (typeof req.body === 'string' && req.body.trim()) {
-    return JSON.parse(req.body) as Record<string, unknown>;
+  if (typeof req.body === 'string') {
+    return parseJsonObject(req.body);
   }
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
   }
-  const raw = Buffer.concat(chunks).toString('utf8').trim();
-  if (!raw) return {};
-  return JSON.parse(raw) as Record<string, unknown>;
+  return parseJsonObject(Buffer.concat(chunks).toString('utf8'));
 }
 
 export function sendJson(
@@ -98,6 +141,13 @@ export function sendGeminiRouteError(
 ): void {
   if (error instanceof MissingGeminiApiKeyError) {
     console.warn(`Configuração pendente em ${routeLabel}:`, error.message);
+    sendJson(res, error.statusCode, {
+      code: error.code,
+      error: error.message,
+    });
+    return;
+  }
+  if (error instanceof InvalidJsonBodyError) {
     sendJson(res, error.statusCode, {
       code: error.code,
       error: error.message,

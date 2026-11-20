@@ -1,5 +1,6 @@
 import {
   getAIClient,
+  handleCorsAndMethod,
   readJsonBody,
   sendGeminiRouteError,
   sendJson,
@@ -12,8 +13,7 @@ export default async function handler(
   req: VercelRequest,
   res: VercelResponse
 ): Promise<void> {
-  if (req.method !== 'POST') {
-    sendJson(res, 405, { error: 'Método não permitido.' });
+  if (!handleCorsAndMethod(req, res, 'POST')) {
     return;
   }
 

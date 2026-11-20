@@ -27,12 +27,12 @@ h3,
   font-family: 'Fredoka', 'Nunito', sans-serif;
 }
 
-/* Keep XR Blocks default launch & simulator overlays tucked away until user activates XR mode */
+/* Keep XR Blocks default launch & desktop simulator overlays tucked away */
 body:not(.xr-mode-active) #XRButtonWrapper,
-body:not(.xr-mode-active) xrblocks-simulator-settings,
-body:not(.xr-mode-active) xrblocks-simulator-instructions,
-body:not(.xr-mode-active) xrblocks-simulator-overlay-instructions,
-body:not(.xr-mode-active) xrblocks-simulator-hand-pose-panel,
+xrblocks-simulator-settings,
+xrblocks-simulator-instructions,
+xrblocks-simulator-overlay-instructions,
+xrblocks-simulator-hand-pose-panel,
 body:not(.xr-mode-active) #miau-xr-hud {
   display: none !important;
 }
@@ -43,6 +43,10 @@ body:not(.xr-mode-active) #miau-2d-shell {
 
 body.xr-mode-active #miau-2d-shell {
   display: none !important;
+}
+
+body.xr-mode-active canvas {
+  touch-action: none;
 }
 
 body.xr-mode-active #miau-xr-hud {
@@ -59,7 +63,6 @@ body.xr-mode-active #XRButtonWrapper {
   align-items: center;
   gap: 1.5rem;
   background: radial-gradient(circle at top, rgba(167, 139, 250, 0.35), rgba(30, 16, 56, 0.88));
-  backdrop-filter: blur(12px);
 }
 
 .XRButton {

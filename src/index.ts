@@ -13,7 +13,7 @@ registerSW({
 function createXRHud(
   scene: MiauXRScene,
   onExit: () => void
-): { updateGyroUi: () => void } {
+): { updateGyroUi: () => void; showStatus: (msg: string) => void } {
   const existing = document.getElementById('miau-xr-hud');
   if (existing) existing.remove();
 
@@ -22,52 +22,88 @@ function createXRHud(
   hud.className =
     'fixed inset-0 z-[50] pointer-events-none flex flex-col justify-between p-3 sm:p-4';
   hud.innerHTML = `
-    <div class="flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
-      <button
-        id="xr-hud-exit"
-        type="button"
-        class="px-3.5 py-2 rounded-full bg-[#2d1b4e]/85 text-white border border-white/30 text-xs font-extrabold shadow-lg backdrop-blur-md hover:bg-[#3b1f6e] active:scale-95 transition"
-      >
-        ← Voltar 2D
-      </button>
+    <div class="flex flex-col gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-2 pointer-events-auto">
+        <button
+          id="xr-hud-exit"
+          type="button"
+          class="px-3.5 py-2 rounded-full bg-[#2d1b4e]/90 text-white border border-white/30 text-xs font-extrabold shadow-lg hover:bg-[#3b1f6e] active:scale-95 transition"
+        >
+          ← Voltar 2D
+        </button>
 
-      <div class="flex items-center gap-2">
-        <button
-          id="xr-hud-gyro"
-          type="button"
-          class="px-3.5 py-2 rounded-full bg-[#2d1b4e]/85 text-white border border-white/30 text-xs font-extrabold shadow-lg backdrop-blur-md hover:bg-[#3b1f6e] active:scale-95 transition"
-        >
-          🧭 Giroscópio: Off
-        </button>
-        <button
-          id="xr-hud-recenter"
-          type="button"
-          class="px-3 py-2 rounded-full bg-white/85 text-[#2d1b4e] border border-white text-xs font-extrabold shadow-lg backdrop-blur-md hover:bg-white active:scale-95 transition"
-          title="Centralizar visão no Miau"
-        >
-          🎯 Centralizar
-        </button>
+        <div class="flex items-center gap-2">
+          <button
+            id="xr-hud-gyro"
+            type="button"
+            class="px-3.5 py-2 rounded-full bg-[#2d1b4e]/90 text-white border border-white/30 text-xs font-extrabold shadow-lg hover:bg-[#3b1f6e] active:scale-95 transition"
+          >
+            🧭 Giroscópio: Off
+          </button>
+          <button
+            id="xr-hud-recenter"
+            type="button"
+            class="px-3 py-2 rounded-full bg-white/95 text-[#2d1b4e] border border-white text-xs font-extrabold shadow-lg hover:bg-white active:scale-95 transition"
+            title="Centralizar visão no Miau"
+          >
+            🎯 Centralizar
+          </button>
+        </div>
       </div>
+
+      <div class="self-center px-3 py-1 rounded-full bg-[#2d1b4e]/75 text-white/95 border border-white/20 text-[10px] sm:text-[11px] font-semibold text-center">
+        Arraste 360° para girar • Pinça para zoom • Toque no Miau, brinquedos ou tapete
+      </div>
+
+      <div
+        id="xr-hud-status"
+        class="self-center px-3.5 py-1.5 rounded-full bg-black/75 text-white text-[11px] font-bold opacity-0 transition-opacity duration-300"
+      ></div>
     </div>
 
-    <div
-      id="xr-hud-status"
-      class="self-center px-3.5 py-1.5 rounded-full bg-black/65 text-white text-[11px] font-bold opacity-0 transition-opacity duration-300"
-    ></div>
-
-    <div class="flex items-end justify-between gap-3">
-      <div class="px-3 py-1.5 rounded-2xl bg-[#2d1b4e]/75 text-white/90 border border-white/20 text-[11px] font-semibold backdrop-blur-md max-w-[210px] leading-snug">
-        Toque nos objetos 3D, use as setas ou ative o <strong>Giroscópio</strong> para explorar!
+    <div class="flex items-end justify-between gap-2">
+      <!-- Quick 3D Care & Play Dock (Left-aligned) -->
+      <div class="pointer-events-auto flex flex-col gap-1.5 items-start max-w-[235px]">
+        <div class="flex flex-wrap gap-1.5">
+          <button id="xr-act-ball" type="button" class="px-3 py-2 rounded-2xl bg-sky-500/95 text-white text-xs font-extrabold shadow-lg border border-white/30 active:scale-95 transition">
+            ⚽ Bolinha
+          </button>
+          <button id="xr-act-pet" type="button" class="px-3 py-2 rounded-2xl bg-pink-500/95 text-white text-xs font-extrabold shadow-lg border border-white/30 active:scale-95 transition">
+            💖 Carinho
+          </button>
+          <button id="xr-act-feed" type="button" class="px-3 py-2 rounded-2xl bg-amber-500/95 text-white text-xs font-extrabold shadow-lg border border-white/30 active:scale-95 transition">
+            🐟 Comida
+          </button>
+          <button id="xr-act-clean" type="button" class="px-3 py-2 rounded-2xl bg-cyan-500/95 text-white text-xs font-extrabold shadow-lg border border-white/30 active:scale-95 transition">
+            🫧 Banho
+          </button>
+          <button id="xr-act-meow" type="button" class="px-3 py-2 rounded-2xl bg-violet-600/95 text-white text-xs font-extrabold shadow-lg border border-white/30 active:scale-95 transition">
+            😺 Miar
+          </button>
+        </div>
       </div>
 
-      <!-- Mobile Walk D-Pad -->
-      <div class="pointer-events-auto grid grid-cols-3 gap-1.5 bg-[#2d1b4e]/70 p-2 rounded-2xl border border-white/25 backdrop-blur-md shadow-xl">
-        <div></div>
-        <button data-xrmove="fwd" type="button" class="w-10 h-10 rounded-xl bg-white/20 text-white font-extrabold text-sm active:bg-purple-400">▲</button>
-        <div></div>
-        <button data-xrmove="left" type="button" class="w-10 h-10 rounded-xl bg-white/20 text-white font-extrabold text-sm active:bg-purple-400">◀</button>
-        <button data-xrmove="back" type="button" class="w-10 h-10 rounded-xl bg-white/20 text-white font-extrabold text-sm active:bg-purple-400">▼</button>
-        <button data-xrmove="right" type="button" class="w-10 h-10 rounded-xl bg-white/20 text-white font-extrabold text-sm active:bg-purple-400">▶</button>
+      <!-- Right Controls: Zoom + 360° Virtual Analog Joystick -->
+      <div class="pointer-events-auto flex items-end gap-2 shrink-0">
+        <div class="flex flex-col gap-1.5">
+          <button id="xr-zoom-in" type="button" class="w-9 h-9 rounded-full bg-[#2d1b4e]/85 text-white font-extrabold text-base border border-white/30 shadow-md active:scale-90 transition" title="Aproximar">+</button>
+          <button id="xr-zoom-out" type="button" class="w-9 h-9 rounded-full bg-[#2d1b4e]/85 text-white font-extrabold text-base border border-white/30 shadow-md active:scale-90 transition" title="Afastar">−</button>
+        </div>
+
+        <div
+          id="xr-joystick-pad"
+          class="relative w-24 h-24 rounded-full bg-[#2d1b4e]/80 border-2 border-white/35 shadow-xl flex items-center justify-center touch-none select-none"
+          title="Arraste para caminhar pela sala 3D"
+        >
+          <span class="absolute top-1.5 text-[9px] font-bold text-white/60 pointer-events-none">▲</span>
+          <span class="absolute bottom-1.5 text-[9px] font-bold text-white/60 pointer-events-none">▼</span>
+          <span class="absolute left-2 text-[9px] font-bold text-white/60 pointer-events-none">◀</span>
+          <span class="absolute right-2 text-[9px] font-bold text-white/60 pointer-events-none">▶</span>
+          <div
+            id="xr-joystick-knob"
+            class="w-10 h-10 rounded-full bg-gradient-to-br from-purple-300 to-violet-500 border-2 border-white shadow-md pointer-events-none"
+          ></div>
+        </div>
       </div>
     </div>
   `;
@@ -86,7 +122,7 @@ function createXRHud(
     statusTimer = window.setTimeout(() => {
       statusEl.classList.remove('opacity-100');
       statusEl.classList.add('opacity-0');
-    }, 2800);
+    }, 2600);
   };
 
   const updateGyroUi = () => {
@@ -94,7 +130,7 @@ function createXRHud(
     const active = scene.isGyroscopeEnabled();
     gyroBtn.textContent = active ? '🧭 Giroscópio: Ativo' : '🧭 Giroscópio: Off';
     gyroBtn.classList.toggle('bg-emerald-600/90', active);
-    gyroBtn.classList.toggle('bg-[#2d1b4e]/85', !active);
+    gyroBtn.classList.toggle('bg-[#2d1b4e]/90', !active);
   };
 
   hud.querySelector('#xr-hud-exit')?.addEventListener('click', () => {
@@ -114,25 +150,82 @@ function createXRHud(
     showStatus('Visão centralizada no Miau!');
   });
 
-  const bindMoveBtn = (dir: string, fwd: number, right: number) => {
-    const btn = hud.querySelector(`[data-xrmove="${dir}"]`);
-    if (!btn) return;
-    const start = (e: Event) => {
-      e.preventDefault();
-      scene.setMoveInput(fwd, right);
-    };
-    const stop = () => scene.setMoveInput(0, 0);
-    btn.addEventListener('pointerdown', start);
-    btn.addEventListener('pointerup', stop);
-    btn.addEventListener('pointercancel', stop);
-    btn.addEventListener('pointerleave', stop);
-  };
-  bindMoveBtn('fwd', 1, 0);
-  bindMoveBtn('back', -1, 0);
-  bindMoveBtn('left', 0, -1);
-  bindMoveBtn('right', 0, 1);
+  // Quick 3D Care & Play buttons
+  hud.querySelector('#xr-act-ball')?.addEventListener('click', () => {
+    scene.throwBall();
+  });
+  hud.querySelector('#xr-act-pet')?.addEventListener('click', () => {
+    scene.triggerPetFromScene();
+  });
+  hud.querySelector('#xr-act-feed')?.addEventListener('click', () => {
+    scene.triggerFeedFromScene();
+  });
+  hud.querySelector('#xr-act-clean')?.addEventListener('click', () => {
+    scene.triggerCleanFromScene();
+  });
+  hud.querySelector('#xr-act-meow')?.addEventListener('click', () => {
+    scene.triggerMeowFromScene();
+  });
 
-  return { updateGyroUi };
+  hud.querySelector('#xr-zoom-in')?.addEventListener('click', () => {
+    scene.zoomBy(-0.28);
+  });
+  hud.querySelector('#xr-zoom-out')?.addEventListener('click', () => {
+    scene.zoomBy(0.28);
+  });
+
+  // Smooth 360° Virtual Thumbstick
+  const pad = hud.querySelector('#xr-joystick-pad') as HTMLElement | null;
+  const knob = hud.querySelector('#xr-joystick-knob') as HTMLElement | null;
+  let stickPointerId: number | null = null;
+  const maxRadius = 28;
+
+  const updateStick = (clientX: number, clientY: number) => {
+    if (!pad || !knob) return;
+    const rect = pad.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    let dx = clientX - cx;
+    let dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist > maxRadius) {
+      dx = (dx / dist) * maxRadius;
+      dy = (dy / dist) * maxRadius;
+    }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    scene.setMoveInput(-dy / maxRadius, dx / maxRadius);
+  };
+
+  const resetStick = () => {
+    stickPointerId = null;
+    if (knob) knob.style.transform = 'translate(0px, 0px)';
+    scene.setMoveInput(0, 0);
+  };
+
+  pad?.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    stickPointerId = e.pointerId;
+    pad.setPointerCapture?.(e.pointerId);
+    updateStick(e.clientX, e.clientY);
+  });
+
+  pad?.addEventListener('pointermove', (e) => {
+    if (stickPointerId !== e.pointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    updateStick(e.clientX, e.clientY);
+  });
+
+  pad?.addEventListener('pointerup', (e) => {
+    if (stickPointerId !== e.pointerId) return;
+    pad.releasePointerCapture?.(e.pointerId);
+    resetStick();
+  });
+
+  pad?.addEventListener('pointercancel', resetStick);
+
+  return { updateGyroUi, showStatus };
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -140,7 +233,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let ui: MiauAppUI;
   let xrScene!: MiauXRScene;
-  let hudControls: { updateGyroUi: () => void } | null = null;
+  let hudControls: {
+    updateGyroUi: () => void;
+    showStatus: (msg: string) => void;
+  } | null = null;
 
   const exitXRMode = () => {
     document.body.classList.remove('xr-mode-active');
@@ -157,9 +253,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     onPet: () => ui.handlePetInteraction(),
     onFeed: () => ui.handleQuickFeed(),
     onClean: () => ui.handleQuickClean(),
-    onPlay: () => ui.handleQuickPlay(),
+    onPlay: (source) => ui.handleQuickPlay(source),
+    onMeow: () => ui.handleMeowInteraction(),
     onToggleSleep: () => ui.handleToggleSleepFromXR(),
     onExitXRMode: exitXRMode,
+    onActionFeedback: (msg) => hudControls?.showStatus(msg),
   });
 
   hudControls = createXRHud(xrScene, exitXRMode);
@@ -168,6 +266,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       await xb.core.startSimulator();
       document.getElementById('XRButtonWrapper')?.remove();
+      xb.core.simulator?.userInterface?.hideUiElements?.();
       xrScene.resetCameraView();
     } catch (err) {
       console.warn('Não foi possível iniciar o simulador 3D:', err);
@@ -183,7 +282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
     enterXRMode: () => {
       document.body.classList.add('xr-mode-active');
-      xb.core.simulator?.userInterface?.showUiElements?.();
+      xb.core.simulator?.userInterface?.hideUiElements?.();
       if (xb.core.simulatorRunning) {
         xrScene.resetCameraView();
         return;

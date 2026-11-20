@@ -13,7 +13,6 @@
     "skipLibCheck": true,
     "declaration": false,
     "forceConsistentCasingInFileNames": true,
-    "rootDir": "src",
     "sourceMap": true,
     "importHelpers": true,
     "experimentalDecorators": true,
@@ -26,5 +25,5 @@
       ]
     }
   },
-  "include": ["src/**/*.ts", "types.d.ts"]
+  "include": ["src/**/*.ts", "api/**/*.ts", "types.d.ts"]
 }

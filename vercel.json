@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/(sw\\.js|registerSW\\.js|manifest\\.webmanifest)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/((?!api/|assets/|sw\\.js|workbox-.*\\.js|registerSW\\.js|manifest\\.webmanifest|favicon\\.ico|icon\\.svg|og-miau\\.png|apple-touch-icon\\.png|pwa-.*\\.png).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
