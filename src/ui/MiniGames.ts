@@ -1,3 +1,4 @@
+import { hapticService } from '../services/hapticService';
 import { soundService } from '../services/soundService';
 
 export interface MiniGameResult {
@@ -77,8 +78,10 @@ export function mountFishCatchGame(
     if (!item.isBad) {
       caughtCount += 1;
       soundService.playCoin();
+      hapticService.coin();
     } else {
       soundService.playMeow(0.78);
+      hapticService.warning();
     }
     scoreEl.textContent = String(score);
     caughtEl.textContent = String(caughtCount);
@@ -249,6 +252,7 @@ export function mountMemoryGame(
     btn.addEventListener('click', () => {
       if (lock || flipped.includes(idx) || matched.has(idx)) return;
       soundService.playMeow(card.pitch);
+      hapticService.tap();
       flipped.push(idx);
       renderCards();
 
@@ -261,7 +265,10 @@ export function mountMemoryGame(
           matched.add(b);
           flipped = [];
           pairsEl.textContent = `${matched.size / 2}/6`;
-          window.setTimeout(() => soundService.playCoin(), 140);
+          window.setTimeout(() => {
+            soundService.playCoin();
+            hapticService.coin();
+          }, 140);
           renderCards();
           if (matched.size === deck.length) {
             window.setTimeout(() => {
@@ -283,6 +290,7 @@ export function mountMemoryGame(
         } else {
           mistakes += 1;
           lock = true;
+          hapticService.warning();
           window.setTimeout(() => {
             flipped = [];
             lock = false;

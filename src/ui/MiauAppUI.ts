@@ -29,6 +29,7 @@ import {
   synthesizeMiauVoice,
   transcribeUserAudio,
 } from '../services/geminiClient';
+import { hapticService } from '../services/hapticService';
 import {
   pwaService,
   type CameraPermissionState,
@@ -357,6 +358,7 @@ export class MiauAppUI {
     }
     if (unlockedNow.length > 0) {
       soundService.playCoin();
+      hapticService.achievement();
       this.spawnFloatingParticle('🏆');
       const totalBonus = unlockedNow.reduce((acc, a) => acc + a.coinReward, 0);
       const label =
@@ -378,6 +380,7 @@ export class MiauAppUI {
       this.profile.level += 1;
       this.profile.coins += 100;
       soundService.playCoin();
+      hapticService.levelUp();
       this.showToast(`Parabéns! Você alcançou o Nível ${this.profile.level}! (+100 moedas)`);
     }
   }
@@ -504,6 +507,7 @@ export class MiauAppUI {
     }
     this.ensureProfileDefaults();
     soundService.playPurr();
+    hapticService.purr();
     this.mood = 'affectionate';
     this.profile.stats.fun = Math.min(100, this.profile.stats.fun + 6);
     this.profile.stats.happiness = Math.min(
@@ -539,6 +543,7 @@ export class MiauAppUI {
     this.addRewards(0, fish.xpReward);
     this.evaluateAchievements();
     soundService.playCrunch();
+    hapticService.chomp();
     this.mood = 'eating';
     this.triggerMiauReaction('jump');
     this.spawnFloatingParticle('🐟');
@@ -561,6 +566,7 @@ export class MiauAppUI {
   public handleQuickClean(): void {
     this.ensureProfileDefaults();
     soundService.playBubble();
+    hapticService.bubbles();
     this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 22);
     this.profile.stats.happiness = Math.min(
       100,
@@ -588,6 +594,7 @@ export class MiauAppUI {
     }
     this.ensureProfileDefaults();
     soundService.playMeow(1.22);
+    hapticService.play();
     this.profile.stats.fun = Math.min(100, this.profile.stats.fun + 18);
     this.profile.stats.happiness = Math.min(
       100,
@@ -620,6 +627,7 @@ export class MiauAppUI {
     }
     if (this.isSleeping) {
       soundService.playPurr();
+      hapticService.purr();
       this.currentSpeech = {
         meowPrefix: 'Zzz...',
         text: '(Hora da soneca gostosa...)',
@@ -641,6 +649,7 @@ export class MiauAppUI {
       }, 2200);
     } else {
       soundService.playMeow(1.1);
+      hapticService.play();
       this.currentSpeech = {
         meowPrefix: 'Miau!',
         text: '(Acordei cheio de energia!)',
@@ -766,6 +775,11 @@ export class MiauAppUI {
       text: picked.text,
     };
     soundService.playMeow(isLow ? 0.92 : 1.15);
+    if (isLow) {
+      hapticService.warning();
+    } else {
+      hapticService.tap();
+    }
     this.triggerMiauReaction(cfg.anim);
     this.spawnFloatingParticle(cfg.emoji);
     this.updateStatusBarsDOM();
@@ -857,6 +871,7 @@ export class MiauAppUI {
       this.evaluateAchievements();
 
       this.triggerMiauReaction('jump');
+      hapticService.coin();
       this.updateSpeechDOM();
       this.updateStatusBarsDOM();
       this.updateCharacterSvgDOM();
@@ -874,6 +889,7 @@ export class MiauAppUI {
         await this.persistStats();
       })();
     } catch (error) {
+      hapticService.warning();
       const msg = error instanceof Error ? error.message : String(error);
       this.currentSpeech = {
         meowPrefix: 'Miau?',
@@ -899,6 +915,11 @@ export class MiauAppUI {
     this.addRewards(res.coinsEarned, res.xpEarned);
     const unlockedNew = this.evaluateAchievements();
     soundService.playCoin();
+    if (res.performanceTier === 'gold') {
+      hapticService.achievement();
+    } else {
+      hapticService.coin();
+    }
 
     this.mood =
       res.performanceTier === 'gold'
@@ -2010,6 +2031,16 @@ export class MiauAppUI {
               </button>
             </div>
 
+            <div class="flex items-center justify-between pt-1 border-t border-purple-100">
+              <div class="min-w-0">
+                <div class="text-xs font-bold text-[#3b1f6e]">📳 Vibração Tátil</div>
+                <div class="text-[10px] text-[#7a60a8]">Feedback ao fazer carinho e cuidar do Miau</div>
+              </div>
+              <button id="btn-toggle-haptics" class="px-3 py-1 rounded-full text-xs font-extrabold shrink-0 ${hapticService.enabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
+                ${hapticService.enabled ? 'Ativada' : 'Desativada'}
+              </button>
+            </div>
+
             <div class="flex items-center justify-between gap-2 pt-1 border-t border-purple-100">
               <div class="min-w-0">
                 <div class="text-xs font-bold text-[#3b1f6e]">📷 Câmera (Realidade Aumentada)</div>
@@ -2121,6 +2152,7 @@ export class MiauAppUI {
       if (this.isCleaningMode) {
         this.ensureProfileDefaults();
         soundService.playBubble();
+        hapticService.bubbles();
         this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 8);
         this.profile.stats.happiness = Math.min(
           100,
@@ -2134,6 +2166,7 @@ export class MiauAppUI {
           this.isCleaningMode = false;
           this.profile.progress.cleanCount += 1;
           this.evaluateAchievements();
+          hapticService.coin();
           this.currentSpeech = {
             meowPrefix: 'Purrr~',
             text: '(Estou limpinho e reluzente!)',
@@ -2231,6 +2264,7 @@ export class MiauAppUI {
     // Bottom Navigation
     this.root.querySelectorAll('[data-nav]').forEach((btn) => {
       btn.addEventListener('click', () => {
+        hapticService.tap();
         const target = btn.getAttribute('data-nav') as ActiveModal;
         this.isCleaningMode = false;
         this.activeMiniGame = 'none';
@@ -2260,6 +2294,7 @@ export class MiauAppUI {
         const food = FOOD_ITEMS.find((f) => f.id === id);
         if (!food) return;
         if (this.profile.coins < food.cost) {
+          hapticService.warning();
           this.showToast('Moedas insuficientes! Brinque nos Minijogos para ganhar.');
           return;
         }
@@ -2281,6 +2316,7 @@ export class MiauAppUI {
         this.addRewards(0, food.xpReward);
         this.evaluateAchievements();
         soundService.playCrunch();
+        hapticService.chomp();
         this.mood = 'eating';
         this.currentSpeech = {
           meowPrefix: 'Nham nham!',
@@ -2304,6 +2340,7 @@ export class MiauAppUI {
     this.root.querySelector('#btn-instant-bath')?.addEventListener('click', () => {
       this.ensureProfileDefaults();
       soundService.playBubble();
+      hapticService.bubbles();
       this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 35);
       this.profile.stats.happiness = Math.min(
         100,
@@ -2325,6 +2362,7 @@ export class MiauAppUI {
     });
 
     this.root.querySelector('#btn-sponge-mode')?.addEventListener('click', () => {
+      hapticService.tap();
       this.isCleaningMode = true;
       this.activeModal = 'none';
       this.render();
@@ -2387,15 +2425,18 @@ export class MiauAppUI {
         const owned = this.profile.ownedItems.includes(item.id);
         if (!owned) {
           if (this.profile.coins < item.price) {
+            hapticService.warning();
             this.showToast('Moedas insuficientes! Jogue minijogos para ganhar.');
             return;
           }
           this.profile.coins -= item.price;
           this.profile.ownedItems.push(item.id);
           soundService.playCoin();
+          hapticService.coin();
           this.evaluateAchievements();
         } else {
           soundService.playMeow(1.18);
+          hapticService.tap();
         }
 
         if (item.category === 'hat') this.profile.equipped.hat = item.id;
@@ -2582,10 +2623,25 @@ export class MiauAppUI {
     this.root
       .querySelector('#btn-toggle-sound')
       ?.addEventListener('click', () => {
+        hapticService.tap();
         this.profile.soundEnabled = !this.profile.soundEnabled;
         soundService.enabled = this.profile.soundEnabled;
         this.render();
         void this.persistSettings();
+      });
+
+    this.root
+      .querySelector('#btn-toggle-haptics')
+      ?.addEventListener('click', () => {
+        const next = !hapticService.enabled;
+        hapticService.enabled = next;
+        if (next) {
+          hapticService.purr();
+          if (!hapticService.isSupported) {
+            this.showToast('Preferência salva (aparelho atual sem motor de vibração).');
+          }
+        }
+        this.render();
       });
 
     this.root.querySelector('#btn-enter-xr')?.addEventListener('click', () => {

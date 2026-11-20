@@ -1,4 +1,5 @@
 import { SHOP_ITEMS } from '../constants';
+import { hapticService } from '../services/hapticService';
 import { soundService } from '../services/soundService';
 import type { EquippedItems, MiauMood } from '../types';
 import { renderMiauSvg } from './MiauIllustration';
@@ -194,6 +195,7 @@ export class MiauARCamera {
       }, 180);
     }
     soundService.playCoin();
+    hapticService.play();
 
     const rect = stage.getBoundingClientRect();
     const outW = Math.max(720, Math.round(rect.width * 2));
@@ -600,6 +602,7 @@ export class MiauARCamera {
       this.dragging = false;
       if (!this.dragMoved) {
         soundService.playPurr();
+        hapticService.purr();
         this.mood = 'affectionate';
         this.speechText = 'Purrr~ Adorei aparecer na sua câmera!';
         this.updateMiauSvgDOM();
@@ -620,6 +623,7 @@ export class MiauARCamera {
     });
 
     this.overlay.querySelector('#ar-flip-pet')?.addEventListener('click', () => {
+      hapticService.tap();
       this.isFlipped = !this.isFlipped;
       this.updateMiauTransformDOM();
     });
@@ -627,6 +631,7 @@ export class MiauARCamera {
     // Customization drawer tabs
     this.overlay.querySelectorAll('[data-artab]').forEach((btn) => {
       btn.addEventListener('click', () => {
+        hapticService.tap();
         const tab = btn.getAttribute('data-artab') as
           | 'hat'
           | 'accessory'
@@ -644,6 +649,7 @@ export class MiauARCamera {
         if (item.category === 'hat') this.equipped.hat = item.id;
         if (item.category === 'accessory') this.equipped.accessory = item.id;
         soundService.playMeow(1.15);
+        hapticService.tap();
         this.options.onEquipChange({ ...this.equipped });
         this.render();
       });
@@ -654,6 +660,7 @@ export class MiauARCamera {
         const m = btn.getAttribute('data-ar-mood') as MiauMood;
         this.mood = m;
         soundService.playMeow(1.05);
+        hapticService.tap();
         this.render();
       });
     });
@@ -661,6 +668,7 @@ export class MiauARCamera {
     this.overlay
       .querySelector('#ar-toggle-bubble')
       ?.addEventListener('click', () => {
+        hapticService.tap();
         this.showSpeechBubble = !this.showSpeechBubble;
         this.render();
       });
