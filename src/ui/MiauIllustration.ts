@@ -81,18 +81,101 @@ export function renderMiauSvg(
     `;
   } else if (equipped.hat === 'hat_flower') {
     hatSvg = `
-      <g transform="translate(132, 68)">
-        <circle cx="0" cy="-12" r="9" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.5"/>
-        <circle cx="12" cy="-2" r="9" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.5"/>
-        <circle cx="7" cy="10" r="9" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.5"/>
-        <circle cx="-8" cy="10" r="9" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.5"/>
-        <circle cx="-12" cy="-2" r="9" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.5"/>
-        <circle cx="0" cy="1" r="7" fill="#fde047" stroke="#1b1024" stroke-width="3.5"/>
+      <g transform="translate(170, 74)">
+        <path d="M-40,12 Q0,-4 40,12" fill="none" stroke="#4ade80" stroke-width="5" stroke-linecap="round"/>
+        <g transform="translate(-26, 2) scale(0.75)">
+          <circle cx="0" cy="-11" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="10" cy="-2" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="6" cy="9" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="-6" cy="9" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="-10" cy="-2" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="0" cy="1" r="6" fill="#fde047" stroke="#1b1024" stroke-width="3"/>
+        </g>
+        <g transform="translate(0, -4) scale(0.88)">
+          <circle cx="0" cy="-11" r="8" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="10" cy="-2" r="8" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="6" cy="9" r="8" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="-6" cy="9" r="8" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="-10" cy="-2" r="8" fill="#f9a8d4" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="0" cy="1" r="6" fill="#fde047" stroke="#1b1024" stroke-width="3"/>
+        </g>
+        <g transform="translate(26, 2) scale(0.75)">
+          <circle cx="0" cy="-11" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="10" cy="-2" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="6" cy="9" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="-6" cy="9" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="-10" cy="-2" r="8" fill="#fbcfe8" stroke="#1b1024" stroke-width="3.2"/>
+          <circle cx="0" cy="1" r="6" fill="#fde047" stroke="#1b1024" stroke-width="3"/>
+        </g>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_beret') {
+    hatSvg = `
+      <g transform="translate(166, 62) rotate(-10)">
+        <line x1="0" y1="-22" x2="-3" y2="-33" stroke="#1b1024" stroke-width="5" stroke-linecap="round"/>
+        <path d="M-38,10 C-44,-16 42,-20 40,8 C38,20 -34,20 -38,10 Z" fill="#e11d48" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+        <path d="M-28,15 Q0,21 28,15" fill="none" stroke="#1b1024" stroke-width="5" stroke-linecap="round"/>
+        <ellipse cx="-12" cy="-5" rx="11" ry="4" fill="#fb7185" opacity="0.65"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_bunny') {
+    hatSvg = `
+      <g transform="translate(170, 74)">
+        <path d="M-38,12 Q0,-6 38,12" fill="none" stroke="#f472b6" stroke-width="6.5" stroke-linecap="round"/>
+        <g transform="translate(-20, -2) rotate(-12)">
+          <ellipse cx="0" cy="-28" rx="13" ry="30" fill="#ffffff" stroke="#1b1024" stroke-width="4.8"/>
+          <ellipse cx="0" cy="-26" rx="6.5" ry="20" fill="#fbcfe8"/>
+        </g>
+        <g transform="translate(20, -2) rotate(12)">
+          <ellipse cx="0" cy="-28" rx="13" ry="30" fill="#ffffff" stroke="#1b1024" stroke-width="4.8"/>
+          <ellipse cx="0" cy="-26" rx="6.5" ry="20" fill="#fbcfe8"/>
+        </g>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_pirate') {
+    hatSvg = `
+      <g transform="translate(170, 62)">
+        <path d="M-46,16 Q-44,-14 0,-28 Q44,-14 46,16 Q0,6 -46,16 Z" fill="#312e81" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+        <path d="M-46,16 Q0,6 46,16" fill="none" stroke="#facc15" stroke-width="4.5" stroke-linecap="round"/>
+        <circle cx="0" cy="-5" r="8.5" fill="#ffffff" stroke="#1b1024" stroke-width="2.5"/>
+        <circle cx="-3" cy="-6" r="1.7" fill="#1b1024"/>
+        <circle cx="3" cy="-6" r="1.7" fill="#1b1024"/>
+        <line x1="-10" y1="3" x2="10" y2="-11" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/>
+        <line x1="10" y1="3" x2="-10" y2="-11" stroke="#ffffff" stroke-width="2.8" stroke-linecap="round"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_astronaut') {
+    hatSvg = `
+      <g>
+        <line x1="170" y1="54" x2="170" y2="34" stroke="#1b1024" stroke-width="4.5" stroke-linecap="round"/>
+        <circle cx="170" cy="30" r="6" fill="#38bdf8" stroke="#1b1024" stroke-width="3.5"/>
+        <ellipse cx="170" cy="144" rx="102" ry="90" fill="rgba(186, 230, 253, 0.24)" stroke="#60a5fa" stroke-width="5.5"/>
+        <ellipse cx="170" cy="144" rx="97" ry="85" fill="none" stroke="#ffffff" stroke-width="2.5" opacity="0.65"/>
+        <path d="M108 94 Q124 72 152 68" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.8"/>
+        <circle cx="98" cy="108" r="4" fill="#ffffff" opacity="0.85"/>
       </g>
     `;
   }
 
-  let accSvg = '';
+  let backCapeSvg = '';
+  let frontClaspSvg = '';
+  if (equipped.accessory === 'acc_cape') {
+    backCapeSvg = `
+      <path d="M116 196 C82 214, 58 242, 64 268 C108 274, 232 274, 276 268 C282 242, 258 214, 224 196 Z" fill="#ef4444" stroke="#1b1024" stroke-width="5.5" stroke-linejoin="round"/>
+      <path d="M126 206 C106 230, 96 250, 98 266" fill="none" stroke="#b91c1c" stroke-width="4" stroke-linecap="round" opacity="0.65"/>
+      <path d="M214 206 C234 230, 244 250, 242 266" fill="none" stroke="#b91c1c" stroke-width="4" stroke-linecap="round" opacity="0.65"/>
+    `;
+    frontClaspSvg = `
+      <g transform="translate(170, 206)">
+        <path d="M-46,-2 Q0,14 46,-2" fill="none" stroke="#facc15" stroke-width="7.5" stroke-linecap="round"/>
+        <path d="M-46,-2 Q0,14 46,-2" fill="none" stroke="#1b1024" stroke-width="2.8" stroke-linecap="round"/>
+        <circle cx="-18" cy="6" r="7" fill="#facc15" stroke="#1b1024" stroke-width="3"/>
+        <circle cx="18" cy="6" r="7" fill="#facc15" stroke="#1b1024" stroke-width="3"/>
+      </g>
+    `;
+  }
+
+  let accSvg = frontClaspSvg;
   if (equipped.accessory === 'acc_bowtie') {
     accSvg = `
       <g transform="translate(170, 212)">
@@ -104,9 +187,11 @@ export function renderMiauSvg(
   } else if (equipped.accessory === 'acc_glasses') {
     accSvg = `
       <g transform="translate(170, 144)">
-        <polygon points="-33,-16 -22,-8 -10,-15 -16,-2 -8,10 -22,6 -33,15 -34,2 -46,-4 -34,-8" fill="rgba(250,204,21,0.72)" stroke="#1b1024" stroke-width="4" stroke-linejoin="round"/>
-        <polygon points="33,-16 46,-4 34,2 33,15 22,6 8,10 16,-2 10,-15 22,-8" fill="rgba(250,204,21,0.72)" stroke="#1b1024" stroke-width="4" stroke-linejoin="round"/>
-        <line x1="-13" y1="-4" x2="13" y2="-4" stroke="#1b1024" stroke-width="4.5"/>
+        <rect x="-48" y="-14" width="38" height="26" rx="10" fill="#1e1b4b" fill-opacity="0.88" stroke="#1b1024" stroke-width="4"/>
+        <rect x="10" y="-14" width="38" height="26" rx="10" fill="#1e1b4b" fill-opacity="0.88" stroke="#1b1024" stroke-width="4"/>
+        <line x1="-10" y1="-3" x2="10" y2="-3" stroke="#1b1024" stroke-width="4.5"/>
+        <line x1="-42" y1="-7" x2="-30" y2="5" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
+        <line x1="16" y1="-7" x2="28" y2="5" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.75"/>
       </g>
     `;
   } else if (equipped.accessory === 'acc_scarf') {
@@ -114,6 +199,7 @@ export function renderMiauSvg(
       <g transform="translate(170, 206)">
         <path d="M-54,-6 Q0,14 54,-6 Q58,12 46,16 Q0,28 -46,16 Q-58,12 -54,-6 Z" fill="#a855f7" stroke="#1b1024" stroke-width="4.5" stroke-linejoin="round"/>
         <rect x="14" y="10" width="22" height="32" rx="8" fill="#c084fc" stroke="#1b1024" stroke-width="4.5"/>
+        <line x1="17" y1="22" x2="33" y2="22" stroke="#f3e8ff" stroke-width="3"/>
       </g>
     `;
   } else if (equipped.accessory === 'acc_bell') {
@@ -131,6 +217,9 @@ export function renderMiauSvg(
     <svg viewBox="0 0 340 300" class="w-full h-full drop-shadow-[0_14px_18px_rgba(76,42,133,0.18)]" xmlns="http://www.w3.org/2000/svg">
       <!-- Ground Shadow -->
       <ellipse cx="172" cy="264" rx="112" ry="18" fill="rgba(104, 62, 168, 0.24)" />
+
+      <!-- Hero Cape Backdrop (when equipped) -->
+      ${backCapeSvg}
 
       <!-- Tail -->
       <g class="animate-tail-wag">

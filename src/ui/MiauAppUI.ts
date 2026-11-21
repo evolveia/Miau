@@ -5,14 +5,19 @@ import {
   FOOD_ITEMS,
   INITIAL_GREETING,
   MIAU_AVATAR_URL,
+  ROUTINE_SCHEDULE,
+  SEED_RANKING_ENTRIES,
   SHOP_ITEMS,
   SUPPORT_WHATSAPP_NUMBER,
   XP_PER_LEVEL,
+  createDefaultGameRecords,
   createDefaultProfile,
+  getTodayDateKey,
 } from '../constants';
 import {
   loadMessages,
   loadOrCreatePetProfile,
+  loadTopRankings,
   logoutUser,
   registerWithEmail,
   resetPassword,
@@ -23,6 +28,7 @@ import {
   signInWithEmail,
   signInWithGoogle,
   subscribeAuth,
+  upsertRankingEntry,
 } from '../services/firebaseService';
 import {
   GeminiApiError,
@@ -41,21 +47,66 @@ import type {
   ActiveModal,
   AppScreen,
   ChatMessage,
+  GameId,
   MiauMood,
+  RankingEntry,
+  RoutineCategory,
+  RoutineSlotDef,
   ScreenVisibilityPrefs,
   UserPetProfile,
 } from '../types';
 import { MiauARCamera } from './MiauARCamera';
 import { renderMiauSvg } from './MiauIllustration';
-import { renderRoomScenerySvg } from './RoomScenery';
 import {
+  mountEscapeRunGame,
   mountFishCatchGame,
+  mountGalaxyRatGame,
   mountMemoryGame,
   type MiniGameResult,
 } from './MiniGames';
+import { renderRoomScenerySvg } from './RoomScenery';
+import {
+  createEmptyHumanProfile,
+  deleteUserHumanProfile,
+  loadUserHumanProfile,
+  saveUserHumanProfile,
+} from '../services/userProfileService';
+import type { SchoolingLevel, UserHumanProfile } from '../types';
+import { escapeHtml } from '../utils/html';
+import {
+  renderAchievementsModalHtml,
+  renderCleanModalHtml,
+  renderCustomizeModalHtml,
+  renderFeedModalHtml,
+  renderGamesHubModalHtml,
+  renderRankingModalHtml,
+  renderRoutineModalHtml,
+} from './modals/CareAndGamesModals';
+import {
+  renderChatHistoryItemsHtml,
+  renderChatModalHtml,
+  renderInstallGuideModalHtml,
+  renderSettingsModalHtml,
+  renderSupportModalHtml,
+} from './modals/CommunicationModals';
+import {
+  bindLearnModalEvents,
+  renderLearnModalHtml,
+} from './modals/LearnModal';
+import {
+  bindLoginScreenEvents,
+  renderLoginScreenHtml,
+} from './modals/LoginScreen';
+import { renderMenuModalHtml } from './modals/MenuModal';
+import {
+  renderPreloaderHtml,
+  updatePreloaderProgressDom,
+} from './modals/PreloaderScreen';
+import { UserProfileModalController } from './modals/UserProfileModal';
 
 const LOCAL_DEMO_KEY = 'miau_demo_profile_v1';
 const LOCAL_DEMO_MSGS_KEY = 'miau_demo_msgs_v1';
+const LOCAL_RANKING_KEY = 'miau_local_rankings_v1';
 const SCREEN_PREFS_KEY = 'miau_screen_prefs_v1';
 const CAM_PROMPTED_SESSION_KEY = 'miau_cam_prompted_v1';
 
@@ -94,8 +145,12 @@ export class MiauAppUI {
   private activeModal: ActiveModal = 'none';
   private legalDoc: 'terms' | 'privacy' = 'terms';
   private shopTab: 'hat' | 'accessory' | 'background' = 'hat';
-  private activeMiniGame: 'none' | 'fish' | 'memory' = 'none';
+  private activeMiniGame: 'none' | 'fish' | 'memory' | 'escape' | 'galaxy' =
+    'none';
   private miniGameCleanup: (() => void) | null = null;
+  private leaderboard: RankingEntry[] = [];
+  private rankingLoading = false;
+  private lastSleepRewardAtMs = 0;
 
   private currentSpeech = {
     meowPrefix: INITIAL_GREETING.meowPrefix,
@@ -120,6 +175,9 @@ export class MiauAppUI {
   private screenPrefs: ScreenVisibilityPrefs = { ...DEFAULT_SCREEN_PREFS };
   private cameraPermission: CameraPermissionState = 'unknown';
   private showInstallGuideModal = false;
+  private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
+  private learnPreviewLevel: SchoolingLevel | null = null;
+  private profileModal: UserProfileModalController;
 
   constructor(
     container: HTMLElement,
@@ -129,6 +187,46 @@ export class MiauAppUI {
     this.root.id = 'miau-2d-shell';
     this.root.className = 'fixed inset-0 z-20 flex items-center justify-center';
     container.appendChild(this.root);
+    this.profileModal = new UserProfileModalController({
+      getProfile: () => this.humanProfile,
+      onSave: async (draft) => {
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        const saved = await saveUserHumanProfile(this.firebaseUser, {
+          ...draft,
+          ownerId,
+        });
+        this.humanProfile = saved;
+        this.showToast('Perfil do usuário salvo com sucesso!');
+        void this.syncRankingEntry();
+      },
+      onDelete: async () => {
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        this.humanProfile = await deleteUserHumanProfile(
+          this.firebaseUser,
+          ownerId
+        );
+        this.showToast('Perfil do usuário limpo.');
+        void this.syncRankingEntry();
+      },
+      onBackToMenu: () => {
+        this.activeModal = 'menu';
+        this.render();
+      },
+      onOpenLearn: () => {
+        this.profileModal.disposeCameraStream();
+        this.learnPreviewLevel = null;
+        this.activeModal = 'learn';
+        this.render();
+      },
+      onRequestRerender: () => {
+        if (this.screen === 'game' && this.activeModal === 'profile') {
+          this.render();
+        }
+      },
+      onToast: (msg) => this.showToast(msg),
+    });
     this.loadScreenPrefs();
     pwaService.subscribe(() => {
       if (
@@ -196,15 +294,7 @@ export class MiauAppUI {
 
     const interval = window.setInterval(() => {
       this.preloaderProgress = Math.min(100, this.preloaderProgress + 12);
-      const pctEl = this.root.querySelector('#preloader-pct');
-      const ringEl = this.root.querySelector(
-        '#preloader-ring'
-      ) as SVGCircleElement | null;
-      if (pctEl) pctEl.textContent = `${this.preloaderProgress}%`;
-      if (ringEl) {
-        const dash = 289 - (289 * this.preloaderProgress) / 100;
-        ringEl.style.strokeDashoffset = String(dash);
-      }
+      updatePreloaderProgressDom(this.root, this.preloaderProgress);
       if (this.preloaderProgress >= 100) {
         clearInterval(interval);
         window.setTimeout(() => {
@@ -222,7 +312,11 @@ export class MiauAppUI {
           this.profile = await loadOrCreatePetProfile(user);
           this.ensureProfileDefaults();
           soundService.enabled = this.profile.soundEnabled;
-          const msgs = await loadMessages(user.uid);
+          const [msgs, humanProf] = await Promise.all([
+            loadMessages(user.uid),
+            loadUserHumanProfile(user, user.uid),
+          ]);
+          this.humanProfile = humanProf;
           this.messages =
             msgs.length > 0
               ? msgs
@@ -250,16 +344,29 @@ export class MiauAppUI {
           this.syncXR();
         } catch (err) {
           console.error('Erro ao carregar perfil no Firestore:', err);
+          this.humanProfile = await loadUserHumanProfile(null, user.uid);
           this.showToast('Conectado! Usando cache local enquanto sincroniza.');
         }
         if (this.screen === 'login') {
           this.screen = 'game';
           this.render();
           void this.requestCameraPermissionOnStart();
+        } else if (
+          this.screen === 'game' &&
+          (this.activeModal === 'menu' ||
+            this.activeModal === 'profile' ||
+            this.activeModal === 'learn')
+        ) {
+          this.render();
         }
-      } else if (!this.isDemoSession && preloaderFinished) {
-        this.screen = 'login';
-        this.render();
+      } else if (!this.isDemoSession) {
+        this.profileModal.disposeCameraStream();
+        this.humanProfile = createEmptyHumanProfile('guest');
+        this.learnPreviewLevel = null;
+        if (preloaderFinished) {
+          this.screen = 'login';
+          this.render();
+        }
       }
       authResolved = true;
       const wasPreloader = this.screen === 'preloader';
@@ -330,6 +437,169 @@ export class MiauAppUI {
       ...defaults.progress,
       ...(this.profile.progress || {}),
     };
+    const defaultRecords = createDefaultGameRecords();
+    const currentRecords = this.profile.gameRecords || defaultRecords;
+    this.profile.gameRecords = {
+      fish: { ...defaultRecords.fish, ...(currentRecords.fish || {}) },
+      memory: { ...defaultRecords.memory, ...(currentRecords.memory || {}) },
+      escape: { ...defaultRecords.escape, ...(currentRecords.escape || {}) },
+      galaxy: { ...defaultRecords.galaxy, ...(currentRecords.galaxy || {}) },
+    };
+    const todayKey = getTodayDateKey();
+    if (
+      !this.profile.dailyRoutine ||
+      this.profile.dailyRoutine.dateKey !== todayKey ||
+      !Array.isArray(this.profile.dailyRoutine.completedSlots)
+    ) {
+      this.profile.dailyRoutine = {
+        dateKey: todayKey,
+        completedSlots: [],
+      };
+    }
+  }
+
+  private isSlotInWindow(slot: RoutineSlotDef, now = new Date()): boolean {
+    const nowMins = now.getHours() * 60 + now.getMinutes();
+    const targetMins = slot.targetHour * 60 + slot.targetMinute;
+    const rawDiff = Math.abs(nowMins - targetMins);
+    const circularDiff = Math.min(rawDiff, 1440 - rawDiff);
+    return circularDiff <= slot.windowMinutes;
+  }
+
+  private getActiveWindowSlots(): RoutineSlotDef[] {
+    this.ensureProfileDefaults();
+    const completed = this.profile.dailyRoutine?.completedSlots || [];
+    const now = new Date();
+    return ROUTINE_SCHEDULE.filter(
+      (slot) => !completed.includes(slot.id) && this.isSlotInWindow(slot, now)
+    );
+  }
+
+  private claimRoutineSlot(category: RoutineCategory): RoutineSlotDef | null {
+    this.ensureProfileDefaults();
+    const routine = this.profile.dailyRoutine!;
+    const now = new Date();
+    const slot = ROUTINE_SCHEDULE.find(
+      (s) =>
+        s.category === category &&
+        !routine.completedSlots.includes(s.id) &&
+        this.isSlotInWindow(s, now)
+    );
+    if (!slot) return null;
+    routine.completedSlots.push(slot.id);
+    this.addRewards(slot.bonusCoins, slot.bonusXp);
+    soundService.playCoin();
+    hapticService.coin();
+    this.spawnFloatingParticle('⏰');
+    this.showToast(
+      `⏰ Rotina no horário! ${slot.label} (+${slot.bonusCoins} moedas)`
+    );
+    return slot;
+  }
+
+  private getPlayerDisplayName(): string {
+    const raw =
+      this.humanProfile.fullName.trim() ||
+      this.firebaseUser?.displayName ||
+      this.firebaseUser?.email?.split('@')[0] ||
+      'Jogador Local';
+    return raw.slice(0, 36);
+  }
+
+  private buildCurrentRankingEntry(): RankingEntry {
+    this.ensureProfileDefaults();
+    const recs = this.profile.gameRecords!;
+    const gameIds: GameId[] = ['fish', 'memory', 'escape', 'galaxy'];
+    const totalScore = gameIds.reduce(
+      (sum, id) => sum + (recs[id]?.highScore || 0),
+      0
+    );
+    const bestStage = gameIds.reduce(
+      (max, id) => Math.max(max, recs[id]?.maxStage || 1),
+      1
+    );
+    const coinsEarned = gameIds.reduce(
+      (sum, id) => sum + (recs[id]?.totalCoins || 0),
+      0
+    );
+    const id = this.firebaseUser?.uid || 'local_player';
+    return {
+      id,
+      playerName: this.getPlayerDisplayName(),
+      petName: this.profile.petName || 'Miau',
+      totalScore,
+      bestStage,
+      coinsEarned,
+      isCurrentUser: true,
+      updatedAtMs: Date.now(),
+    };
+  }
+
+  private async syncRankingEntry(): Promise<void> {
+    const entry = this.buildCurrentRankingEntry();
+    try {
+      const savedRaw = localStorage.getItem(LOCAL_RANKING_KEY);
+      const saved: RankingEntry[] = savedRaw ? JSON.parse(savedRaw) : [];
+      const filtered = saved.filter((r) => r.id !== entry.id);
+      filtered.push(entry);
+      localStorage.setItem(
+        LOCAL_RANKING_KEY,
+        JSON.stringify(filtered.slice(0, 20))
+      );
+    } catch {
+      // ignore storage errors
+    }
+    if (this.firebaseUser) {
+      await upsertRankingEntry(this.firebaseUser.uid, {
+        playerName: entry.playerName,
+        petName: entry.petName,
+        totalScore: entry.totalScore,
+        bestStage: entry.bestStage,
+        coinsEarned: entry.coinsEarned,
+      });
+    }
+  }
+
+  private async openRankingModal(): Promise<void> {
+    this.activeModal = 'ranking';
+    this.rankingLoading = true;
+    this.render();
+
+    const currentEntry = this.buildCurrentRankingEntry();
+    let remote: RankingEntry[] = [];
+    try {
+      remote = await loadTopRankings(20);
+    } catch {
+      remote = [];
+    }
+
+    let localSaved: RankingEntry[] = [];
+    try {
+      const raw = localStorage.getItem(LOCAL_RANKING_KEY);
+      if (raw) localSaved = JSON.parse(raw) as RankingEntry[];
+    } catch {
+      localSaved = [];
+    }
+
+    const byId = new Map<string, RankingEntry>();
+    for (const item of [...SEED_RANKING_ENTRIES, ...localSaved, ...remote]) {
+      const prev = byId.get(item.id);
+      if (!prev || item.totalScore >= prev.totalScore) {
+        byId.set(item.id, {
+          ...item,
+          isCurrentUser: item.id === currentEntry.id,
+        });
+      }
+    }
+    byId.set(currentEntry.id, currentEntry);
+
+    this.leaderboard = [...byId.values()]
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, 15);
+    this.rankingLoading = false;
+    if (this.activeModal === 'ranking') {
+      this.render();
+    }
   }
 
   private getAchievementProgressValue(
@@ -473,6 +743,25 @@ export class MiauAppUI {
       }
     }
     this.ensureProfileDefaults();
+    this.humanProfile = createEmptyHumanProfile('demo');
+    void loadUserHumanProfile(null, 'demo').then((hp) => {
+      this.humanProfile = hp;
+      if (
+        !hp.fullName &&
+        nameHint &&
+        nameHint.trim() &&
+        !nameHint.includes('@')
+      ) {
+        this.humanProfile.fullName = nameHint.trim().slice(0, 100);
+      }
+      if (
+        this.activeModal === 'menu' ||
+        this.activeModal === 'profile' ||
+        this.activeModal === 'learn'
+      ) {
+        this.render();
+      }
+    });
     soundService.enabled = this.profile.soundEnabled;
     const savedMsgs = localStorage.getItem(LOCAL_DEMO_MSGS_KEY);
     if (savedMsgs) {
@@ -563,6 +852,7 @@ export class MiauAppUI {
   public handleQuickFeed(): void {
     this.ensureProfileDefaults();
     const fish = FOOD_ITEMS[0];
+    const neededFood = this.profile.stats.hunger < 85;
     this.profile.stats.hunger = Math.min(
       100,
       this.profile.stats.hunger + fish.hungerBoost
@@ -576,17 +866,25 @@ export class MiauAppUI {
       this.profile.stats.happiness + 6
     );
     this.profile.progress.mealsFed += 1;
-    this.addRewards(0, fish.xpReward);
+    this.addRewards(neededFood ? 6 : 0, fish.xpReward);
+    const claimedRoutine = this.claimRoutineSlot('food');
     this.evaluateAchievements();
     soundService.playCrunch();
     hapticService.chomp();
     this.mood = 'eating';
     this.triggerMiauReaction('jump');
     this.spawnFloatingParticle('🐟');
-    this.currentSpeech = {
-      meowPrefix: 'Nham nham!',
-      text: '(Que peixinho delicioso, obrigado!)',
-    };
+    if (!claimedRoutine) {
+      this.currentSpeech = {
+        meowPrefix: 'Nham nham!',
+        text: '(Que peixinho delicioso, obrigado!)',
+      };
+    } else {
+      this.currentSpeech = {
+        meowPrefix: 'Nham nham! ⏰',
+        text: `(Refeição no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
+      };
+    }
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
@@ -601,6 +899,7 @@ export class MiauAppUI {
 
   public handleQuickClean(): void {
     this.ensureProfileDefaults();
+    const neededBath = this.profile.stats.hygiene < 92;
     soundService.playBubble();
     hapticService.bubbles();
     this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 22);
@@ -609,15 +908,21 @@ export class MiauAppUI {
       this.profile.stats.happiness + 8
     );
     this.profile.progress.cleanCount += 1;
-    this.addRewards(12, 10);
+    this.addRewards(neededBath ? 12 : 0, 10);
+    const claimedRoutine = this.claimRoutineSlot('bath');
     this.evaluateAchievements();
     this.mood = 'happy';
     this.triggerMiauReaction('spin');
     this.spawnFloatingParticle('🫧');
-    this.currentSpeech = {
-      meowPrefix: 'Purrr~',
-      text: '(Fiquei limpinho e cheiroso!)',
-    };
+    this.currentSpeech = claimedRoutine
+      ? {
+          meowPrefix: 'Purrr~ ⏰',
+          text: `(Banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
+        }
+      : {
+          meowPrefix: 'Purrr~',
+          text: '(Fiquei limpinho e cheiroso!)',
+        };
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
@@ -668,12 +973,35 @@ export class MiauAppUI {
       this.sleepTimer = null;
     }
     if (this.isSleeping) {
+      this.ensureProfileDefaults();
       soundService.playPurr();
       hapticService.purr();
-      this.currentSpeech = {
-        meowPrefix: 'Zzz...',
-        text: '(Hora da soneca gostosa...)',
-      };
+      const nowMs = Date.now();
+      let sleepBonusCoins = 0;
+      if (
+        this.profile.stats.sleep < 90 &&
+        nowMs - this.lastSleepRewardAtMs > 60_000
+      ) {
+        this.lastSleepRewardAtMs = nowMs;
+        sleepBonusCoins = 10;
+        this.addRewards(10, 8);
+      }
+      const claimedRoutine = this.claimRoutineSlot('sleep');
+      this.currentSpeech = claimedRoutine
+        ? {
+            meowPrefix: 'Zzz... ⏰',
+            text: `(Soneca no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
+          }
+        : sleepBonusCoins > 0
+          ? {
+              meowPrefix: 'Zzz...',
+              text: '(Hora da soneca gostosa... +10 moedas!)',
+            }
+          : {
+              meowPrefix: 'Zzz...',
+              text: '(Hora da soneca gostosa...)',
+            };
+      void this.persistStats();
       this.sleepTimer = window.setInterval(() => {
         if (!this.isSleeping) return;
         this.ensureProfileDefaults();
@@ -965,10 +1293,28 @@ export class MiauAppUI {
         Math.min(18, Math.max(6, Math.round(res.funBoost * 0.8)))
     );
     this.profile.progress.gamesPlayed += 1;
-    this.addRewards(res.coinsEarned, res.xpEarned);
+
+    const recs = this.profile.gameRecords!;
+    const prevRec = recs[res.gameId];
+    const isNewRecord = res.score > prevRec.highScore && prevRec.highScore > 0;
+    const recordBonus = isNewRecord ? 25 : 0;
+    const totalCoinsGained = res.coinsEarned + recordBonus;
+
+    recs[res.gameId] = {
+      highScore: Math.max(prevRec.highScore, res.score),
+      maxStage: Math.max(prevRec.maxStage, res.stageReached || 1),
+      bestTimeSec:
+        prevRec.bestTimeSec === 0
+          ? res.durationSec
+          : Math.max(prevRec.bestTimeSec, res.durationSec),
+      totalCoins: prevRec.totalCoins + totalCoinsGained,
+      plays: prevRec.plays + 1,
+    };
+
+    this.addRewards(totalCoinsGained, res.xpEarned);
     const unlockedNew = this.evaluateAchievements();
     soundService.playCoin();
-    if (res.performanceTier === 'gold') {
+    if (res.performanceTier === 'gold' || isNewRecord) {
       hapticService.achievement();
     } else {
       hapticService.coin();
@@ -981,20 +1327,25 @@ export class MiauAppUI {
           ? 'playful'
           : 'happy';
 
-    if (res.performanceTier === 'gold') {
+    if (isNewRecord) {
+      this.currentSpeech = {
+        meowPrefix: 'NOVO RECORDE!! 🏆',
+        text: `(${res.gameName}: ${res.score} pts • Fase ${res.stageReached}! +${totalCoinsGained} moedas com bônus!)`,
+      };
+    } else if (res.performanceTier === 'gold') {
       this.currentSpeech = {
         meowPrefix: 'Miau!! 🏆',
-        text: `(${res.gameName}: ${res.summaryText}! Você arrasou, ganhamos +${res.coinsEarned} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! Você arrasou, ganhamos +${totalCoinsGained} moedas!)`,
       };
     } else if (res.performanceTier === 'silver') {
       this.currentSpeech = {
         meowPrefix: 'Miau! ✨',
-        text: `(${res.gameName}: ${res.summaryText}! Mandou super bem, +${res.coinsEarned} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! Mandou super bem, +${totalCoinsGained} moedas!)`,
       };
     } else {
       this.currentSpeech = {
         meowPrefix: 'Purrr~ 🐾',
-        text: `(${res.gameName}: ${res.summaryText}! Foi muito divertido, +${res.coinsEarned} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! Foi muito divertido, +${totalCoinsGained} moedas!)`,
       };
     }
 
@@ -1003,10 +1354,13 @@ export class MiauAppUI {
     this.spawnFloatingParticle(res.performanceTier === 'gold' ? '🏆' : '🎮');
     if (!unlockedNew) {
       this.showToast(
-        `${res.gameName}: +${res.coinsEarned} moedas e +${res.xpEarned} XP!`
+        isNewRecord
+          ? `🏆 Novo Recorde em ${res.gameName}! +${totalCoinsGained} moedas`
+          : `${res.gameName}: +${totalCoinsGained} moedas e +${res.xpEarned} XP!`
       );
     }
     void this.persistStats();
+    void this.syncRankingEntry();
     void this.reactToMiniGamePerformance(res);
   }
 
@@ -1124,7 +1478,7 @@ export class MiauAppUI {
     if (this.activeModal !== 'chat') return;
     const listEl = this.root.querySelector('#chat-history-list');
     if (!listEl) return;
-    listEl.innerHTML = this.renderChatHistoryItems();
+    listEl.innerHTML = renderChatHistoryItemsHtml(this.messages);
     listEl.scrollTop = listEl.scrollHeight;
   }
 
@@ -1139,350 +1493,124 @@ export class MiauAppUI {
   }
 
   private renderPreloader(): void {
-    this.root.innerHTML = `
-      <div class="w-full h-full miau-wallpaper flex flex-col items-center justify-center p-6 relative overflow-hidden">
-        <div class="flex flex-col items-center gap-5 animate-fade-in">
-          <div class="relative w-32 h-32 flex items-center justify-center">
-            <svg class="w-32 h-32 -rotate-90" viewBox="0 0 100 100">
-              <circle cx="50" cy="50" r="46" stroke="rgba(255,255,255,0.65)" stroke-width="6" fill="rgba(255,255,255,0.45)"/>
-              <circle
-                id="preloader-ring"
-                cx="50" cy="50" r="46"
-                stroke="#6e45a5"
-                stroke-width="6"
-                stroke-linecap="round"
-                fill="none"
-                stroke-dasharray="289"
-                stroke-dashoffset="${289 - (289 * this.preloaderProgress) / 100}"
-                class="transition-all duration-150"
-              />
-            </svg>
-            <div class="absolute inset-0 flex items-center justify-center">
-              <svg viewBox="0 0 80 80" class="w-16 h-16 drop-shadow">
-                <path d="M26 52 C26 40, 54 40, 54 52 C54 61, 46 66, 40 66 C34 66, 26 61, 26 52 Z" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.5"/>
-                <ellipse cx="22" cy="34" rx="6.5" ry="8" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2" transform="rotate(-14 22 34)"/>
-                <ellipse cx="34" cy="25" rx="6.5" ry="8.5" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2"/>
-                <ellipse cx="47" cy="25" rx="6.5" ry="8.5" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2"/>
-                <ellipse cx="58" cy="34" rx="6.5" ry="8" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.2" transform="rotate(14 58 34)"/>
-                <path d="M33 52 Q40 46 47 52 Q45 59 40 59 Q35 59 33 52 Z" fill="#f2929c"/>
-              </svg>
-            </div>
-          </div>
-          <div class="text-center">
-            <h1 class="font-display text-5xl font-bold text-[#4c2a85] tracking-tight">Miau</h1>
-            <p id="preloader-pct" class="mt-1 text-sm font-bold text-[#6e45a5]">${this.preloaderProgress}%</p>
-          </div>
-        </div>
-      </div>
-    `;
+    this.root.innerHTML = renderPreloaderHtml(this.preloaderProgress);
   }
 
   private renderLogin(): void {
-    const titleLabel =
-      this.authMode === 'register'
-        ? 'Criar acesso'
-        : this.authMode === 'forgot'
-          ? 'Recuperar senha'
-          : 'Miau';
-
-    this.root.innerHTML = `
-      <div class="w-full h-full miau-wallpaper flex items-center justify-center p-4 overflow-y-auto">
-        <div class="w-full max-w-[390px] min-h-[600px] glass-card rounded-[38px] p-7 flex flex-col justify-between relative">
-          <!-- Top Brand -->
-          <div class="flex flex-col items-center pt-2">
-            <div class="relative w-24 h-24 rounded-full bg-white/80 border-2 border-white shadow-md flex items-center justify-center mb-3">
-              <svg class="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="46" stroke="rgba(167,139,250,0.3)" stroke-width="5" fill="none"/>
-                <circle cx="50" cy="50" r="46" stroke="#7c52b8" stroke-width="5" stroke-linecap="round" fill="none" stroke-dasharray="289" stroke-dashoffset="90"/>
-              </svg>
-              <svg viewBox="0 0 80 80" class="w-14 h-14">
-                <path d="M26 52 C26 40, 54 40, 54 52 C54 61, 46 66, 40 66 C34 66, 26 61, 26 52 Z" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3.5"/>
-                <ellipse cx="22" cy="34" rx="6" ry="7.5" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3" transform="rotate(-14 22 34)"/>
-                <ellipse cx="34" cy="25" rx="6" ry="8" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3"/>
-                <ellipse cx="47" cy="25" rx="6" ry="8" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3"/>
-                <ellipse cx="58" cy="34" rx="6" ry="7.5" fill="#f7c8c0" stroke="#3b1f6e" stroke-width="3" transform="rotate(14 58 34)"/>
-              </svg>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-purple-400 text-lg">🐾</span>
-              <h1 class="font-display text-4xl font-bold text-[#4c2a85]">${titleLabel}</h1>
-              <span class="text-purple-400 text-lg">🐾</span>
-            </div>
-            <p class="text-xs font-semibold text-[#7b5ea7] mt-1">Seu bichinho virtual com inteligência artificial</p>
-          </div>
-
-          <!-- Form Card -->
-          <form id="login-form" class="bg-white/85 rounded-3xl p-5 shadow-sm border border-white flex flex-col gap-3.5 my-4">
-            ${
-              this.authError
-                ? `<div class="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">${this.authError}</div>`
-                : ''
-            }
-            ${
-              this.authNotice
-                ? `<div class="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2">${this.authNotice}</div>`
-                : ''
-            }
-
-            <div class="relative flex items-center bg-[#efeaf8] rounded-xl px-3.5 py-2.5 border border-purple-100 focus-within:border-purple-400">
-              <span class="text-[#7b5ea7] mr-2.5 text-base">👤</span>
-              <input
-                id="login-email"
-                type="text"
-                placeholder="E-mail ou Usuário"
-                required
-                class="w-full bg-transparent text-sm text-[#3b1f6e] placeholder-[#8c78ad] focus:outline-none"
-              />
-            </div>
-
-            ${
-              this.authMode !== 'forgot'
-                ? `
-              <div class="relative flex items-center bg-[#efeaf8] rounded-xl px-3.5 py-2.5 border border-purple-100 focus-within:border-purple-400">
-                <span class="text-[#7b5ea7] mr-2.5 text-base">🔒</span>
-                <input
-                  id="login-password"
-                  type="${this.showPassword ? 'text' : 'password'}"
-                  placeholder="Senha"
-                  required
-                  class="w-full bg-transparent text-sm text-[#3b1f6e] placeholder-[#8c78ad] focus:outline-none pr-8"
-                />
-                <button
-                  id="toggle-pw"
-                  type="button"
-                  aria-label="Mostrar ou esconder senha"
-                  class="absolute right-3 text-[#7b5ea7] hover:text-[#4c2a85] text-base"
-                >
-                  ${this.showPassword ? '🙈' : '👁️'}
-                </button>
-              </div>
-            `
-                : ''
-            }
-
-            <div class="flex items-center justify-between text-xs font-semibold px-0.5">
-              <button id="link-forgot" type="button" class="text-[#6e45a5] underline hover:text-[#4c2a85]">
-                ${this.authMode === 'forgot' ? 'Voltar ao login' : 'Esqueci a senha'}
-              </button>
-              <button id="link-register" type="button" class="text-[#6e45a5] underline hover:text-[#4c2a85]">
-                ${this.authMode === 'register' ? 'Já tenho conta' : 'Criar acesso'}
-              </button>
-            </div>
-
-            <button
-              type="submit"
-              class="w-full py-3 rounded-full bg-gradient-to-r from-[#784eb8] to-[#5a3696] text-white font-display text-base font-semibold shadow-md hover:brightness-105 active:scale-[0.98] transition-all"
-            >
-              ${
-                this.authMode === 'register'
-                  ? 'Cadastrar'
-                  : this.authMode === 'forgot'
-                    ? 'Enviar link'
-                    : 'Entrar'
-              }
-            </button>
-
-            <div class="flex items-center gap-2 my-0.5">
-              <div class="h-px flex-1 bg-purple-100"></div>
-              <span class="text-[11px] font-bold text-[#9a86be]">ou</span>
-              <div class="h-px flex-1 bg-purple-100"></div>
-            </div>
-
-            <button
-              id="btn-google-signin"
-              type="button"
-              class="w-full py-2.5 px-4 rounded-full bg-white border border-purple-200 shadow-sm flex items-center justify-center gap-2.5 text-sm font-bold text-[#3b1f6e] hover:bg-purple-50 active:scale-[0.98] transition-all"
-            >
-              <svg class="w-5 h-5" viewBox="0 0 24 24">
-                <path fill="#EA4335" d="M12 5c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 1.19 14.97 0 12 0 7.31 0 3.26 2.69 1.27 6.61l3.66 2.84C5.8 6.86 8.65 5 12 5z"/>
-                <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58l3.76 2.91c2.2-2.03 3.66-5.02 3.66-8.73z"/>
-                <path fill="#FBBC05" d="M4.93 14.55c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09L1.27 7.53C.46 9.14 0 10.96 0 12.46s.46 3.32 1.27 4.93l3.66-2.84z"/>
-                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.76-2.91c-1.08.72-2.45 1.16-4.17 1.16-3.35 0-6.2-1.86-7.07-4.45l-3.66 2.84C3.26 21.31 7.31 24 12 24z"/>
-              </svg>
-              Entrar com o Google
-            </button>
-          </form>
-
-          <!-- Footer Links & Optional PWA Install -->
-          <div class="flex flex-col items-center gap-2.5">
-            ${
-              !pwaService.isInstalled
-                ? `
-                  <button
-                    id="btn-login-install"
-                    type="button"
-                    class="px-4 py-1.5 rounded-full bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold shadow-sm hover:bg-white active:scale-95 transition flex items-center gap-1.5"
-                  >
-                    <span>📲</span>
-                    <span>Instalar App Miau</span>
-                  </button>
-                `
-                : ''
-            }
-            <div class="flex items-center justify-center gap-6 text-[11px] font-semibold text-[#6e45a5]">
-              <button id="link-terms" type="button" class="underline hover:text-[#4c2a85]">Termos de Uso</button>
-              <button id="link-privacy" type="button" class="underline hover:text-[#4c2a85]">Políticas de Privacidade</button>
-            </div>
-          </div>
-        </div>
-        ${this.activeModal === 'legal' ? this.renderLegalModal() : ''}
-        ${this.showInstallGuideModal ? this.renderInstallGuideModal() : ''}
-      </div>
-    `;
-
-    this.bindLoginEvents();
-  }
-
-  private bindLoginEvents(): void {
-    const form = this.root.querySelector('#login-form') as HTMLFormElement | null;
-    const emailInput = this.root.querySelector('#login-email') as HTMLInputElement | null;
-    const pwInput = this.root.querySelector('#login-password') as HTMLInputElement | null;
-
-    this.root.querySelector('#toggle-pw')?.addEventListener('click', () => {
-      this.showPassword = !this.showPassword;
-      const savedEmail = emailInput?.value || '';
-      const savedPw = pwInput?.value || '';
-      this.renderLogin();
-      const newEmail = this.root.querySelector('#login-email') as HTMLInputElement | null;
-      const newPw = this.root.querySelector('#login-password') as HTMLInputElement | null;
-      if (newEmail) newEmail.value = savedEmail;
-      if (newPw) newPw.value = savedPw;
+    this.root.innerHTML = renderLoginScreenHtml({
+      authMode: this.authMode,
+      showPassword: this.showPassword,
+      authError: this.authError,
+      authNotice: this.authNotice,
+      showLegalModal: this.activeModal === 'legal',
+      legalDoc: this.legalDoc,
+      installGuideHtml: this.showInstallGuideModal
+        ? renderInstallGuideModalHtml()
+        : '',
     });
 
-    this.root.querySelector('#link-forgot')?.addEventListener('click', () => {
-      this.authError = '';
-      this.authNotice = '';
-      this.authMode = this.authMode === 'forgot' ? 'login' : 'forgot';
-      this.renderLogin();
-    });
-
-    this.root.querySelector('#link-register')?.addEventListener('click', () => {
-      this.authError = '';
-      this.authNotice = '';
-      this.authMode = this.authMode === 'register' ? 'login' : 'register';
-      this.renderLogin();
-    });
-
-    this.root.querySelector('#btn-google-signin')?.addEventListener('click', async () => {
-      this.authError = '';
-      this.authNotice = '';
-      try {
-        await signInWithGoogle();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('popup-closed')) {
-          this.authError = 'Login com Google cancelado.';
-        } else if (msg.includes('unauthorized-domain')) {
-          this.authError = `Domínio (${window.location.hostname}) não autorizado no Firebase Authentication. Adicione este domínio em Authentication > Settings > Authorized domains no projeto Firebase.`;
-        } else if (msg.includes('popup-blocked')) {
-          this.authError = 'O navegador bloqueou a janela do Google. Permita pop-ups para este site e tente novamente.';
-        } else {
-          this.authError = `Não foi possível entrar com o Google: ${msg}`;
-        }
+    bindLoginScreenEvents(this.root, this.authMode, {
+      onTogglePassword: (savedEmail, savedPw) => {
+        this.showPassword = !this.showPassword;
         this.renderLogin();
-      }
-    });
-
-    form?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      this.authError = '';
-      this.authNotice = '';
-      const emailOrUser = (emailInput?.value || '').trim();
-      const password = pwInput?.value || '';
-
-      if (this.authMode === 'forgot') {
-        if (!emailOrUser.includes('@')) {
-          this.authError = 'Informe um e-mail válido para recuperar a senha.';
-          this.renderLogin();
-          return;
-        }
+        const newEmail = this.root.querySelector(
+          '#login-email'
+        ) as HTMLInputElement | null;
+        const newPw = this.root.querySelector(
+          '#login-password'
+        ) as HTMLInputElement | null;
+        if (newEmail) newEmail.value = savedEmail;
+        if (newPw) newPw.value = savedPw;
+      },
+      onSwitchMode: (nextMode) => {
+        this.authError = '';
+        this.authNotice = '';
+        this.authMode = nextMode;
+        this.renderLogin();
+      },
+      onGoogleSignIn: async () => {
+        this.authError = '';
+        this.authNotice = '';
         try {
-          await resetPassword(emailOrUser);
-          this.authNotice = 'E-mail de recuperação enviado! Confira sua caixa de entrada.';
+          await signInWithGoogle();
         } catch (err) {
-          this.authError =
-            err instanceof Error ? err.message : 'Erro ao enviar recuperação.';
-        }
-        this.renderLogin();
-        return;
-      }
-
-      if (emailOrUser.includes('@')) {
-        try {
-          if (this.authMode === 'register') {
-            await registerWithEmail(emailOrUser, password);
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('popup-closed')) {
+            this.authError = 'Login com Google cancelado.';
+          } else if (msg.includes('unauthorized-domain')) {
+            this.authError = `Domínio (${window.location.hostname}) não autorizado no Firebase Authentication. Adicione este domínio em Authentication > Settings > Authorized domains no projeto Firebase.`;
+          } else if (msg.includes('popup-blocked')) {
+            this.authError =
+              'O navegador bloqueou a janela do Google. Permita pop-ups para este site e tente novamente.';
           } else {
-            await signInWithEmail(emailOrUser, password);
+            this.authError = `Não foi possível entrar com o Google: ${msg}`;
           }
-          return;
-        } catch (err) {
-          const code = (err as { code?: string }).code || '';
-          if (code === 'auth/operation-not-allowed') {
-            // Email/Password provider isn't enabled in Firebase Console by default — allow instant local play or Google Sign-In
-            this.enterDemoMode(emailOrUser);
+          this.renderLogin();
+        }
+      },
+      onSubmitCredentials: async (emailOrUser, password) => {
+        this.authError = '';
+        this.authNotice = '';
+        if (this.authMode === 'forgot') {
+          if (!emailOrUser.includes('@')) {
+            this.authError = 'Informe um e-mail válido para recuperar a senha.';
+            this.renderLogin();
             return;
           }
-          this.authError =
-            err instanceof Error ? err.message : 'Erro na autenticação.';
+          try {
+            await resetPassword(emailOrUser);
+            this.authNotice =
+              'E-mail de recuperação enviado! Confira sua caixa de entrada.';
+          } catch (err) {
+            this.authError =
+              err instanceof Error
+                ? err.message
+                : 'Erro ao enviar recuperação.';
+          }
           this.renderLogin();
           return;
         }
-      } else {
-        // Username-only login enters local playful mode cleanly
-        this.enterDemoMode(emailOrUser);
-      }
-    });
 
-    this.root.querySelector('#link-terms')?.addEventListener('click', () => {
-      this.legalDoc = 'terms';
-      this.activeModal = 'legal';
-      this.renderLogin();
-    });
-
-    this.root.querySelector('#link-privacy')?.addEventListener('click', () => {
-      this.legalDoc = 'privacy';
-      this.activeModal = 'legal';
-      this.renderLogin();
-    });
-
-    this.root.querySelector('#close-legal')?.addEventListener('click', () => {
-      this.activeModal = 'none';
-      this.renderLogin();
-    });
-
-    this.root
-      .querySelector('#btn-login-install')
-      ?.addEventListener('click', () => {
+        if (emailOrUser.includes('@')) {
+          try {
+            if (this.authMode === 'register') {
+              await registerWithEmail(emailOrUser, password);
+            } else {
+              await signInWithEmail(emailOrUser, password);
+            }
+            return;
+          } catch (err) {
+            const code = (err as { code?: string }).code || '';
+            if (code === 'auth/operation-not-allowed') {
+              this.enterDemoMode(emailOrUser);
+              return;
+            }
+            this.authError =
+              err instanceof Error ? err.message : 'Erro na autenticação.';
+            this.renderLogin();
+            return;
+          }
+        } else {
+          this.enterDemoMode(emailOrUser);
+        }
+      },
+      onOpenLegal: (doc) => {
+        this.legalDoc = doc;
+        this.activeModal = 'legal';
+        this.renderLogin();
+      },
+      onCloseLegal: () => {
+        this.activeModal = 'none';
+        this.renderLogin();
+      },
+      onInstallApp: () => {
         void this.handleInstallAppClick();
-      });
-
-    this.root
-      .querySelector('#close-install-guide')
-      ?.addEventListener('click', () => {
+      },
+      onCloseInstallGuide: () => {
         this.showInstallGuideModal = false;
         this.render();
-      });
-  }
-
-  private renderLegalModal(): string {
-    const isTerms = this.legalDoc === 'terms';
-    return `
-      <div class="fixed inset-0 z-50 bg-purple-950/40 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="w-full max-w-sm glass-card rounded-3xl p-6 text-[#3b1f6e]">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="font-display text-xl font-bold">${isTerms ? 'Termos de Uso' : 'Políticas de Privacidade'}</h2>
-            <button id="close-legal" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-          </div>
-          <p class="text-xs leading-relaxed text-[#583b8c]">
-            ${
-              isTerms
-                ? 'O jogo Miau é um bichinho virtual interativo com inteligência artificial. As moedas e itens do jogo são virtuais e destinam-se exclusivamente ao entretenimento na Sala de Estar e Modo XR.'
-                : 'Seus dados de conta Google e progresso do Miau (nível, moedas, roupas e conversas) são armazenados com segurança no Firebase Firestore vinculados exclusivamente ao seu perfil autenticado.'
-            }
-          </p>
-        </div>
-      </div>
-    `;
+      },
+    });
   }
 
   private getRoomThemeClasses(): { wall: string; floor: string; showFloor: boolean; useWallpaper: boolean } {
@@ -1509,6 +1637,20 @@ export class MiauAppUI {
           showFloor: false,
           useWallpaper: false,
         };
+      case 'bg_pastel_garden':
+        return {
+          wall: 'from-[#dff7ea] via-[#fde8f5] to-[#e9d5ff]',
+          floor: 'from-[#bbf7d0] to-[#86efac]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_space':
+        return {
+          wall: 'from-[#131138] via-[#261f5e] to-[#392978]',
+          floor: 'from-[#312e81] to-[#1e1b4b]',
+          showFloor: true,
+          useWallpaper: false,
+        };
       case 'bg_peach':
         return {
           wall: 'from-[#ffe4d6] via-[#fbd3e9] to-[#ebd4ff]',
@@ -1527,9 +1669,15 @@ export class MiauAppUI {
   }
 
   private renderGame(): void {
+    this.ensureProfileDefaults();
     const s = this.profile.stats;
     const theme = this.getRoomThemeClasses();
-    const isNight = this.isSleeping || this.profile.equipped.background === 'bg_night';
+    const isNight =
+      this.isSleeping ||
+      this.profile.equipped.background === 'bg_night' ||
+      this.profile.equipped.background === 'bg_space';
+    const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
+    const activeRoutineCount = this.getActiveWindowSlots().length;
 
     this.root.innerHTML = `
       <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#dfd0ff] via-[#cbb1fb] to-[#b896f5] md:p-4">
@@ -1583,16 +1731,22 @@ export class MiauAppUI {
                   }
                   ${
                     this.screenPrefs.showStatusBadges
-                      ? `<div class="flex justify-between items-center gap-2 ${this.screenPrefs.showStatusBars ? 'mt-2' : ''}">
-                          <button id="btn-achievements" type="button" class="glass-pill px-3 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1.5 hover:scale-105 transition">
-                            <span>🏆</span>
-                            <span id="achievements-count">${(this.profile.unlockedAchievements || []).length}/${ACHIEVEMENTS.length}</span>
-                          </button>
-                          <div class="flex items-center gap-2">
-                            <button id="btn-sleep-toggle" class="glass-pill px-3 py-1 rounded-full text-xs font-bold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
+                      ? `<div class="flex justify-between items-center gap-1.5 ${this.screenPrefs.showStatusBars ? 'mt-2' : ''}">
+                          <div class="flex items-center gap-1.5">
+                            <button id="btn-achievements" type="button" class="glass-pill px-2.5 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
+                              <span>🏆</span>
+                              <span id="achievements-count">${(this.profile.unlockedAchievements || []).length}/${ACHIEVEMENTS.length}</span>
+                            </button>
+                            <button id="btn-routine" type="button" class="glass-pill px-2.5 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition ${activeRoutineCount > 0 ? 'ring-2 ring-amber-400' : ''}">
+                              <span>📅</span>
+                              <span>${routineDone}/${ROUTINE_SCHEDULE.length}</span>
+                            </button>
+                          </div>
+                          <div class="flex items-center gap-1.5">
+                            <button id="btn-sleep-toggle" class="glass-pill px-2.5 py-1 rounded-full text-xs font-bold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
                               ${this.isSleeping ? '☀️ Acordar' : '🌙 Soneca'}
                             </button>
-                            <div id="miau-level" class="glass-pill px-3.5 py-1 rounded-full text-xs font-extrabold text-[#3b1f6e]">
+                            <div id="miau-level" class="glass-pill px-3 py-1 rounded-full text-xs font-extrabold text-[#3b1f6e]">
                               Nível ${this.profile.level}
                             </div>
                           </div>
@@ -1647,8 +1801,8 @@ export class MiauAppUI {
                       <img src="${MIAU_AVATAR_URL}" alt="Miau" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
                     </div>
                     <div class="flex-1 min-w-0">
-                      <div id="speech-prefix" class="font-display text-sm font-bold text-[#2d1b4e]">${this.currentSpeech.meowPrefix}</div>
-                      <div id="speech-text" class="text-sm font-semibold text-[#473173] leading-snug break-words">${this.currentSpeech.text}</div>
+                      <div id="speech-prefix" class="font-display text-sm font-bold text-[#2d1b4e]">${escapeHtml(this.currentSpeech.meowPrefix)}</div>
+                      <div id="speech-text" class="text-sm font-semibold text-[#473173] leading-snug break-words">${escapeHtml(this.currentSpeech.text)}</div>
                     </div>
                     <button
                       id="btn-speaker"
@@ -1709,11 +1863,11 @@ export class MiauAppUI {
           <div
             id="miau-toast"
             class="pointer-events-none opacity-0 transition-opacity duration-300 absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-[#3b1f6e]/90 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg whitespace-nowrap max-w-[90%] truncate"
-          >${this.toastMessage}</div>
+          >${escapeHtml(this.toastMessage)}</div>
 
           <!-- Active Drawer / Modal -->
           ${this.activeModal !== 'none' ? this.renderModal() : ''}
-          ${this.showInstallGuideModal ? this.renderInstallGuideModal() : ''}
+          ${this.showInstallGuideModal ? renderInstallGuideModalHtml() : ''}
         </div>
       </div>
     `;
@@ -1775,437 +1929,73 @@ export class MiauAppUI {
   }
 
   private renderModal(): string {
+    this.ensureProfileDefaults();
     let body = '';
     if (this.activeModal === 'feed') {
-      body = `
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Alimentar o Miau 🐟</h2>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-        <div class="grid grid-cols-2 gap-2.5">
-          ${FOOD_ITEMS.map(
-            (item) => `
-              <button data-food="${item.id}" class="bg-white/90 hover:bg-white rounded-2xl p-3 border border-purple-100 shadow-sm text-left flex flex-col gap-1 active:scale-95 transition">
-                <div class="flex items-center justify-between">
-                  <span class="text-3xl">${item.emoji}</span>
-                  <span class="text-xs font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">🪙 ${item.cost}</span>
-                </div>
-                <div class="font-display text-sm font-bold text-[#3b1f6e]">${item.name}</div>
-                <div class="text-[11px] text-[#6b4d9e] leading-tight">+${item.hungerBoost}% Fome • +${item.xpReward} XP</div>
-              </button>
-            `
-          ).join('')}
-        </div>
-      `;
+      body = renderFeedModalHtml();
     } else if (this.activeModal === 'clean') {
-      body = `
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Banho & Limpeza 🧼</h2>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-        <p class="text-xs font-semibold text-[#5e4294] mb-4">Deixe o pelo branquinho do Miau brilhando! Você pode dar um banho rápido ou ativar o modo espuma para esfregar na Sala de Estar.</p>
-        <div class="flex flex-col gap-2.5">
-          <button id="btn-instant-bath" class="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-400 to-sky-500 text-white font-display font-bold shadow-md hover:brightness-105">
-            🚿 Banho de Espuma Completo (+35% Higiene)
-          </button>
-          <button id="btn-sponge-mode" class="w-full py-2.5 rounded-2xl bg-white border border-sky-200 text-sky-800 font-bold text-sm hover:bg-sky-50">
-            🫧 Esfregar Miau na Sala de Estar
-          </button>
-        </div>
-      `;
+      body = renderCleanModalHtml();
     } else if (this.activeModal === 'games') {
-      if (this.activeMiniGame !== 'none') {
-        body = `<div id="minigame-host" class="min-h-[320px]"></div>`;
-      } else {
-        body = `
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Minijogos do Miau 🎮</h2>
-            <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-          </div>
-          <div class="flex flex-col gap-2.5">
-            <button id="start-fish-game" class="bg-white/90 hover:bg-white rounded-2xl p-3.5 border border-emerald-100 shadow-sm flex items-center gap-3 text-left active:scale-95 transition">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-sky-300 to-emerald-400 flex items-center justify-center text-2xl shadow">🐟</div>
-              <div class="flex-1">
-                <div class="font-display font-bold text-[#3b1f6e]">Caça aos Peixinhos</div>
-                <div class="text-xs text-[#6b4d9e]">Pegue peixes e novelos caindo para ganhar moedas!</div>
-              </div>
-              <span class="text-xs font-extrabold text-emerald-700 bg-emerald-100 px-2.5 py-1 rounded-full">Jogar</span>
-            </button>
-            <button id="start-memory-game" class="bg-white/90 hover:bg-white rounded-2xl p-3.5 border border-purple-100 shadow-sm flex items-center gap-3 text-left active:scale-95 transition">
-              <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-300 to-purple-500 flex items-center justify-center text-2xl shadow">🐾</div>
-              <div class="flex-1">
-                <div class="font-display font-bold text-[#3b1f6e]">Memória dos Miados</div>
-                <div class="text-xs text-[#6b4d9e]">Ouça os miados musicais e combine os pares!</div>
-              </div>
-              <span class="text-xs font-extrabold text-purple-700 bg-purple-100 px-2.5 py-1 rounded-full">Jogar</span>
-            </button>
-          </div>
-        `;
-      }
+      body = renderGamesHubModalHtml(this.profile, this.activeMiniGame);
     } else if (this.activeModal === 'customize') {
-      const filtered = SHOP_ITEMS.filter((i) => i.category === this.shopTab);
-      body = `
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Personalizar Miau 👗</h2>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-        <div class="flex gap-2 mb-3">
-          ${(['hat', 'accessory', 'background'] as const)
-            .map((tab) => {
-              const label =
-                tab === 'hat'
-                  ? '🎩 Chapéus'
-                  : tab === 'accessory'
-                    ? '🎀 Acessórios'
-                    : '🖼️ Fundos';
-              const active = this.shopTab === tab;
-              return `<button data-shoptab="${tab}" class="flex-1 py-1.5 rounded-full text-xs font-extrabold transition ${active ? 'bg-[#6e45a5] text-white shadow' : 'bg-white/75 text-[#5e4294]'}">${label}</button>`;
-            })
-            .join('')}
-        </div>
-        <div class="grid grid-cols-2 gap-2.5 max-h-[250px] overflow-y-auto miau-scroll pr-1">
-          ${filtered
-            .map((item) => {
-              const owned = this.profile.ownedItems.includes(item.id);
-              const equipped =
-                (item.category === 'hat' && this.profile.equipped.hat === item.id) ||
-                (item.category === 'accessory' &&
-                  this.profile.equipped.accessory === item.id) ||
-                (item.category === 'background' &&
-                  this.profile.equipped.background === item.id);
-              return `
-                <button data-shopitem="${item.id}" class="bg-white/90 rounded-2xl p-3 border-2 ${equipped ? 'border-[#6e45a5]' : 'border-white'} shadow-sm flex flex-col gap-1.5 text-left hover:bg-white transition">
-                  <div class="flex items-center justify-between">
-                    <span class="w-9 h-9 rounded-xl flex items-center justify-center text-xl" style="background:${item.previewColor}">${item.emoji}</span>
-                    ${
-                      equipped
-                        ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-600 text-white">Equipado</span>'
-                        : owned
-                          ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Seu</span>'
-                          : `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">🪙 ${item.price}</span>`
-                    }
-                  </div>
-                  <div class="font-display text-xs font-bold text-[#3b1f6e]">${item.name}</div>
-                </button>
-              `;
-            })
-            .join('')}
-        </div>
-      `;
+      body = renderCustomizeModalHtml(this.profile, this.shopTab);
     } else if (this.activeModal === 'chat') {
-      body = `
-        <div class="flex items-center justify-between mb-2">
-          <div>
-            <h2 class="font-display text-lg font-bold text-[#3b1f6e]">Conversar com ${this.profile.petName} 💬</h2>
-            <p class="text-[11px] font-semibold text-[#6b4d9e]">Histórico com Gemini IA & Conversa por Voz ao Vivo</p>
-          </div>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-
-        <div class="mb-2.5 bg-purple-50 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-xs font-extrabold text-[#4c2a85]">Voz ao Vivo (Gemini Live)</div>
-            <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${this.liveStatus || 'Fale em tempo real com o Miau!'}</div>
-          </div>
-          <button id="btn-live-toggle" class="px-3 py-1.5 rounded-full text-xs font-extrabold text-white shrink-0 ${this.liveSession ? 'bg-rose-500 animate-pulse' : 'bg-[#6e45a5]'}">
-            ${this.liveSession ? '⏹️ Parar' : '🎙️ Ligar Voz'}
-          </button>
-        </div>
-
-        ${
-          this.liveTranscript
-            ? `<div class="mb-2 bg-white/90 rounded-xl p-2 text-xs text-[#3b1f6e] border border-purple-100 max-h-20 overflow-y-auto miau-scroll whitespace-pre-line">${this.liveTranscript}</div>`
-            : ''
-        }
-
-        <div id="chat-history-list" class="flex-1 max-h-[210px] min-h-[160px] overflow-y-auto miau-scroll flex flex-col gap-2 pr-1 mb-2.5">
-          ${this.renderChatHistoryItems()}
-        </div>
-
-        <form id="modal-chat-form" class="flex items-center gap-2 bg-white rounded-full p-1.5 pl-3.5 border border-purple-200">
-          <input id="modal-chat-input" type="text" placeholder="Escreva para o Miau..." class="flex-1 text-xs font-semibold text-[#3b1f6e] bg-transparent focus:outline-none" />
-          <button type="submit" class="px-3.5 py-1.5 rounded-full bg-[#6e45a5] text-white text-xs font-extrabold">Enviar</button>
-        </form>
-      `;
+      body = renderChatModalHtml({
+        petName: this.profile.petName,
+        liveStatus: this.liveStatus,
+        hasLiveSession: Boolean(this.liveSession),
+        liveTranscript: this.liveTranscript,
+        messages: this.messages,
+      });
     } else if (this.activeModal === 'achievements') {
-      this.ensureProfileDefaults();
-      const unlockedList = this.profile.unlockedAchievements;
-      const totalEarned = ACHIEVEMENTS.filter((a) =>
-        unlockedList.includes(a.id)
-      ).reduce((sum, a) => sum + a.coinReward, 0);
-      body = `
-        <div class="flex items-center justify-between mb-2">
-          <div>
-            <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Conquistas 🏆</h2>
-            <p class="text-[11px] font-semibold text-[#6b4d9e]">${unlockedList.length} de ${ACHIEVEMENTS.length} desbloqueadas • 🪙 ${totalEarned} bônus ganhos</p>
-          </div>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-        <div class="flex flex-col gap-2.5 max-h-[340px] overflow-y-auto miau-scroll pr-1">
-          ${ACHIEVEMENTS.map((ach) => {
-            const isUnlocked = unlockedList.includes(ach.id);
-            const current = Math.min(
-              ach.target,
-              this.getAchievementProgressValue(ach.progressKey)
-            );
-            const pct = Math.round((current / ach.target) * 100);
-            return `
-              <div class="rounded-2xl p-3 border ${isUnlocked ? 'bg-gradient-to-r from-amber-50/95 to-purple-50/95 border-amber-300 shadow-sm' : 'bg-white/75 border-purple-100'} flex items-center gap-3">
-                <div class="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0 ${isUnlocked ? 'bg-amber-200/80 shadow-inner' : 'bg-purple-100/80 grayscale opacity-75'}">
-                  ${ach.emoji}
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center justify-between gap-2">
-                    <span class="font-display text-sm font-bold text-[#3b1f6e] truncate">${ach.title}</span>
-                    ${
-                      isUnlocked
-                        ? `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 shrink-0">✓ +🪙 ${ach.coinReward}</span>`
-                        : `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 shrink-0">🪙 +${ach.coinReward}</span>`
-                    }
-                  </div>
-                  <p class="text-[11px] text-[#5e4294] leading-tight mt-0.5">${ach.description}</p>
-                  <div class="mt-1.5 flex items-center gap-2">
-                    <div class="flex-1 h-1.5 bg-purple-100 rounded-full overflow-hidden">
-                      <div class="h-full rounded-full ${isUnlocked ? 'bg-emerald-400' : 'bg-purple-400'} transition-all" style="width: ${pct}%"></div>
-                    </div>
-                    <span class="text-[10px] font-extrabold text-[#6b4d9e]">${current}/${ach.target}</span>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join('')}
-        </div>
-      `;
+      body = renderAchievementsModalHtml(this.profile);
+    } else if (this.activeModal === 'ranking') {
+      body = renderRankingModalHtml(
+        this.buildCurrentRankingEntry(),
+        this.leaderboard,
+        this.rankingLoading
+      );
+    } else if (this.activeModal === 'routine') {
+      body = renderRoutineModalHtml(
+        this.profile,
+        this.isSleeping,
+        (slot, now) => this.isSlotInWindow(slot, now)
+      );
     } else if (this.activeModal === 'menu') {
       const unlockedCount = (this.profile.unlockedAchievements || []).length;
-      const visibleCount = [
+      const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
+      const visibleHudCount = [
         this.screenPrefs.showStatusBars,
         this.screenPrefs.showStatusBadges,
         this.screenPrefs.showSpeechAndChat,
         this.screenPrefs.showCoinsBadge,
       ].filter(Boolean).length;
-      body = `
-        <div class="flex items-start justify-between gap-2 mb-3 text-left">
-          <div class="text-left">
-            <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight">Menu do Jogo 🐾</h2>
-            <p class="text-[11px] font-semibold text-[#6b4d9e]">Modos, configurações e suporte</p>
-          </div>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold shrink-0">✕</button>
-        </div>
-        <div class="flex flex-col gap-2 overflow-y-auto miau-scroll pr-1 text-left">
-          <div class="bg-white/90 rounded-2xl p-3 border border-purple-100 flex items-center gap-3 text-left">
-            <span class="w-9 h-9 rounded-xl bg-purple-100 text-[#5b21b6] flex items-center justify-center text-lg shrink-0">👤</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="text-[11px] font-bold text-[#6b4d9e] leading-tight">Conta conectada</div>
-              <div class="text-sm font-extrabold text-[#3b1f6e] truncate">${this.firebaseUser?.displayName || this.firebaseUser?.email || 'Modo Demonstração Local'}</div>
-            </div>
-            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-[#6e45a5] shrink-0">${this.firebaseUser ? 'Ativa' : 'Local'}</span>
-          </div>
-
-          <button id="btn-menu-achievements" class="w-full py-2.5 px-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 font-bold text-sm flex items-center gap-3 text-left hover:bg-amber-100/70 transition">
-            <span class="w-9 h-9 rounded-xl bg-amber-200/70 flex items-center justify-center text-lg shrink-0">🏆</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="font-bold leading-tight">Conquistas do Miau</div>
-              <div class="text-[11px] font-semibold text-amber-700/85">Medalhas e metas desbloqueadas</div>
-            </div>
-            <span class="text-xs font-extrabold bg-amber-200/80 px-2.5 py-0.5 rounded-full shrink-0">${unlockedCount}/${ACHIEVEMENTS.length}</span>
-          </button>
-
-          <button id="btn-open-settings" class="w-full py-2.5 px-3 rounded-2xl bg-white/90 border border-purple-200 text-[#3b1f6e] font-bold text-sm flex items-center gap-3 text-left hover:bg-purple-50 transition">
-            <span class="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center text-lg shrink-0">⚙️</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="font-bold leading-tight">Configurações da Tela</div>
-              <div class="text-[11px] font-semibold text-[#6b4d9e]">Áudio, vibração, câmera e HUD</div>
-            </div>
-            <span class="text-[11px] font-extrabold bg-purple-100 text-[#6e45a5] px-2.5 py-0.5 rounded-full shrink-0">${visibleCount === 4 ? 'Completo' : visibleCount === 0 ? 'Limpo' : `${visibleCount}/4 itens`}</span>
-          </button>
-
-          ${
-            !pwaService.isInstalled
-              ? `<button id="btn-menu-install" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-sm shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">
-                   <span class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">📲</span>
-                   <div class="flex-1 min-w-0 text-left">
-                     <div class="font-bold leading-tight">Instalar App Miau</div>
-                     <div class="text-[11px] font-normal text-white/85">Adicionar aplicativo à tela inicial</div>
-                   </div>
-                   <span class="text-[10px] font-extrabold bg-white/25 px-2 py-0.5 rounded-full shrink-0">PWA</span>
-                 </button>`
-              : ''
-          }
-
-          <button id="btn-open-ar" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-display font-bold shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">
-            <span class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">📸</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="font-bold leading-tight">Realidade Aumentada</div>
-              <div class="text-[11px] font-normal text-white/85">Interagir com câmera e tirar foto</div>
-            </div>
-            <span class="text-xs font-extrabold text-white/90 shrink-0">›</span>
-          </button>
-
-          <button id="btn-enter-xr" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">
-            <span class="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shrink-0">🥽</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="font-bold leading-tight">Sala 3D / Modo XR</div>
-              <div class="text-[11px] font-normal text-white/85">Explorar, girar e brincar em 3D</div>
-            </div>
-            <span class="text-xs font-extrabold text-white/90 shrink-0">›</span>
-          </button>
-
-          <button id="btn-open-support" class="w-full py-2.5 px-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-sm flex items-center gap-3 text-left hover:bg-emerald-100/70 transition">
-            <span class="w-9 h-9 rounded-xl bg-emerald-200/75 flex items-center justify-center text-lg shrink-0">💬</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="font-bold leading-tight">Suporte & Dúvidas</div>
-              <div class="text-[11px] font-semibold text-emerald-700/85">Atendimento direto por mensagem</div>
-            </div>
-            <span class="text-[11px] font-extrabold bg-emerald-200/80 px-2.5 py-0.5 rounded-full shrink-0">WhatsApp</span>
-          </button>
-
-          <button id="btn-logout" class="w-full py-2.5 px-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 font-bold text-sm flex items-center gap-3 text-left hover:bg-rose-100 transition">
-            <span class="w-9 h-9 rounded-xl bg-rose-200/60 flex items-center justify-center text-lg shrink-0">🚪</span>
-            <div class="flex-1 min-w-0 text-left">
-              <div class="font-bold leading-tight">Sair da Conta</div>
-              <div class="text-[11px] font-semibold text-rose-600/80">Trocar de perfil ou desconectar</div>
-            </div>
-            <span class="text-xs font-extrabold text-rose-500 shrink-0">›</span>
-          </button>
-        </div>
-      `;
+      body = renderMenuModalHtml({
+        accountLabel:
+          this.firebaseUser?.displayName ||
+          this.firebaseUser?.email ||
+          'Modo Demonstração Local',
+        isFirebaseAccount: Boolean(this.firebaseUser),
+        humanProfile: this.humanProfile,
+        unlockedCount,
+        routineDoneCount: routineDone,
+        visibleHudCount,
+      });
+    } else if (this.activeModal === 'profile') {
+      body = this.profileModal.render();
+    } else if (this.activeModal === 'learn') {
+      body = renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
     } else if (this.activeModal === 'settings') {
-      const camLabel =
-        this.cameraPermission === 'granted'
-          ? 'Autorizada'
-          : this.cameraPermission === 'denied'
-            ? 'Bloqueada'
-            : this.cameraPermission === 'unsupported'
-              ? 'Indisponível'
-              : 'Pendente';
-      const camBadgeCls =
-        this.cameraPermission === 'granted'
-          ? 'bg-emerald-100 text-emerald-700'
-          : this.cameraPermission === 'denied'
-            ? 'bg-rose-100 text-rose-700'
-            : 'bg-amber-100 text-amber-800';
-
-      body = `
-        <div class="flex items-center justify-between mb-3">
-          <div class="flex items-center gap-2">
-            <button id="btn-settings-back" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm">←</button>
-            <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Configurações ⚙️</h2>
-          </div>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-
-        <div class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
-          <!-- Tela Principal Visibility -->
-          <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2">
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal (Sala)</span>
-              <div class="flex gap-1.5">
-                <button id="btn-preset-full" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-purple-100 text-[#4c2a85] hover:bg-purple-200">✨ Tudo</button>
-                <button id="btn-preset-clean" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 hover:bg-emerald-200">🧘 Limpo</button>
-              </div>
-            </div>
-
-            ${this.renderToggleRow('showStatusBars', '📊 Barras de Status', 'Fome, Higiene, Diversão, Sono e Felicidade')}
-            ${this.renderToggleRow('showStatusBadges', '🏆 Atalhos do Topo', 'Conquistas, Soneca e Nível')}
-            ${this.renderToggleRow('showSpeechAndChat', '💬 Balão de Fala e Chat', 'Caixa de conversa rápida na Sala')}
-            ${this.renderToggleRow('showCoinsBadge', '🪙 Moedas no Cabeçalho', 'Mostrar saldo de moedas no topo')}
-          </div>
-
-          <!-- Audio & Camera Permission -->
-          <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2.5">
-            <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Áudio e Câmera (AR)</span>
-
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-bold text-[#3b1f6e]">🔊 Sons e Voz do Miau</span>
-              <button id="btn-toggle-sound" class="px-3 py-1 rounded-full text-xs font-extrabold ${this.profile.soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
-                ${this.profile.soundEnabled ? 'Ativado' : 'Mudo'}
-              </button>
-            </div>
-
-            <div class="flex items-center justify-between pt-1 border-t border-purple-100">
-              <div class="min-w-0">
-                <div class="text-xs font-bold text-[#3b1f6e]">📳 Vibração Tátil</div>
-                <div class="text-[10px] text-[#7a60a8]">Feedback ao fazer carinho e cuidar do Miau</div>
-              </div>
-              <button id="btn-toggle-haptics" class="px-3 py-1 rounded-full text-xs font-extrabold shrink-0 ${hapticService.enabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
-                ${hapticService.enabled ? 'Ativada' : 'Desativada'}
-              </button>
-            </div>
-
-            <div class="flex items-center justify-between gap-2 pt-1 border-t border-purple-100">
-              <div class="min-w-0">
-                <div class="text-xs font-bold text-[#3b1f6e]">📷 Câmera (Realidade Aumentada)</div>
-                <span class="inline-block mt-0.5 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${camBadgeCls}">${camLabel}</span>
-              </div>
-              <button id="btn-auth-camera" class="px-3 py-1.5 rounded-full bg-sky-500 text-white text-xs font-extrabold shadow-sm hover:brightness-110 shrink-0">
-                ${this.cameraPermission === 'granted' ? 'Revalidar' : 'Autorizar'}
-              </button>
-            </div>
-          </div>
-
-          ${
-            !pwaService.isInstalled
-              ? `<button id="btn-settings-install" class="w-full py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold text-sm shadow flex items-center justify-center gap-2 hover:brightness-110 transition">
-                   📲 Instalar Aplicativo Miau
-                 </button>`
-              : `<div class="text-center text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-2xl py-2">
-                   ✅ Aplicativo instalado no dispositivo
-                 </div>`
-          }
-        </div>
-      `;
+      body = renderSettingsModalHtml({
+        screenPrefs: this.screenPrefs,
+        soundEnabled: this.profile.soundEnabled,
+        cameraPermission: this.cameraPermission,
+      });
     } else if (this.activeModal === 'support') {
-      const waHref = this.buildSupportWhatsAppUrl(this.supportDraft);
-      body = `
-        <div class="flex items-center justify-between mb-2">
-          <div>
-            <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Suporte Miau 💬</h2>
-            <p class="text-[11px] font-semibold text-[#6b4d9e]">Envie sua dúvida direto para o WhatsApp +55 91 99615-6672</p>
-          </div>
-          <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-        </div>
-
-        <div class="flex flex-wrap gap-1.5 mb-2.5">
-          ${[
-            'Dúvida sobre o jogo',
-            'Problema técnico',
-            'Sugestão de recurso',
-            'Minha conta / moedas',
-          ]
-            .map(
-              (topic) =>
-                `<button type="button" data-support-topic="${topic}" class="px-2.5 py-1 rounded-full bg-purple-100/80 hover:bg-purple-200 text-[#4c2a85] text-[11px] font-bold transition">${topic}</button>`
-            )
-            .join('')}
-        </div>
-
-        <textarea
-          id="support-message-input"
-          rows="4"
-          placeholder="Escreva aqui sua pergunta ou dúvida sobre o Miau..."
-          class="w-full rounded-2xl bg-white/95 border border-purple-200 p-3 text-xs font-semibold text-[#3b1f6e] placeholder-[#947ebe] focus:outline-none focus:border-purple-500 resize-none mb-3"
-        >${this.escapeHtml(this.supportDraft)}</textarea>
-
-        <div class="flex flex-col gap-2">
-          <a
-            id="btn-send-whatsapp"
-            href="${waHref}"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-display font-bold text-sm shadow-md flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.99] transition text-center"
-          >
-            📲 Enviar no WhatsApp (+55 91 99615-6672)
-          </a>
-          <button
-            id="btn-copy-support"
-            type="button"
-            class="w-full py-2 rounded-2xl bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold hover:bg-white transition"
-          >
-            📋 Copiar Pergunta
-          </button>
-        </div>
-      `;
+      body = renderSupportModalHtml(
+        this.supportDraft,
+        this.buildSupportWhatsAppUrl(this.supportDraft)
+      );
     }
 
     return `
@@ -2217,32 +2007,13 @@ export class MiauAppUI {
     `;
   }
 
-  private renderChatHistoryItems(): string {
-    return this.messages
-      .map((m) => {
-        const isUser = m.sender === 'user';
-        return `
-          <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
-            <div class="max-w-[82%] rounded-2xl px-3 py-2 text-xs leading-snug ${
-              isUser
-                ? 'bg-[#6e45a5] text-white rounded-br-sm'
-                : 'bg-white/95 text-[#3b1f6e] border border-purple-100 rounded-bl-sm'
-            }">
-              ${m.meowPrefix ? `<strong class="block font-display">${m.meowPrefix}</strong>` : ''}
-              <span>${m.text}</span>
-            </div>
-          </div>
-        `;
-      })
-      .join('');
-  }
-
   private bindGameEvents(): void {
     // Pet Miau or rub bubbles in cleaning mode
     const miauWrap = this.root.querySelector('#miau-character-wrap');
     miauWrap?.addEventListener('click', () => {
       if (this.isCleaningMode) {
         this.ensureProfileDefaults();
+        const neededWash = this.profile.stats.hygiene < 98;
         soundService.playBubble();
         hapticService.bubbles();
         this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 8);
@@ -2250,19 +2021,25 @@ export class MiauAppUI {
           100,
           this.profile.stats.happiness + 3
         );
-        this.addRewards(4, 4);
+        this.addRewards(neededWash ? 4 : 0, 4);
         this.spawnFloatingParticle('🫧');
         this.updateStatusBarsDOM();
         this.triggerMiauReaction('bounce');
         if (this.profile.stats.hygiene >= 98) {
           this.isCleaningMode = false;
           this.profile.progress.cleanCount += 1;
+          const claimedRoutine = this.claimRoutineSlot('bath');
           this.evaluateAchievements();
           hapticService.coin();
-          this.currentSpeech = {
-            meowPrefix: 'Purrr~',
-            text: '(Estou limpinho e reluzente!)',
-          };
+          this.currentSpeech = claimedRoutine
+            ? {
+                meowPrefix: 'Purrr~ ⏰',
+                text: `(Banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
+              }
+            : {
+                meowPrefix: 'Purrr~',
+                text: '(Estou limpinho e reluzente!)',
+              };
           this.render();
           this.triggerMiauReaction('spin');
         }
@@ -2353,11 +2130,17 @@ export class MiauAppUI {
         this.render();
       });
 
+    this.root.querySelector('#btn-routine')?.addEventListener('click', () => {
+      this.activeModal = this.activeModal === 'routine' ? 'none' : 'routine';
+      this.render();
+    });
+
     // Bottom Navigation
     this.root.querySelectorAll('[data-nav]').forEach((btn) => {
       btn.addEventListener('click', () => {
         hapticService.tap();
         const target = btn.getAttribute('data-nav') as ActiveModal;
+        this.profileModal.disposeCameraStream();
         this.isCleaningMode = false;
         this.activeMiniGame = 'none';
         this.miniGameCleanup?.();
@@ -2391,6 +2174,7 @@ export class MiauAppUI {
           return;
         }
         this.ensureProfileDefaults();
+        const neededFood = this.profile.stats.hunger < 85;
         this.profile.coins -= food.cost;
         this.profile.stats.hunger = Math.min(
           100,
@@ -2400,23 +2184,35 @@ export class MiauAppUI {
           100,
           this.profile.stats.fun + food.funBoost
         );
+        const happyGain =
+          food.happinessBoost ?? Math.max(4, Math.round(food.funBoost * 0.8));
         this.profile.stats.happiness = Math.min(
           100,
-          this.profile.stats.happiness + Math.max(4, Math.round(food.funBoost * 0.8))
+          this.profile.stats.happiness + happyGain
         );
         this.profile.progress.mealsFed += 1;
-        this.addRewards(0, food.xpReward);
+        this.addRewards(neededFood ? 6 : 0, food.xpReward);
+        const claimedRoutine = this.claimRoutineSlot('food');
         this.evaluateAchievements();
         soundService.playCrunch();
         hapticService.chomp();
         this.mood = 'eating';
-        this.currentSpeech = {
-          meowPrefix: 'Nham nham!',
-          text: `(Adorei o ${food.name}! Que delícia!)`,
-        };
+        this.currentSpeech = claimedRoutine
+          ? {
+              meowPrefix: 'Nham nham! ⏰',
+              text: `(${food.name} no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
+            }
+          : {
+              meowPrefix: 'Nham nham!',
+              text: `(Adorei o ${food.name}! Que delícia!)`,
+            };
         this.activeModal = 'none';
         this.render();
-        this.triggerMiauReaction(food.id === 'food_salmon' ? 'spin' : 'jump');
+        this.triggerMiauReaction(
+          food.id === 'food_salmon' || food.id === 'food_catnip'
+            ? 'spin'
+            : 'jump'
+        );
         this.spawnFloatingParticle(food.emoji);
         void this.persistStats();
         window.setTimeout(() => {
@@ -2431,6 +2227,7 @@ export class MiauAppUI {
     // Clean modal buttons
     this.root.querySelector('#btn-instant-bath')?.addEventListener('click', () => {
       this.ensureProfileDefaults();
+      const neededBath = this.profile.stats.hygiene < 92;
       soundService.playBubble();
       hapticService.bubbles();
       this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 35);
@@ -2439,12 +2236,18 @@ export class MiauAppUI {
         this.profile.stats.happiness + 10
       );
       this.profile.progress.cleanCount += 1;
-      this.addRewards(15, 12);
+      this.addRewards(neededBath ? 15 : 0, 12);
+      const claimedRoutine = this.claimRoutineSlot('bath');
       this.evaluateAchievements();
-      this.currentSpeech = {
-        meowPrefix: 'Purrr~',
-        text: '(Banho quentinho! Estou cheiroso demais!)',
-      };
+      this.currentSpeech = claimedRoutine
+        ? {
+            meowPrefix: 'Purrr~ ⏰',
+            text: `(Banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
+          }
+        : {
+            meowPrefix: 'Purrr~',
+            text: '(Banho quentinho! Estou cheiroso demais!)',
+          };
       this.activeModal = 'none';
       this.render();
       this.triggerMiauReaction('spin');
@@ -2460,42 +2263,64 @@ export class MiauAppUI {
       this.render();
     });
 
-    // Mini games launch
-    this.root.querySelector('#start-fish-game')?.addEventListener('click', () => {
-      this.activeMiniGame = 'fish';
+    // Mini games launch & ranking
+    this.root.querySelector('#btn-open-ranking')?.addEventListener('click', () => {
+      void this.openRankingModal();
+    });
+    this.root.querySelector('#btn-ranking-back')?.addEventListener('click', () => {
+      this.activeModal = 'games';
       this.render();
-      const host = this.root.querySelector('#minigame-host') as HTMLElement | null;
-      if (host) {
-        this.miniGameCleanup = mountFishCatchGame(
-          host,
-          (res) => void this.handleMiniGameComplete(res),
-          () => {
-            this.activeMiniGame = 'none';
-            this.render();
-          }
-        );
-      }
     });
 
-    this.root
-      .querySelector('#start-memory-game')
-      ?.addEventListener('click', () => {
-        this.activeMiniGame = 'memory';
+    const launchGame = (
+      id: 'fish' | 'memory' | 'escape' | 'galaxy'
+    ) => {
+      this.ensureProfileDefaults();
+      const high = this.profile.gameRecords![id].highScore;
+      this.activeMiniGame = id;
+      this.render();
+      const host = this.root.querySelector('#minigame-host') as HTMLElement | null;
+      if (!host) return;
+      const onDone = (res: MiniGameResult) => void this.handleMiniGameComplete(res);
+      const onExit = () => {
+        this.miniGameCleanup?.();
+        this.miniGameCleanup = null;
+        this.activeMiniGame = 'none';
         this.render();
-        const host = this.root.querySelector(
-          '#minigame-host'
-        ) as HTMLElement | null;
-        if (host) {
-          this.miniGameCleanup = mountMemoryGame(
-            host,
-            (res) => void this.handleMiniGameComplete(res),
-            () => {
-              this.activeMiniGame = 'none';
-              this.render();
-            }
-          );
-        }
-      });
+      };
+      if (id === 'fish') {
+        this.miniGameCleanup = mountFishCatchGame(host, onDone, onExit, high);
+      } else if (id === 'memory') {
+        this.miniGameCleanup = mountMemoryGame(host, onDone, onExit, high);
+      } else if (id === 'escape') {
+        this.miniGameCleanup = mountEscapeRunGame(host, onDone, onExit, high);
+      } else {
+        this.miniGameCleanup = mountGalaxyRatGame(host, onDone, onExit, high);
+      }
+    };
+
+    this.root.querySelector('#start-fish-game')?.addEventListener('click', () => launchGame('fish'));
+    this.root.querySelector('#start-memory-game')?.addEventListener('click', () => launchGame('memory'));
+    this.root.querySelector('#start-escape-game')?.addEventListener('click', () => launchGame('escape'));
+    this.root.querySelector('#start-galaxy-game')?.addEventListener('click', () => launchGame('galaxy'));
+
+    // Routine modal quick actions
+    this.root.querySelector('#btn-routine-feed')?.addEventListener('click', () => {
+      this.activeModal = 'feed';
+      this.render();
+    });
+    this.root.querySelector('#btn-routine-bath')?.addEventListener('click', () => {
+      this.activeModal = 'clean';
+      this.render();
+    });
+    this.root.querySelector('#btn-routine-sleep')?.addEventListener('click', () => {
+      this.activeModal = 'none';
+      if (!this.isSleeping) {
+        this.toggleSleep();
+      } else {
+        this.render();
+      }
+    });
 
     // Customize tabs & items
     this.root.querySelectorAll('[data-shoptab]').forEach((btn) => {
@@ -2624,7 +2449,58 @@ export class MiauAppUI {
         }
       });
 
-    // Menu & Settings actions
+    // Menu, Profile, Learn & Settings actions
+    this.root
+      .querySelector('#btn-menu-profile')
+      ?.addEventListener('click', () => {
+        this.profileModal.open(this.humanProfile);
+        this.activeModal = 'profile';
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-menu-learn')
+      ?.addEventListener('click', () => {
+        this.learnPreviewLevel = null;
+        this.activeModal = 'learn';
+        this.render();
+      });
+
+    if (this.activeModal === 'profile') {
+      this.profileModal.bind(this.root);
+    }
+
+    if (this.activeModal === 'learn') {
+      bindLearnModalEvents(this.root, {
+        onBackToMenu: () => {
+          this.activeModal = 'menu';
+          this.render();
+        },
+        onGoToProfile: () => {
+          this.profileModal.open(this.humanProfile);
+          this.activeModal = 'profile';
+          this.render();
+        },
+        onSelectPreviewLevel: (level) => {
+          this.learnPreviewLevel = level;
+          this.render();
+        },
+      });
+    }
+
+    this.root
+      .querySelector('#btn-menu-routine')
+      ?.addEventListener('click', () => {
+        this.activeModal = 'routine';
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-menu-ranking')
+      ?.addEventListener('click', () => {
+        void this.openRankingModal();
+      });
+
     this.root
       .querySelector('#btn-menu-achievements')
       ?.addEventListener('click', () => {
@@ -2804,8 +2680,13 @@ export class MiauAppUI {
       });
 
     this.root.querySelector('#btn-logout')?.addEventListener('click', async () => {
+      this.profileModal.disposeCameraStream();
+      this.liveSession?.stop();
+      this.liveSession = null;
       this.activeModal = 'none';
       this.isDemoSession = false;
+      this.humanProfile = createEmptyHumanProfile('guest');
+      this.learnPreviewLevel = null;
       if (this.firebaseUser) {
         await logoutUser();
       }
@@ -2814,16 +2695,9 @@ export class MiauAppUI {
     });
   }
 
-  private escapeHtml(raw: string): string {
-    return raw
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-  }
-
   private buildSupportMessageText(draft: string): string {
     const player =
+      this.humanProfile.fullName.trim() ||
       this.firebaseUser?.displayName ||
       this.firebaseUser?.email ||
       'Jogador Miau';
@@ -2836,60 +2710,6 @@ export class MiauAppUI {
   private buildSupportWhatsAppUrl(draft: string): string {
     const encoded = encodeURIComponent(this.buildSupportMessageText(draft));
     return `https://wa.me/${SUPPORT_WHATSAPP_NUMBER}?text=${encoded}`;
-  }
-
-  private renderToggleRow(
-    key: keyof ScreenVisibilityPrefs,
-    title: string,
-    subtitle: string
-  ): string {
-    const enabled = this.screenPrefs[key];
-    return `
-      <div class="flex items-center justify-between gap-2 py-1 border-t border-purple-50 first:border-t-0">
-        <div class="min-w-0">
-          <div class="text-xs font-bold text-[#3b1f6e] truncate">${title}</div>
-          <div class="text-[10px] text-[#7a60a8] truncate">${subtitle}</div>
-        </div>
-        <button
-          type="button"
-          data-screen-pref="${key}"
-          aria-pressed="${enabled}"
-          class="w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${enabled ? 'bg-emerald-500' : 'bg-slate-300'}"
-        >
-          <div class="w-5 h-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}"></div>
-        </button>
-      </div>
-    `;
-  }
-
-  private renderInstallGuideModal(): string {
-    return `
-      <div class="fixed inset-0 z-50 bg-purple-950/45 backdrop-blur-sm flex items-center justify-center p-4">
-        <div class="w-full max-w-sm glass-card rounded-3xl p-5 text-[#3b1f6e] shadow-2xl">
-          <div class="flex items-center justify-between mb-3">
-            <h2 class="font-display text-lg font-bold">📲 Instalar o App Miau</h2>
-            <button id="close-install-guide" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
-          </div>
-          ${
-            pwaService.isIOS
-              ? `
-                <ol class="text-xs leading-relaxed text-[#4c2a85] flex flex-col gap-2 bg-white/80 rounded-2xl p-3.5 border border-purple-100">
-                  <li><strong>1.</strong> Toque no botão <strong>Compartilhar</strong> (ícone de quadrado com seta ↑) na barra do Safari.</li>
-                  <li><strong>2.</strong> Role para baixo e toque em <strong>Adicionar à Tela de Início</strong>.</li>
-                  <li><strong>3.</strong> Confirme tocando em <strong>Adicionar</strong>!</li>
-                </ol>
-              `
-              : `
-                <ol class="text-xs leading-relaxed text-[#4c2a85] flex flex-col gap-2 bg-white/80 rounded-2xl p-3.5 border border-purple-100">
-                  <li><strong>1.</strong> No Google Chrome, abra o menu <strong>⋮</strong> (canto superior direito) ou toque no ícone de instalação na barra de endereço.</li>
-                  <li><strong>2.</strong> Selecione <strong>Instalar aplicativo</strong> (ou <strong>Adicionar à tela inicial → Instalar</strong>).</li>
-                  <li><strong>3.</strong> O Miau será instalado com ícone próprio e modo tela cheia!</li>
-                </ol>
-              `
-          }
-        </div>
-      </div>
-    `;
   }
 
   private async handleInstallAppClick(): Promise<void> {
@@ -2928,6 +2748,7 @@ export class MiauAppUI {
   }
 
   private closeActiveModal(): void {
+    this.profileModal.disposeCameraStream();
     this.miniGameCleanup?.();
     this.miniGameCleanup = null;
     this.activeMiniGame = 'none';

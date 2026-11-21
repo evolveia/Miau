@@ -2,7 +2,7 @@
   "entities": {
     "UserPetProfile": {
       "title": "UserPetProfile",
-      "description": "Stores the player's Miau virtual pet state, stats, currency, level, and wardrobe customizations.",
+      "description": "Stores the player's Miau virtual pet state, stats, currency, level, wardrobe customizations, minigame records, and daily routine.",
       "type": "object",
       "properties": {
         "ownerId": {
@@ -53,6 +53,14 @@
         "progress": {
           "type": "object",
           "description": "Action counters for achievements (mealsFed, gamesPlayed, cleanCount, petsCount, chatsCount)."
+        },
+        "gameRecords": {
+          "type": "object",
+          "description": "Per-minigame high scores, max stage reached, best time, and total coins."
+        },
+        "dailyRoutine": {
+          "type": "object",
+          "description": "Today's dateKey (YYYY-MM-DD) and completed routine slot IDs."
         },
         "createdAt": {
           "type": "string",
@@ -111,6 +119,67 @@
       },
       "required": ["ownerId", "displayName", "email", "createdAt", "updatedAt"]
     },
+    "UserHumanProfile": {
+      "title": "UserHumanProfile",
+      "description": "Isolated PII human user profile stored at /users/{userId}/private/profile.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "birthDate": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 10
+        },
+        "schooling": {
+          "type": "string",
+          "enum": ["", "educacao_infantil", "fundamental_1", "fundamental_2", "medio", "superior_outro"]
+        },
+        "state": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "country": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 60
+        },
+        "photoDataUrl": {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 180000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "ownerId",
+        "fullName",
+        "birthDate",
+        "schooling",
+        "state",
+        "country",
+        "photoDataUrl",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
     "ChatMessage": {
       "title": "ChatMessage",
       "description": "A conversation turn between the player and Miau.",
@@ -147,20 +216,61 @@
         }
       },
       "required": ["ownerId", "sender", "meowPrefix", "text", "mood", "createdAt"]
+    },
+    "RankingEntry": {
+      "title": "RankingEntry",
+      "description": "Public non-PII leaderboard summary per player for Miau minigames.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "playerName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 40
+        },
+        "petName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 32
+        },
+        "totalScore": {
+          "type": "integer"
+        },
+        "bestStage": {
+          "type": "integer"
+        },
+        "coinsEarned": {
+          "type": "integer"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["ownerId", "playerName", "petName", "totalScore", "bestStage", "coinsEarned", "updatedAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserPetProfile" },
-      "description": "Player's virtual pet Miau profile, stats, coins, level, and equipped items."
+      "description": "Player's virtual pet Miau profile, stats, coins, level, equipped items, game records, and daily routine."
     },
     "/users/{userId}/private/{docId}": {
       "schema": { "$ref": "#/entities/UserPrivateInfo" },
-      "description": "Isolated private PII metadata for the user."
+      "description": "Isolated private PII metadata (info and UserHumanProfile profile) for the user."
     },
     "/users/{userId}/messages/{messageId}": {
       "schema": { "$ref": "#/entities/ChatMessage" },
       "description": "Persisted chat messages with Miau."
+    },
+    "/rankings/{userId}": {
+      "schema": { "$ref": "#/entities/RankingEntry" },
+      "description": "Non-PII minigame leaderboard entries."
     }
   }
 }

@@ -1,0 +1,266 @@
+import { hapticService } from '../../services/hapticService';
+import { pwaService, type CameraPermissionState } from '../../services/pwaService';
+import type { ChatMessage, ScreenVisibilityPrefs } from '../../types';
+import { escapeHtml } from '../../utils/html';
+
+export function renderChatHistoryItemsHtml(messages: ChatMessage[]): string {
+  return messages
+    .map((m) => {
+      const isUser = m.sender === 'user';
+      return `
+        <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
+          <div class="max-w-[82%] rounded-2xl px-3 py-2 text-xs leading-snug ${
+            isUser
+              ? 'bg-[#6e45a5] text-white rounded-br-sm'
+              : 'bg-white/95 text-[#3b1f6e] border border-purple-100 rounded-bl-sm'
+          }">
+            ${m.meowPrefix ? `<strong class="block font-display">${escapeHtml(m.meowPrefix)}</strong>` : ''}
+            <span>${escapeHtml(m.text)}</span>
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+}
+
+export function renderChatModalHtml(params: {
+  petName: string;
+  liveStatus: string;
+  hasLiveSession: boolean;
+  liveTranscript: string;
+  messages: ChatMessage[];
+}): string {
+  return `
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <h2 class="font-display text-lg font-bold text-[#3b1f6e]">Conversar com ${escapeHtml(params.petName)} 💬</h2>
+        <p class="text-[11px] font-semibold text-[#6b4d9e]">Histórico com Gemini IA & Conversa por Voz ao Vivo</p>
+      </div>
+      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+    </div>
+
+    <div class="mb-2.5 bg-purple-50 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2">
+      <div class="min-w-0">
+        <div class="text-xs font-extrabold text-[#4c2a85]">Voz ao Vivo (Gemini Live)</div>
+        <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${escapeHtml(params.liveStatus || 'Fale em tempo real com o Miau!')}</div>
+      </div>
+      <button id="btn-live-toggle" class="px-3 py-1.5 rounded-full text-xs font-extrabold text-white shrink-0 ${params.hasLiveSession ? 'bg-rose-500 animate-pulse' : 'bg-[#6e45a5]'}">
+        ${params.hasLiveSession ? '⏹️ Parar' : '🎙️ Ligar Voz'}
+      </button>
+    </div>
+
+    ${
+      params.liveTranscript
+        ? `<div class="mb-2 bg-white/90 rounded-xl p-2 text-xs text-[#3b1f6e] border border-purple-100 max-h-20 overflow-y-auto miau-scroll whitespace-pre-line">${escapeHtml(params.liveTranscript)}</div>`
+        : ''
+    }
+
+    <div id="chat-history-list" class="flex-1 max-h-[210px] min-h-[160px] overflow-y-auto miau-scroll flex flex-col gap-2 pr-1 mb-2.5">
+      ${renderChatHistoryItemsHtml(params.messages)}
+    </div>
+
+    <form id="modal-chat-form" class="flex items-center gap-2 bg-white rounded-full p-1.5 pl-3.5 border border-purple-200">
+      <input id="modal-chat-input" type="text" placeholder="Escreva para o Miau..." class="flex-1 text-xs font-semibold text-[#3b1f6e] bg-transparent focus:outline-none" />
+      <button type="submit" class="px-3.5 py-1.5 rounded-full bg-[#6e45a5] text-white text-xs font-extrabold">Enviar</button>
+    </form>
+  `;
+}
+
+function renderToggleRow(
+  screenPrefs: ScreenVisibilityPrefs,
+  key: keyof ScreenVisibilityPrefs,
+  title: string,
+  subtitle: string
+): string {
+  const enabled = screenPrefs[key];
+  return `
+    <div class="flex items-center justify-between gap-2 py-1 border-t border-purple-50 first:border-t-0">
+      <div class="min-w-0">
+        <div class="text-xs font-bold text-[#3b1f6e] truncate">${title}</div>
+        <div class="text-[10px] text-[#7a60a8] truncate">${subtitle}</div>
+      </div>
+      <button
+        type="button"
+        data-screen-pref="${key}"
+        aria-pressed="${enabled}"
+        class="w-11 h-6 rounded-full p-0.5 transition-colors shrink-0 ${enabled ? 'bg-emerald-500' : 'bg-slate-300'}"
+      >
+        <div class="w-5 h-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}"></div>
+      </button>
+    </div>
+  `;
+}
+
+export function renderSettingsModalHtml(params: {
+  screenPrefs: ScreenVisibilityPrefs;
+  soundEnabled: boolean;
+  cameraPermission: CameraPermissionState;
+}): string {
+  const camLabel =
+    params.cameraPermission === 'granted'
+      ? 'Autorizada'
+      : params.cameraPermission === 'denied'
+        ? 'Bloqueada'
+        : params.cameraPermission === 'unsupported'
+          ? 'Indisponível'
+          : 'Pendente';
+  const camBadgeCls =
+    params.cameraPermission === 'granted'
+      ? 'bg-emerald-100 text-emerald-700'
+      : params.cameraPermission === 'denied'
+        ? 'bg-rose-100 text-rose-700'
+        : 'bg-amber-100 text-amber-800';
+
+  return `
+    <div class="flex items-center justify-between mb-3">
+      <div class="flex items-center gap-2">
+        <button id="btn-settings-back" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm">←</button>
+        <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Configurações ⚙️</h2>
+      </div>
+      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+    </div>
+
+    <div class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+      <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal (Sala)</span>
+          <div class="flex gap-1.5">
+            <button id="btn-preset-full" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-purple-100 text-[#4c2a85] hover:bg-purple-200">✨ Tudo</button>
+            <button id="btn-preset-clean" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 hover:bg-emerald-200">🧘 Limpo</button>
+          </div>
+        </div>
+
+        ${renderToggleRow(params.screenPrefs, 'showStatusBars', '📊 Barras de Status', 'Fome, Higiene, Diversão, Sono e Felicidade')}
+        ${renderToggleRow(params.screenPrefs, 'showStatusBadges', '🏆 Atalhos do Topo', 'Conquistas, Soneca e Nível')}
+        ${renderToggleRow(params.screenPrefs, 'showSpeechAndChat', '💬 Balão de Fala e Chat', 'Caixa de conversa rápida na Sala')}
+        ${renderToggleRow(params.screenPrefs, 'showCoinsBadge', '🪙 Moedas no Cabeçalho', 'Mostrar saldo de moedas no topo')}
+      </div>
+
+      <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2.5">
+        <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Áudio e Câmera (AR)</span>
+
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-bold text-[#3b1f6e]">🔊 Sons e Voz do Miau</span>
+          <button id="btn-toggle-sound" class="px-3 py-1 rounded-full text-xs font-extrabold ${params.soundEnabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
+            ${params.soundEnabled ? 'Ativado' : 'Mudo'}
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between pt-1 border-t border-purple-100">
+          <div class="min-w-0">
+            <div class="text-xs font-bold text-[#3b1f6e]">📳 Vibração Tátil</div>
+            <div class="text-[10px] text-[#7a60a8]">Feedback ao fazer carinho e cuidar do Miau</div>
+          </div>
+          <button id="btn-toggle-haptics" class="px-3 py-1 rounded-full text-xs font-extrabold shrink-0 ${hapticService.enabled ? 'bg-emerald-500 text-white' : 'bg-slate-300 text-slate-700'}">
+            ${hapticService.enabled ? 'Ativada' : 'Desativada'}
+          </button>
+        </div>
+
+        <div class="flex items-center justify-between gap-2 pt-1 border-t border-purple-100">
+          <div class="min-w-0">
+            <div class="text-xs font-bold text-[#3b1f6e]">📷 Câmera (Realidade Aumentada)</div>
+            <span class="inline-block mt-0.5 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${camBadgeCls}">${camLabel}</span>
+          </div>
+          <button id="btn-auth-camera" class="px-3 py-1.5 rounded-full bg-sky-500 text-white text-xs font-extrabold shadow-sm hover:brightness-110 shrink-0">
+            ${params.cameraPermission === 'granted' ? 'Revalidar' : 'Autorizar'}
+          </button>
+        </div>
+      </div>
+
+      ${
+        !pwaService.isInstalled
+          ? `<button id="btn-settings-install" class="w-full py-2.5 px-3.5 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-700 text-white font-display font-bold text-sm shadow flex items-center justify-center gap-2 hover:brightness-110 transition">
+               📲 Instalar Aplicativo Miau
+             </button>`
+          : `<div class="text-center text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-2xl py-2">
+               ✅ Aplicativo instalado no dispositivo
+             </div>`
+      }
+    </div>
+  `;
+}
+
+export function renderSupportModalHtml(
+  supportDraft: string,
+  waHref: string
+): string {
+  return `
+    <div class="flex items-center justify-between mb-2">
+      <div>
+        <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Suporte Miau 💬</h2>
+        <p class="text-[11px] font-semibold text-[#6b4d9e]">Envie sua dúvida direto para o WhatsApp +55 91 99615-6672</p>
+      </div>
+      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+    </div>
+
+    <div class="flex flex-wrap gap-1.5 mb-2.5">
+      ${[
+        'Dúvida sobre o jogo',
+        'Problema técnico',
+        'Sugestão de recurso',
+        'Minha conta / moedas',
+      ]
+        .map(
+          (topic) =>
+            `<button type="button" data-support-topic="${topic}" class="px-2.5 py-1 rounded-full bg-purple-100/80 hover:bg-purple-200 text-[#4c2a85] text-[11px] font-bold transition">${topic}</button>`
+        )
+        .join('')}
+    </div>
+
+    <textarea
+      id="support-message-input"
+      rows="4"
+      placeholder="Escreva aqui sua pergunta ou dúvida sobre o Miau..."
+      class="w-full rounded-2xl bg-white/95 border border-purple-200 p-3 text-xs font-semibold text-[#3b1f6e] placeholder-[#947ebe] focus:outline-none focus:border-purple-500 resize-none mb-3"
+    >${escapeHtml(supportDraft)}</textarea>
+
+    <div class="flex flex-col gap-2">
+      <a
+        id="btn-send-whatsapp"
+        href="${waHref}"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-display font-bold text-sm shadow-md flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.99] transition text-center"
+      >
+        📲 Enviar no WhatsApp (+55 91 99615-6672)
+      </a>
+      <button
+        id="btn-copy-support"
+        type="button"
+        class="w-full py-2 rounded-2xl bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold hover:bg-white transition"
+      >
+        📋 Copiar Pergunta
+      </button>
+    </div>
+  `;
+}
+
+export function renderInstallGuideModalHtml(): string {
+  return `
+    <div class="fixed inset-0 z-50 bg-purple-950/45 backdrop-blur-sm flex items-center justify-center p-4">
+      <div class="w-full max-w-sm glass-card rounded-3xl p-5 text-[#3b1f6e] shadow-2xl">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-display text-lg font-bold">📲 Instalar o App Miau</h2>
+          <button id="close-install-guide" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+        </div>
+        ${
+          pwaService.isIOS
+            ? `
+              <ol class="text-xs leading-relaxed text-[#4c2a85] flex flex-col gap-2 bg-white/80 rounded-2xl p-3.5 border border-purple-100">
+                <li><strong>1.</strong> Toque no botão <strong>Compartilhar</strong> (ícone de quadrado com seta ↑) na barra do Safari.</li>
+                <li><strong>2.</strong> Role para baixo e toque em <strong>Adicionar à Tela de Início</strong>.</li>
+                <li><strong>3.</strong> Confirme tocando em <strong>Adicionar</strong>!</li>
+              </ol>
+            `
+            : `
+              <ol class="text-xs leading-relaxed text-[#4c2a85] flex flex-col gap-2 bg-white/80 rounded-2xl p-3.5 border border-purple-100">
+                <li><strong>1.</strong> Toque no menu do navegador (⋮ ou ícone na barra de endereço).</li>
+                <li><strong>2.</strong> Selecione <strong>Instalar aplicativo</strong> ou <strong>Adicionar à tela inicial</strong>.</li>
+                <li><strong>3.</strong> O Miau abrirá como aplicativo independente com câmera e áudio integrados!</li>
+              </ol>
+            `
+        }
+      </div>
+    </div>
+  `;
+}

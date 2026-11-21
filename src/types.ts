@@ -17,11 +17,84 @@ export type ActiveModal =
   | 'customize'
   | 'chat'
   | 'achievements'
+  | 'ranking'
+  | 'routine'
   | 'menu'
+  | 'profile'
+  | 'learn'
   | 'support'
   | 'ar'
   | 'settings'
   | 'legal';
+
+export type SchoolingLevel =
+  | 'educacao_infantil'
+  | 'fundamental_1'
+  | 'fundamental_2'
+  | 'medio'
+  | 'superior_outro';
+
+export interface UserHumanProfile {
+  ownerId: string;
+  fullName: string;
+  birthDate: string;
+  schooling: SchoolingLevel | '';
+  state: string;
+  country: string;
+  photoDataUrl: string;
+  updatedAtMs: number;
+}
+
+export interface EducationTrackDef {
+  id: string;
+  title: string;
+  description: string;
+  emoji: string;
+  tags: string[];
+  accentBg: string;
+  statusLabel: string;
+}
+
+export type GameId = 'fish' | 'memory' | 'escape' | 'galaxy';
+
+export interface GameStatsRecord {
+  highScore: number;
+  maxStage: number;
+  bestTimeSec: number;
+  totalCoins: number;
+  plays: number;
+}
+
+export interface RankingEntry {
+  id: string;
+  playerName: string;
+  petName: string;
+  totalScore: number;
+  bestStage: number;
+  coinsEarned: number;
+  isCurrentUser?: boolean;
+  updatedAtMs: number;
+}
+
+export type RoutineCategory = 'food' | 'bath' | 'sleep';
+
+export interface RoutineSlotDef {
+  id: string;
+  category: RoutineCategory;
+  label: string;
+  timeLabel: string;
+  targetHour: number;
+  targetMinute: number;
+  windowMinutes: number;
+  bonusCoins: number;
+  bonusXp: number;
+  emoji: string;
+}
+
+export interface DailyRoutineState {
+  dateKey: string;
+  completedSlots: string[];
+}
 
 export interface ScreenVisibilityPrefs {
   showStatusBars: boolean;
@@ -74,6 +147,8 @@ export interface UserPetProfile {
   soundEnabled: boolean;
   unlockedAchievements: string[];
   progress: AchievementProgress;
+  gameRecords?: Record<GameId, GameStatsRecord>;
+  dailyRoutine?: DailyRoutineState;
 }
 
 export interface ChatMessage {
@@ -92,6 +167,7 @@ export interface FoodItem {
   emoji: string;
   hungerBoost: number;
   funBoost: number;
+  happinessBoost?: number;
   cost: number;
   xpReward: number;
   description: string;

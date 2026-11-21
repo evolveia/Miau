@@ -607,6 +607,76 @@ export class MiauXRScene extends xb.Script {
     peachEnv.add(sunsetOrb);
     this.envGroups['bg_peach'] = peachEnv;
     this.stageRoot.add(peachEnv);
+
+    // 5. Jardim de Flores Pastel
+    const gardenEnv = new THREE.Group();
+    const gardenMeadow = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.18, 1.22, 0.026, 48),
+      new THREE.MeshStandardMaterial({ color: 0x86efac, roughness: 0.85 })
+    );
+    gardenMeadow.position.y = 0.013;
+    gardenMeadow.userData.miauAction = 'floor';
+    gardenEnv.add(gardenMeadow);
+    this.interactiveRoots.push(gardenMeadow);
+    const petalColors = [0xf9a8d4, 0xc084fc, 0xfde047, 0xfdba74];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const r = 0.86 + (i % 2) * 0.14;
+      const flower = new THREE.Mesh(
+        new THREE.SphereGeometry(0.042, 12, 12),
+        new THREE.MeshStandardMaterial({
+          color: petalColors[i % petalColors.length],
+          roughness: 0.45,
+        })
+      );
+      flower.position.set(Math.cos(a) * r, 0.06, Math.sin(a) * r);
+      gardenEnv.add(flower);
+    }
+    this.envGroups['bg_pastel_garden'] = gardenEnv;
+    this.stageRoot.add(gardenEnv);
+
+    // 6. Estação Espacial / Nebulosa
+    const spaceEnv = new THREE.Group();
+    const planet = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 24, 24),
+      new THREE.MeshStandardMaterial({
+        color: 0xa78bfa,
+        emissive: 0x4c1d95,
+        emissiveIntensity: 0.45,
+        roughness: 0.4,
+      })
+    );
+    planet.position.set(0.68, 1.15, -0.62);
+    const planetRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.28, 0.02, 8, 36),
+      new THREE.MeshStandardMaterial({
+        color: 0xfde68a,
+        emissive: 0xfacc15,
+        emissiveIntensity: 0.35,
+      })
+    );
+    planetRing.rotation.x = 1.2;
+    planetRing.rotation.y = 0.35;
+    planet.add(planetRing);
+    spaceEnv.add(planet);
+
+    const spaceStarMat = new THREE.MeshStandardMaterial({
+      color: 0xe0f2fe,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.85,
+    });
+    for (let i = 0; i < 18; i++) {
+      const a = (i / 18) * Math.PI * 1.8 - Math.PI * 0.9;
+      const s = new THREE.Mesh(starGeo, spaceStarMat);
+      s.position.set(
+        Math.sin(a) * (0.95 + (i % 3) * 0.14),
+        0.48 + ((i * 29) % 10) * 0.09,
+        -Math.cos(a) * 0.65 - 0.25
+      );
+      spaceEnv.add(s);
+    }
+    this.envGroups['bg_space'] = spaceEnv;
+    this.stageRoot.add(spaceEnv);
   }
 
   private applyBackgroundTheme(bgId: string): void {
@@ -618,9 +688,15 @@ export class MiauXRScene extends xb.Script {
       if (bgId === 'bg_night') {
         this.rugMat.color.setHex(0x4338ca);
         this.rugTrimMat.color.setHex(0xfef08a);
+      } else if (bgId === 'bg_space') {
+        this.rugMat.color.setHex(0x312e81);
+        this.rugTrimMat.color.setHex(0x38bdf8);
       } else if (bgId === 'bg_sunny') {
         this.rugMat.color.setHex(0x4ade80);
         this.rugTrimMat.color.setHex(0xfef9c3);
+      } else if (bgId === 'bg_pastel_garden') {
+        this.rugMat.color.setHex(0xbbf7d0);
+        this.rugTrimMat.color.setHex(0xf9a8d4);
       } else if (bgId === 'bg_peach') {
         this.rugMat.color.setHex(0xfdba74);
         this.rugTrimMat.color.setHex(0xfbcfe8);
@@ -858,6 +934,79 @@ export class MiauXRScene extends xb.Script {
     flower.rotation.y = 0.25;
     this.hatGroups['hat_flower'] = flower;
 
+    const beret = new THREE.Group();
+    const beretMesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.082, 20, 14),
+      new THREE.MeshStandardMaterial({ color: 0xe11d48, roughness: 0.55 })
+    );
+    beretMesh.scale.set(1.25, 0.45, 1.15);
+    const beretStem = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.006, 0.006, 0.032, 8),
+      darkMat
+    );
+    beretStem.position.y = 0.04;
+    beret.add(beretMesh, beretStem);
+    beret.position.set(-0.01, 0.185, 0.02);
+    beret.rotation.z = 0.16;
+    this.hatGroups['hat_beret'] = beret;
+
+    const bunny = new THREE.Group();
+    const bunnyBand = new THREE.Mesh(
+      new THREE.TorusGeometry(0.1, 0.01, 8, 24, Math.PI),
+      new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 })
+    );
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.022, 0.09, 6, 12),
+        whiteMat
+      );
+      ear.position.set(side * 0.055, 0.11, 0);
+      ear.rotation.z = -side * 0.18;
+      bunny.add(ear);
+    }
+    bunny.add(bunnyBand);
+    bunny.position.set(0, 0.125, 0.02);
+    this.hatGroups['hat_bunny'] = bunny;
+
+    const pirate = new THREE.Group();
+    const pirateMat = new THREE.MeshStandardMaterial({
+      color: 0x312e81,
+      roughness: 0.5,
+    });
+    const pirateBody = new THREE.Mesh(
+      new THREE.ConeGeometry(0.11, 0.09, 3),
+      pirateMat
+    );
+    const pirateEmblem = new THREE.Mesh(
+      new THREE.SphereGeometry(0.018, 10, 10),
+      whiteMat
+    );
+    pirateEmblem.position.set(0, 0.005, 0.056);
+    pirate.add(pirateBody, pirateEmblem);
+    pirate.position.set(0, 0.21, 0.02);
+    this.hatGroups['hat_pirate'] = pirate;
+
+    const astronaut = new THREE.Group();
+    const visor = new THREE.Mesh(
+      new THREE.SphereGeometry(0.215, 24, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0xbae6fd,
+        transparent: true,
+        opacity: 0.28,
+        roughness: 0.1,
+        metalness: 0.1,
+      })
+    );
+    const neckRing = new THREE.Mesh(
+      new THREE.TorusGeometry(0.165, 0.014, 8, 28),
+      new THREE.MeshStandardMaterial({ color: 0x60a5fa, roughness: 0.3 })
+    );
+    neckRing.rotation.x = Math.PI / 2;
+    neckRing.position.y = -0.115;
+    astronaut.add(visor, neckRing);
+    astronaut.position.set(0, 0.02, 0.02);
+    this.hatGroups['hat_astronaut'] = astronaut;
+
     Object.values(this.hatGroups).forEach((g) => this.petGroup.add(g));
 
     // --- Accessories ---
@@ -955,6 +1104,26 @@ export class MiauXRScene extends xb.Script {
     bellSphere.position.set(0, -0.1, 0.165);
     bell.add(strap, bellSphere);
     this.accGroups['acc_bell'] = bell;
+
+    const cape = new THREE.Group();
+    const capeCloth = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.24, 16, 1, true, 0.3, Math.PI * 1.4),
+      new THREE.MeshStandardMaterial({
+        color: 0xef4444,
+        roughness: 0.6,
+        side: THREE.DoubleSide,
+      })
+    );
+    capeCloth.position.set(0, -0.08, -0.05);
+    capeCloth.rotation.y = Math.PI;
+    const capeClasp = new THREE.Mesh(
+      new THREE.TorusGeometry(0.148, 0.012, 8, 24),
+      goldMat
+    );
+    capeClasp.rotation.x = Math.PI / 2;
+    capeClasp.position.set(0, -0.06, 0.02);
+    cape.add(capeCloth, capeClasp);
+    this.accGroups['acc_cape'] = cape;
 
     Object.values(this.accGroups).forEach((g) => this.petGroup.add(g));
 

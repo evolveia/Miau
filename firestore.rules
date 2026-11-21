@@ -62,6 +62,35 @@ service cloud.firestore {
         && p.chatsCount is int && p.chatsCount >= 0 && p.chatsCount <= 1000000;
     }
 
+    function isValidGameStat(r) {
+      return r is map
+        && r.keys().hasAll(['highScore', 'maxStage', 'bestTimeSec', 'totalCoins', 'plays'])
+        && r.keys().hasOnly(['highScore', 'maxStage', 'bestTimeSec', 'totalCoins', 'plays'])
+        && r.highScore is int && r.highScore >= 0 && r.highScore <= 10000000
+        && r.maxStage is int && r.maxStage >= 1 && r.maxStage <= 999
+        && r.bestTimeSec is int && r.bestTimeSec >= 0 && r.bestTimeSec <= 86400
+        && r.totalCoins is int && r.totalCoins >= 0 && r.totalCoins <= 10000000
+        && r.plays is int && r.plays >= 0 && r.plays <= 1000000;
+    }
+
+    function isValidGameRecords(gr) {
+      return gr is map
+        && gr.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy'])
+        && (!('fish' in gr) || isValidGameStat(gr.fish))
+        && (!('memory' in gr) || isValidGameStat(gr.memory))
+        && (!('escape' in gr) || isValidGameStat(gr.escape))
+        && (!('galaxy' in gr) || isValidGameStat(gr.galaxy));
+    }
+
+    function isValidDailyRoutine(dr) {
+      return dr is map
+        && dr.keys().hasAll(['dateKey', 'completedSlots'])
+        && dr.keys().hasOnly(['dateKey', 'completedSlots'])
+        && dr.dateKey is string && dr.dateKey.size() == 10 && dr.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && dr.completedSlots is list && dr.completedSlots.size() <= 20
+        && (dr.completedSlots.size() == 0 || (dr.completedSlots[0] is string && dr.completedSlots[0].size() <= 40));
+    }
+
     function isValidUserPetProfile(data, userId) {
       return data.keys().hasAll([
           'ownerId', 'petName', 'coins', 'level', 'xp',
@@ -71,7 +100,7 @@ service cloud.firestore {
         && data.keys().hasOnly([
           'ownerId', 'petName', 'coins', 'level', 'xp',
           'stats', 'equipped', 'ownedItems', 'soundEnabled',
-          'unlockedAchievements', 'progress',
+          'unlockedAchievements', 'progress', 'gameRecords', 'dailyRoutine',
           'createdAt', 'updatedAt'
         ])
         && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
@@ -85,6 +114,8 @@ service cloud.firestore {
         && data.soundEnabled is bool
         && (!('unlockedAchievements' in data) || (data.unlockedAchievements is list && data.unlockedAchievements.size() <= 50 && (data.unlockedAchievements.size() == 0 || (data.unlockedAchievements[0] is string && data.unlockedAchievements[0].size() <= 64))))
         && (!('progress' in data) || isValidProgress(data.progress))
+        && (!('gameRecords' in data) || isValidGameRecords(data.gameRecords))
+        && (!('dailyRoutine' in data) || isValidDailyRoutine(data.dailyRoutine))
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -95,6 +126,28 @@ service cloud.firestore {
         && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
         && data.displayName is string && data.displayName.size() <= 80
         && data.email is string && data.email.size() <= 160
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidUserHumanProfile(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'fullName', 'birthDate', 'schooling',
+          'state', 'country', 'photoDataUrl', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'fullName', 'birthDate', 'schooling',
+          'state', 'country', 'photoDataUrl', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.fullName is string && data.fullName.size() <= 100
+        && data.birthDate is string && data.birthDate.size() <= 10
+        && (data.birthDate == '' || data.birthDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        && data.schooling is string && data.schooling.size() <= 32
+        && data.schooling in ['', 'educacao_infantil', 'fundamental_1', 'fundamental_2', 'medio', 'superior_outro']
+        && data.state is string && data.state.size() <= 60
+        && data.country is string && data.country.size() <= 60
+        && data.photoDataUrl is string && data.photoDataUrl.size() <= 180000
         && data.createdAt is timestamp
         && data.updatedAt is timestamp;
     }
@@ -110,6 +163,18 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidRankingEntry(data, userId) {
+      return data.keys().hasAll(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'updatedAt'])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 40
+        && data.petName is string && data.petName.size() >= 1 && data.petName.size() <= 32
+        && data.totalScore is int && data.totalScore >= 0 && data.totalScore <= 50000000
+        && data.bestStage is int && data.bestStage >= 1 && data.bestStage <= 999
+        && data.coinsEarned is int && data.coinsEarned >= 0 && data.coinsEarned <= 50000000
+        && data.updatedAt is timestamp;
+    }
+
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwner(userId);
       allow list: if false;
@@ -121,36 +186,54 @@ service cloud.firestore {
       allow update: if isValidId(userId)
         && isOwner(userId)
         && isValidUserPetProfile(incoming(), userId)
-        && incoming().ownerId == existing().ownerId
-        && incoming().createdAt == existing().createdAt
+        && (!('ownerId' in existing()) || !(existing().ownerId is string) || existing().ownerId != userId || incoming().ownerId == existing().ownerId)
+        && (!('createdAt' in existing()) || !(existing().createdAt is timestamp) || incoming().createdAt == existing().createdAt)
         && incoming().updatedAt == request.time
         && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'updatedAt'])
+          incoming().diff(existing()).affectedKeys().hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'gameRecords', 'dailyRoutine', 'updatedAt'])
           || incoming().diff(existing()).affectedKeys().hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
           || incoming().diff(existing()).affectedKeys().hasOnly(['petName', 'soundEnabled', 'updatedAt'])
+          || !isValidUserPetProfile(existing(), userId)
         );
       allow delete: if isValidId(userId) && isOwner(userId);
 
       match /private/{docId} {
-        allow get: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+        allow get: if isValidId(userId)
+          && isValidId(docId)
+          && (docId == 'info' || docId == 'profile')
+          && isOwner(userId);
         allow list: if false;
         allow create: if isValidId(userId)
           && isValidId(docId)
-          && docId == 'info'
           && isOwner(userId)
-          && isValidPrivateInfo(incoming(), userId)
           && incoming().createdAt == request.time
-          && incoming().updatedAt == request.time;
+          && incoming().updatedAt == request.time
+          && (
+            (docId == 'info' && isValidPrivateInfo(incoming(), userId))
+            || (docId == 'profile' && isValidUserHumanProfile(incoming(), userId))
+          );
         allow update: if isValidId(userId)
           && isValidId(docId)
-          && docId == 'info'
           && isOwner(userId)
-          && isValidPrivateInfo(incoming(), userId)
           && incoming().ownerId == existing().ownerId
           && incoming().createdAt == existing().createdAt
           && incoming().updatedAt == request.time
-          && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt']);
-        allow delete: if isValidId(userId) && isValidId(docId) && docId == 'info' && isOwner(userId);
+          && (
+            (
+              docId == 'info'
+              && isValidPrivateInfo(incoming(), userId)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'updatedAt'])
+            )
+            || (
+              docId == 'profile'
+              && isValidUserHumanProfile(incoming(), userId)
+              && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'birthDate', 'schooling', 'state', 'country', 'photoDataUrl', 'updatedAt'])
+            )
+          );
+        allow delete: if isValidId(userId)
+          && isValidId(docId)
+          && (docId == 'info' || docId == 'profile')
+          && isOwner(userId);
       }
 
       match /messages/{messageId} {
@@ -174,6 +257,16 @@ service cloud.firestore {
           && isOwner(userId)
           && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
       }
+    }
+
+    match /rankings/{userId} {
+      allow get: if isValidId(userId) && isSignedIn();
+      allow list: if isSignedIn();
+      allow create, update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidRankingEntry(incoming(), userId)
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(userId) && isOwner(userId);
     }
   }
 }

@@ -3,12 +3,19 @@ import * as xb from 'xrblocks';
 import { MiauAppUI } from './ui/MiauAppUI';
 import { MiauXRScene } from './xr/MiauXRScene';
 
-registerSW({
-  immediate: true,
-  onRegisterError(error) {
-    console.warn('Falha ao registrar Service Worker PWA:', error);
-  },
-});
+if (import.meta.env.PROD) {
+  registerSW({
+    immediate: true,
+    onRegisterError(error) {
+      console.warn('Falha ao registrar Service Worker PWA:', error);
+    },
+  });
+} else if ('serviceWorker' in navigator) {
+  void navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+    .catch(() => {});
+}
 
 function createXRHud(
   scene: MiauXRScene,
