@@ -247,6 +247,14 @@
         "coinsEarned": {
           "type": "integer"
         },
+        "gameScores": {
+          "type": "object",
+          "description": "Optional per-minigame best scores (fish, memory, escape, galaxy)."
+        },
+        "gameStages": {
+          "type": "object",
+          "description": "Optional per-minigame max stages reached (fish, memory, escape, galaxy)."
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time"

@@ -26,50 +26,50 @@ function getFishStageConfig(stage: number): FishStageConfig {
     return {
       name: 'Manhã Tranquila',
       goal: 8,
-      duration: 28,
-      spawnMs: 740,
-      minSpeed: 18,
-      maxSpeed: 28,
-      badChance: 0.08,
+      duration: 36,
+      spawnMs: 920,
+      minSpeed: 12,
+      maxSpeed: 18,
+      badChance: 0.06,
       goldChance: 0.16,
       comboEnabled: false,
     };
   }
   if (stage === 2) {
     return {
-      name: 'Brisa Rápida',
-      goal: 12,
-      duration: 26,
-      spawnMs: 530,
-      minSpeed: 32,
-      maxSpeed: 46,
-      badChance: 0.18,
-      goldChance: 0.25,
+      name: 'Brisa Suave',
+      goal: 11,
+      duration: 34,
+      spawnMs: 740,
+      minSpeed: 18,
+      maxSpeed: 26,
+      badChance: 0.14,
+      goldChance: 0.22,
       comboEnabled: true,
     };
   }
   if (stage === 3) {
     return {
       name: 'Chuva de Petiscos',
-      goal: 16,
-      duration: 28,
-      spawnMs: 440,
-      minSpeed: 40,
-      maxSpeed: 56,
-      badChance: 0.24,
+      goal: 14,
+      duration: 32,
+      spawnMs: 580,
+      minSpeed: 25,
+      maxSpeed: 34,
+      badChance: 0.2,
       goldChance: 0.26,
       comboEnabled: true,
     };
   }
   return {
     name: 'Modo Mestre Felino',
-    goal: 18 + (stage - 4) * 4,
-    duration: 30,
-    spawnMs: Math.max(280, 380 - (stage - 4) * 25),
-    minSpeed: 46 + (stage - 4) * 4,
-    maxSpeed: 64 + (stage - 4) * 5,
-    badChance: 0.26,
-    goldChance: 0.3,
+    goal: 16 + (stage - 4) * 3,
+    duration: 32,
+    spawnMs: Math.max(360, 500 - (stage - 4) * 28),
+    minSpeed: Math.min(46, 30 + (stage - 4) * 3),
+    maxSpeed: Math.min(60, 40 + (stage - 4) * 4),
+    badChance: 0.24,
+    goldChance: 0.28,
     comboEnabled: true,
   };
 }
@@ -261,12 +261,14 @@ export function mountFishCatchGame(
     `;
     overlayEl.querySelector('#mg-next-stage')?.addEventListener('click', () => {
       overlayEl.classList.add('hidden');
+      clearFallingItems();
       stage = nextStage;
       stageCaught = 0;
       const cfg = getFishStageConfig(stage);
       timeLeft = cfg.duration;
+      lastFrame = performance.now();
       paused = false;
-      restartSpawner();
+      restartSpawner(true);
       updateHud();
     });
     overlayEl.querySelector('#mg-finish-now')?.addEventListener('click', () => {
@@ -348,13 +350,19 @@ export function mountFishCatchGame(
     items.push(item);
   };
 
-  const restartSpawner = () => {
-    if (spawnTimer !== null) clearInterval(spawnTimer);
+  const restartSpawner = (spawnImmediate = true) => {
+    if (spawnTimer !== null) {
+      clearInterval(spawnTimer);
+      spawnTimer = null;
+    }
     const cfg = getFishStageConfig(stage);
+    if (spawnImmediate && !stopped && !paused) {
+      spawnItem();
+    }
     spawnTimer = window.setInterval(spawnItem, cfg.spawnMs);
   };
 
-  restartSpawner();
+  restartSpawner(true);
   updateHud();
 
   const countdownTimer = window.setInterval(() => {
@@ -372,25 +380,31 @@ export function mountFishCatchGame(
 
   const tick = (now: number) => {
     if (stopped) return;
-    const dt = Math.min(0.05, (now - lastFrame) / 1000);
+    const dt = Math.min(0.05, Math.max(0, (now - lastFrame) / 1000));
     lastFrame = now;
 
     if (!paused) {
       for (let i = items.length - 1; i >= 0; i--) {
+        if (stopped || paused) break;
         const item = items[i];
+        if (!item) continue;
         item.y += item.speed * dt;
         item.el.style.top = `${item.y}%`;
 
         if (item.y >= 79 && item.y <= 92 && Math.abs(item.x - basketX) < 13) {
           collectItem(item);
+          if (paused || stopped) break;
         } else if (item.y > 104) {
           if (!item.isBad) combo = 0;
           item.el.remove();
-          items.splice(i, 1);
+          const curIdx = items.indexOf(item);
+          if (curIdx >= 0) items.splice(curIdx, 1);
         }
       }
     }
-    rafId = requestAnimationFrame(tick);
+    if (!stopped) {
+      rafId = requestAnimationFrame(tick);
+    }
   };
   rafId = requestAnimationFrame(tick);
 

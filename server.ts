@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -287,9 +288,39 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('/{*splat}', (_req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    const distIndexPath = path.join(distPath, 'index.html');
+    const defaultOgOrigin =
+      'https://ais-pre-ut2qpnagl7anrwreyl65as-277512564730.us-west2.run.app';
+    let cachedIndexHtml: string | null = null;
+
+    app.use(express.static(distPath, { index: false }));
+    app.get('/{*splat}', (req, res) => {
+      if (!cachedIndexHtml) {
+        cachedIndexHtml = fs.readFileSync(distIndexPath, 'utf-8');
+      }
+      const envOrigin = process.env.APP_URL?.trim().replace(/\/+$/, '');
+      const rawHost = String(
+        req.headers['x-forwarded-host'] || req.headers.host || ''
+      )
+        .split(',')[0]
+        .trim();
+      const rawProto = String(
+        req.headers['x-forwarded-proto'] || req.protocol || 'https'
+      )
+        .split(',')[0]
+        .trim();
+      const isLocalHost =
+        !rawHost ||
+        rawHost.startsWith('localhost') ||
+        rawHost.startsWith('127.0.0.1') ||
+        rawHost.startsWith('0.0.0.0');
+      const resolvedOrigin =
+        envOrigin || (!isLocalHost ? `${rawProto}://${rawHost}` : defaultOgOrigin);
+      const html =
+        resolvedOrigin && resolvedOrigin !== defaultOgOrigin
+          ? cachedIndexHtml.split(defaultOgOrigin).join(resolvedOrigin)
+          : cachedIndexHtml;
+      res.type('html').send(html);
     });
   }
 

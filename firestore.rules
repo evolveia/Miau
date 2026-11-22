@@ -163,15 +163,35 @@ service cloud.firestore {
         && data.createdAt is timestamp;
     }
 
+    function isValidGameScoreMap(m) {
+      return m is map
+        && m.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy'])
+        && (!('fish' in m) || (m.fish is int && m.fish >= 0 && m.fish <= 10000000))
+        && (!('memory' in m) || (m.memory is int && m.memory >= 0 && m.memory <= 10000000))
+        && (!('escape' in m) || (m.escape is int && m.escape >= 0 && m.escape <= 10000000))
+        && (!('galaxy' in m) || (m.galaxy is int && m.galaxy >= 0 && m.galaxy <= 10000000));
+    }
+
+    function isValidGameStageMap(m) {
+      return m is map
+        && m.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy'])
+        && (!('fish' in m) || (m.fish is int && m.fish >= 1 && m.fish <= 999))
+        && (!('memory' in m) || (m.memory is int && m.memory >= 1 && m.memory <= 999))
+        && (!('escape' in m) || (m.escape is int && m.escape >= 1 && m.escape <= 999))
+        && (!('galaxy' in m) || (m.galaxy is int && m.galaxy >= 1 && m.galaxy <= 999));
+    }
+
     function isValidRankingEntry(data, userId) {
       return data.keys().hasAll(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'updatedAt'])
-        && data.keys().hasOnly(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'gameScores', 'gameStages', 'updatedAt'])
         && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
         && data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 40
         && data.petName is string && data.petName.size() >= 1 && data.petName.size() <= 32
         && data.totalScore is int && data.totalScore >= 0 && data.totalScore <= 50000000
         && data.bestStage is int && data.bestStage >= 1 && data.bestStage <= 999
         && data.coinsEarned is int && data.coinsEarned >= 0 && data.coinsEarned <= 50000000
+        && (!('gameScores' in data) || isValidGameScoreMap(data.gameScores))
+        && (!('gameStages' in data) || isValidGameStageMap(data.gameStages))
         && data.updatedAt is timestamp;
     }
 

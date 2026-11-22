@@ -59,31 +59,65 @@ export function mountInteractiveBall(
     if (disposed || animating) return;
     animating = true;
 
+    resetTransforms();
+
+    let targetDx = -110;
+    let targetDy = -36;
+    if (sprite && characterWrapEl) {
+      const ballRect = sprite.getBoundingClientRect();
+      const catRect = characterWrapEl.getBoundingClientRect();
+      if (ballRect.width > 0 && catRect.width > 0) {
+        const ballCx = ballRect.left + ballRect.width / 2;
+        const ballCy = ballRect.top + ballRect.height / 2;
+        const catTargetX = catRect.left + catRect.width * 0.56;
+        const catTargetY = catRect.top + catRect.height * 0.62;
+        targetDx = catTargetX - ballCx;
+        targetDy = catTargetY - ballCy;
+      }
+    }
+
     const start = performance.now();
-    const durationMs = 920;
+    const durationMs = 960;
+    const hitT = 0.56;
 
     const tick = (now: number) => {
       if (disposed) return;
       const t = Math.min(1, (now - start) / durationMs);
 
-      // Parabolic bounce arc toward center stage then back
-      const arcX = -Math.sin(t * Math.PI) * 92;
-      const bounce1 = t < 0.55 ? Math.sin((t / 0.55) * Math.PI) * 115 : Math.sin(((t - 0.55) / 0.45) * Math.PI) * 42;
+      let curX = 0;
+      let curY = 0;
+      if (t <= hitT) {
+        const p = t / hitT;
+        const easeOut = 1 - Math.pow(1 - p, 2);
+        curX = targetDx * easeOut;
+        const arcLift = Math.sin(p * Math.PI) * 95;
+        curY = targetDy * easeOut - arcLift;
+      } else {
+        const p = (t - hitT) / (1 - hitT);
+        const easeInOut = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        curX = targetDx * (1 - easeInOut);
+        const reboundArc = Math.sin(p * Math.PI) * 52;
+        curY = targetDy * (1 - easeInOut) - reboundArc;
+      }
+
       const rot = t * 540;
+      const scale = 1 + Math.sin(t * Math.PI) * 0.16;
 
       if (sprite) {
-        sprite.style.transform = `translate(${arcX}px, ${-bounce1}px) rotate(${rot}deg) scale(${1 + Math.sin(t * Math.PI) * 0.16})`;
+        sprite.style.transform = `translate(${curX.toFixed(1)}px, ${curY.toFixed(1)}px) rotate(${rot.toFixed(1)}deg) scale(${scale.toFixed(3)})`;
       }
       if (shadow) {
-        const sScale = Math.max(0.45, 1 - bounce1 / 170);
-        shadow.style.transform = `translateX(${arcX}px) scale(${sScale})`;
+        const liftFactor = Math.max(0, -curY);
+        const sScale = Math.max(0.45, 1 - liftFactor / 210);
+        shadow.style.transform = `translateX(${curX.toFixed(1)}px) scale(${sScale.toFixed(3)})`;
       }
       if (characterWrapEl) {
-        // Miau dashes happily toward the ball and hops
-        const catX = Math.sin(t * Math.PI) * 34;
+        // Miau leans toward the ball and hops happily when catching it
+        const approach = Math.sin(t * Math.PI);
+        const catDx = (targetDx < 0 ? 1 : -1) * approach * Math.min(48, Math.abs(targetDx) * 0.22);
         const catHop = Math.abs(Math.sin(t * Math.PI * 2)) * 22;
         characterWrapEl.style.transition = 'none';
-        characterWrapEl.style.transform = `translate(${catX}px, ${-catHop}px) rotate(${Math.sin(t * Math.PI * 2) * 5}deg)`;
+        characterWrapEl.style.transform = `translate(${catDx.toFixed(1)}px, ${(-catHop).toFixed(1)}px) rotate(${(Math.sin(t * Math.PI * 2) * 5).toFixed(2)}deg)`;
       }
 
       if (t < 1) {

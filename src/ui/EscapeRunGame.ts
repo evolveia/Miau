@@ -37,10 +37,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   if (stage === 1) {
     return {
       name: 'Estrada Ensolarada',
-      goalDist: 280,
-      baseSpeed: 0.24,
-      spawnInterval: 1.18,
-      hazardRate: 0.42,
+      goalDist: 220,
+      baseSpeed: 0.16,
+      spawnInterval: 1.45,
+      hazardRate: 0.35,
       skyTop: '#60a5fa',
       skyBottom: '#dbeafe',
       horizonColor: '#86efac',
@@ -53,10 +53,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   if (stage === 2) {
     return {
       name: 'Pôr do Sol Dourado',
-      goalDist: 420,
-      baseSpeed: 0.33,
-      spawnInterval: 0.94,
-      hazardRate: 0.52,
+      goalDist: 340,
+      baseSpeed: 0.22,
+      spawnInterval: 1.18,
+      hazardRate: 0.45,
       skyTop: '#7c3aed',
       skyBottom: '#fb923c',
       horizonColor: '#fdba74',
@@ -69,10 +69,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   if (stage === 3) {
     return {
       name: 'Rodovia Neon Noturna',
-      goalDist: 600,
-      baseSpeed: 0.44,
-      spawnInterval: 0.74,
-      hazardRate: 0.6,
+      goalDist: 480,
+      baseSpeed: 0.29,
+      spawnInterval: 0.96,
+      hazardRate: 0.54,
       skyTop: '#0f172a',
       skyBottom: '#4c1d95',
       horizonColor: '#a855f7',
@@ -84,10 +84,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   }
   return {
     name: 'Autoestrada Cósmica',
-    goalDist: 760 + (stage - 4) * 180,
-    baseSpeed: Math.min(0.84, 0.54 + (stage - 4) * 0.06),
-    spawnInterval: Math.max(0.42, 0.62 - (stage - 4) * 0.04),
-    hazardRate: 0.64,
+    goalDist: 620 + (stage - 4) * 150,
+    baseSpeed: Math.min(0.56, 0.35 + (stage - 4) * 0.04),
+    spawnInterval: Math.max(0.55, 0.82 - (stage - 4) * 0.05),
+    hazardRate: 0.6,
     skyTop: '#020617',
     skyBottom: '#312e81',
     horizonColor: '#22d3ee',
@@ -118,8 +118,9 @@ export function mountEscapeRunGame(
   let lives = 3;
   let stageDist = 0;
   let totalElapsedSec = 0;
-  let playerLane: 0 | 1 | 2 = 1;
-  let visualLaneX = 0; // -1 (left), 0 (center), 1 (right)
+  let targetRoadX = 0; // -1 (left) to +1 (right)
+  let visualLaneX = 0; // smooth interpolated position in [-1, 1]
+  let moveDir = 0; // optional keyboard steering (-1, 0, 1)
   let wheelAngle = 0;
   let targetWheelAngle = 0;
   let turboTimer = 0;
@@ -128,7 +129,7 @@ export function mountEscapeRunGame(
   let miauMoodTimer = 0;
   let miauExpr: 'happy' | 'oops' | 'turbo' = 'happy';
   let roadScroll = 0;
-  let spawnAccum = 0;
+  let spawnAccum = getEscapeStageConfig(1).spawnInterval * 0.65;
   let nextId = 1;
   let paused = false;
   let ended = false;
@@ -156,7 +157,7 @@ export function mountEscapeRunGame(
 
       <div class="grid grid-cols-4 gap-1 bg-white/85 rounded-2xl px-2.5 py-1.5 text-[11px] font-extrabold text-[#4c2a85] border border-purple-100 shadow-sm shrink-0">
         <div>Pontos: <span id="er-score" class="text-purple-700">0</span></div>
-        <div class="text-center">Meta: <span id="er-dist" class="text-sky-700">0/280m</span></div>
+        <div class="text-center">Meta: <span id="er-dist" class="text-sky-700">0/220m</span></div>
         <div class="text-center" id="er-lives">❤️❤️❤️</div>
         <div class="text-right">⏱️ <span id="er-time">00:00</span></div>
       </div>
@@ -165,7 +166,7 @@ export function mountEscapeRunGame(
         <div id="er-goal-bar" class="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-fuchsia-500 transition-all duration-150" style="width: 0%"></div>
       </div>
 
-      <div id="er-canvas-wrap" class="relative flex-1 min-h-[240px] w-full rounded-3xl overflow-hidden border-2 border-white shadow-inner bg-slate-900 touch-none">
+      <div id="er-canvas-wrap" class="relative flex-1 min-h-[240px] w-full rounded-3xl overflow-hidden border-2 border-white shadow-inner bg-slate-900 touch-none cursor-ew-resize">
         <canvas id="er-canvas" class="w-full h-full block"></canvas>
         <div id="er-overlay" class="hidden absolute inset-0 bg-[#1e1038]/85 flex flex-col items-center justify-center p-4 text-center z-10">
           <div id="er-ov-emoji" class="text-4xl mb-1">🏁</div>
@@ -175,10 +176,9 @@ export function mountEscapeRunGame(
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-2 shrink-0">
-        <button id="er-btn-left" type="button" class="py-2.5 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-base shadow-sm active:scale-95 transition touch-none">⬅️ Esq</button>
-        <button id="er-btn-turbo" type="button" class="py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-display font-bold text-xs shadow-sm active:scale-95 transition touch-none">⚡ Turbo</button>
-        <button id="er-btn-right" type="button" class="py-2.5 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-base shadow-sm active:scale-95 transition touch-none">Dir ➡️</button>
+      <div class="flex items-center justify-between gap-2 shrink-0">
+        <span class="flex-1 text-[11px] font-bold text-[#6b4d9e] bg-white/80 border border-purple-100 rounded-2xl px-3 py-2 text-center truncate">👆 Toque ou deslize na pista para dirigir</span>
+        <button id="er-btn-turbo" type="button" class="px-5 py-2 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-display font-bold text-xs shadow-sm active:scale-95 transition touch-none shrink-0">⚡ Turbo</button>
       </div>
     </div>
   `;
@@ -231,15 +231,12 @@ export function mountEscapeRunGame(
     goalBarEl.style.width = `${pct}%`;
   };
 
-  const steer = (dir: -1 | 1) => {
+  const setRoadTargetFromPointer = (clientX: number) => {
     if (paused || ended) return;
-    const next = Math.max(0, Math.min(2, playerLane + dir)) as 0 | 1 | 2;
-    if (next !== playerLane) {
-      playerLane = next;
-      targetWheelAngle = dir * 0.55;
-      soundService.playMeow(dir > 0 ? 1.25 : 1.12);
-      hapticService.tap();
-    }
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0) return;
+    const norm = ((clientX - rect.left) / rect.width) * 2 - 1; // -1..1 across canvas
+    targetRoadX = Math.max(-1, Math.min(1, norm * 1.18));
   };
 
   const activateManualBoost = () => {
@@ -329,6 +326,7 @@ export function mountEscapeRunGame(
       stage += 1;
       stageDist = 0;
       entities = [];
+      spawnAccum = getEscapeStageConfig(stage).spawnInterval * 0.65;
       turboTimer = 0;
       invulnTimer = 1.0;
       paused = false;
@@ -741,10 +739,14 @@ export function mountEscapeRunGame(
       stageDist += dt * speed * 62;
       score += Math.round(dt * 12 * speedMult);
 
-      const targetX = playerLane - 1;
-      visualLaneX += (targetX - visualLaneX) * Math.min(1, dt * 12);
-      wheelAngle += (targetWheelAngle - wheelAngle) * Math.min(1, dt * 10);
-      targetWheelAngle *= Math.pow(0.08, dt);
+      if (moveDir !== 0) {
+        targetRoadX = Math.max(-1, Math.min(1, targetRoadX + moveDir * 1.9 * dt));
+      }
+      const prevVisualX = visualLaneX;
+      visualLaneX += (targetRoadX - visualLaneX) * Math.min(1, dt * 14);
+      const steerDelta = (targetRoadX - prevVisualX);
+      targetWheelAngle = Math.max(-0.65, Math.min(0.65, steerDelta * 1.1));
+      wheelAngle += (targetWheelAngle - wheelAngle) * Math.min(1, dt * 12);
 
       spawnAccum += dt * (turboTimer > 0 ? 1.35 : 1);
       if (spawnAccum >= cfg.spawnInterval) {
@@ -754,9 +756,15 @@ export function mountEscapeRunGame(
 
       for (const ent of entities) {
         ent.z += dt * speed * 0.92;
-        if (!ent.hit && ent.z >= 0.86 && ent.z <= 1.03 && ent.lane === playerLane) {
+        const laneCenter = ent.lane - 1;
+        if (
+          !ent.hit &&
+          ent.z >= 0.85 &&
+          ent.z <= 1.03 &&
+          Math.abs(visualLaneX - laneCenter) < 0.44
+        ) {
           ent.hit = true;
-          const hitX = width * 0.5 + (ent.lane - 1) * 70;
+          const hitX = width * 0.5 + laneCenter * 70;
           const hitY = height * 0.62;
           if (ent.kind === 'coin') {
             coinsCollected += 1;
@@ -818,72 +826,56 @@ export function mountEscapeRunGame(
     rafId = requestAnimationFrame(loop);
   };
 
-  // Touch swipe & tap on canvas
-  let pointerStartX: number | null = null;
-  let lastSteerX: number | null = null;
-  let didSwipeSteer = false;
+  // Smooth continuous touch & drag steering (like Miau Galáxia)
+  let dragging = false;
 
   const onPointerDown = (e: PointerEvent) => {
+    dragging = true;
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch {
       // Ignore synthetic events
     }
-    pointerStartX = e.clientX;
-    lastSteerX = e.clientX;
-    didSwipeSteer = false;
+    setRoadTargetFromPointer(e.clientX);
   };
   const onPointerMove = (e: PointerEvent) => {
-    if (lastSteerX === null) return;
-    const dx = e.clientX - lastSteerX;
-    if (Math.abs(dx) >= 28) {
-      steer(dx > 0 ? 1 : -1);
-      lastSteerX = e.clientX;
-      didSwipeSteer = true;
-    }
+    if (!dragging) return;
+    setRoadTargetFromPointer(e.clientX);
   };
-  const onPointerUp = (e: PointerEvent) => {
-    if (pointerStartX === null) return;
-    const dx = e.clientX - pointerStartX;
-    pointerStartX = null;
-    lastSteerX = null;
-    if (!didSwipeSteer) {
-      if (Math.abs(dx) > 22) {
-        steer(dx > 0 ? 1 : -1);
-      } else {
-        const rect = canvas.getBoundingClientRect();
-        const relX = e.clientX - rect.left;
-        steer(relX < rect.width / 2 ? -1 : 1);
-      }
-    }
+  const onPointerUp = () => {
+    dragging = false;
   };
-  const onPointerCancel = () => {
-    pointerStartX = null;
-    lastSteerX = null;
-    didSwipeSteer = false;
+  const resetInputs = () => {
+    dragging = false;
+    moveDir = 0;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
       e.preventDefault();
-      steer(-1);
+      moveDir = -1;
     } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
       e.preventDefault();
-      steer(1);
+      moveDir = 1;
     } else if (e.key === ' ' || e.key === 'ArrowUp') {
       e.preventDefault();
       activateManualBoost();
     }
   };
+  const onKeyUp = (e: KeyboardEvent) => {
+    if (
+      (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') &&
+      moveDir === -1
+    ) {
+      moveDir = 0;
+    } else if (
+      (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') &&
+      moveDir === 1
+    ) {
+      moveDir = 0;
+    }
+  };
 
-  const onLeftPress = (e: PointerEvent) => {
-    e.preventDefault();
-    steer(-1);
-  };
-  const onRightPress = (e: PointerEvent) => {
-    e.preventDefault();
-    steer(1);
-  };
   const onTurboPress = (e: PointerEvent) => {
     e.preventDefault();
     activateManualBoost();
@@ -891,16 +883,14 @@ export function mountEscapeRunGame(
 
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
-  canvas.addEventListener('pointerup', onPointerUp);
-  canvas.addEventListener('pointercancel', onPointerCancel);
+  canvas.addEventListener('pointercancel', resetInputs);
+  window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('blur', resetInputs);
   window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
   window.addEventListener('resize', resizeCanvas);
 
-  const leftBtn = container.querySelector('#er-btn-left');
-  const rightBtn = container.querySelector('#er-btn-right');
   const turboBtn = container.querySelector('#er-btn-turbo');
-  leftBtn?.addEventListener('pointerdown', onLeftPress as EventListener);
-  rightBtn?.addEventListener('pointerdown', onRightPress as EventListener);
   turboBtn?.addEventListener('pointerdown', onTurboPress as EventListener);
 
   muteBtn?.addEventListener('click', () => {
@@ -931,9 +921,11 @@ export function mountEscapeRunGame(
     resizeObserver?.disconnect();
     canvas.removeEventListener('pointerdown', onPointerDown);
     canvas.removeEventListener('pointermove', onPointerMove);
-    canvas.removeEventListener('pointerup', onPointerUp);
-    canvas.removeEventListener('pointercancel', onPointerCancel);
+    canvas.removeEventListener('pointercancel', resetInputs);
+    window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('blur', resetInputs);
     window.removeEventListener('keydown', onKeyDown);
+    window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('resize', resizeCanvas);
   };
 }

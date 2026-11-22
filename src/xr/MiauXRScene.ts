@@ -1391,17 +1391,16 @@ export class MiauXRScene extends xb.Script {
       }
       this.ballVel.set(_ballImpulse.x, 2.25, _ballImpulse.z);
     } else {
-      // Throw dynamically away from Miau or around the rug
-      const angle = Math.atan2(
-        this.petPos.z - this.ballPos.z,
-        this.petPos.x - this.ballPos.x
-      );
-      const throwAngle = angle + Math.PI + (Math.random() - 0.5) * 1.4;
-      const speed = 1.45 + Math.random() * 0.55;
+      // Throw directly toward Miau so the ball always heads to the cat
+      const dx = this.petPos.x - this.ballPos.x;
+      const dz = this.petPos.z - this.ballPos.z;
+      const dist = Math.hypot(dx, dz);
+      const angleToPet = Math.atan2(dz, dx) + (Math.random() - 0.5) * 0.24;
+      const speed = THREE.MathUtils.clamp(dist * 1.95, 1.15, 2.25);
       this.ballVel.set(
-        Math.cos(throwAngle) * speed,
-        2.35,
-        Math.sin(throwAngle) * speed
+        Math.cos(angleToPet) * speed,
+        2.1,
+        Math.sin(angleToPet) * speed
       );
     }
 

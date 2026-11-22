@@ -53,8 +53,8 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
       name: 'Órbita Lunar',
       rows: 2,
       cols: 5,
-      enemySpeed: 18,
-      fireRateSec: 2.35,
+      enemySpeed: 12,
+      fireRateSec: 2.8,
       hasBoss: false,
       armoredChance: 0,
     };
@@ -64,10 +64,10 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
       name: 'Cinturão de Asteroides',
       rows: 3,
       cols: 5,
-      enemySpeed: 28,
-      fireRateSec: 1.8,
+      enemySpeed: 19,
+      fireRateSec: 2.2,
       hasBoss: false,
-      armoredChance: 0.35,
+      armoredChance: 0.3,
     };
   }
   if (stage === 3) {
@@ -75,20 +75,20 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
       name: 'Nave-Mãe Queijo',
       rows: 2,
       cols: 5,
-      enemySpeed: 38,
-      fireRateSec: 1.35,
+      enemySpeed: 26,
+      fireRateSec: 1.65,
       hasBoss: true,
-      armoredChance: 0.45,
+      armoredChance: 0.42,
     };
   }
   return {
     name: 'Galáxia Infinita',
     rows: Math.min(4, 2 + Math.floor((stage - 2) / 2)),
     cols: 6,
-    enemySpeed: Math.min(72, 46 + (stage - 3) * 6),
-    fireRateSec: Math.max(0.75, 1.15 - (stage - 3) * 0.08),
+    enemySpeed: Math.min(54, 32 + (stage - 3) * 5),
+    fireRateSec: Math.max(0.95, 1.4 - (stage - 3) * 0.08),
     hasBoss: true,
-    armoredChance: 0.55,
+    armoredChance: 0.52,
   };
 }
 
@@ -587,7 +587,7 @@ export function mountGalaxyRatGame(
       }
       if (hitEdge) {
         enemyDir *= -1;
-        const dropStep = stage === 1 ? 8 : 11;
+        const dropStep = stage === 1 ? 6 : stage === 2 ? 8 : 10;
         for (const r of rats) {
           r.y += dropStep;
           r.x = Math.max(r.w / 2 + 8, Math.min(width - r.w / 2 - 8, r.x));
@@ -610,7 +610,7 @@ export function mountGalaxyRatGame(
           x: shooter.x,
           y: shooter.y + shooter.h / 2,
           vx: 0,
-          vy: 110 + stage * 14,
+          vy: 82 + stage * 12,
           fromPlayer: false,
         });
       }

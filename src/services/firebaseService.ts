@@ -834,16 +834,35 @@ export async function saveSettings(
   );
 }
 
+function sanitizeRankingGameMap(
+  raw: unknown,
+  minVal: number,
+  maxVal: number
+): Partial<Record<GameId, number>> {
+  const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const out: Partial<Record<GameId, number>> = {};
+  for (const id of ['fish', 'memory', 'escape', 'galaxy'] as const) {
+    const val = Number(src[id]);
+    if (Number.isFinite(val)) {
+      out[id] = Math.max(minVal, Math.min(maxVal, Math.round(val)));
+    }
+  }
+  return out;
+}
+
 export async function upsertRankingEntry(
   uid: string,
   entry: Omit<RankingEntry, 'id' | 'updatedAtMs'>
 ): Promise<void> {
   const path = `rankings/${uid}`;
   try {
-    const safeName = (entry.playerName || 'Jogador')
-      .replace(/@.*/, '')
-      .trim()
-      .slice(0, 40) || 'Jogador';
+    const safeName =
+      (entry.playerName || 'Jogador')
+        .replace(/@.*/, '')
+        .trim()
+        .slice(0, 40) || 'Jogador';
+    const gameScores = sanitizeRankingGameMap(entry.gameScores, 0, 10000000);
+    const gameStages = sanitizeRankingGameMap(entry.gameStages, 1, 999);
     await setDoc(doc(db, 'rankings', uid), {
       ownerId: uid,
       playerName: safeName,
@@ -851,6 +870,8 @@ export async function upsertRankingEntry(
       totalScore: Math.max(0, Math.min(50000000, Math.round(entry.totalScore))),
       bestStage: Math.max(1, Math.min(999, Math.round(entry.bestStage))),
       coinsEarned: Math.max(0, Math.min(50000000, Math.round(entry.coinsEarned))),
+      gameScores,
+      gameStages,
       updatedAt: serverTimestamp(),
     });
   } catch (error) {
@@ -876,6 +897,12 @@ export async function loadTopRankings(maxCount = 20): Promise<RankingEntry[]> {
         totalScore: Number(d.totalScore || 0),
         bestStage: Number(d.bestStage || 1),
         coinsEarned: Number(d.coinsEarned || 0),
+        gameScores: d.gameScores
+          ? sanitizeRankingGameMap(d.gameScores, 0, 10000000)
+          : undefined,
+        gameStages: d.gameStages
+          ? sanitizeRankingGameMap(d.gameStages, 1, 999)
+          : undefined,
         updatedAtMs: d.updatedAt?.toMillis?.() ?? Date.now(),
       });
     });

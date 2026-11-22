@@ -82,7 +82,7 @@ function getMemoryStageConfig(stage: number): {
       padCount: 4,
       seqLen: 3,
       rounds: 3,
-      stepMs: 620,
+      stepMs: 760,
     };
   }
   if (stage === 2) {
@@ -91,7 +91,7 @@ function getMemoryStageConfig(stage: number): {
       padCount: 5,
       seqLen: 4,
       rounds: 3,
-      stepMs: 540,
+      stepMs: 640,
     };
   }
   if (stage === 3) {
@@ -100,7 +100,7 @@ function getMemoryStageConfig(stage: number): {
       padCount: 6,
       seqLen: 6,
       rounds: 3,
-      stepMs: 440,
+      stepMs: 520,
     };
   }
   return {
@@ -108,7 +108,7 @@ function getMemoryStageConfig(stage: number): {
     padCount: 6,
     seqLen: 7 + (stage - 4),
     rounds: 3,
-    stepMs: Math.max(290, 390 - (stage - 4) * 20),
+    stepMs: Math.max(340, 460 - (stage - 4) * 20),
   };
 }
 

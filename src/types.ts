@@ -65,6 +65,18 @@ export interface GameStatsRecord {
   plays: number;
 }
 
+export interface GameMatchHistoryItem {
+  id: string;
+  gameId: GameId;
+  gameName: string;
+  score: number;
+  stageReached: number;
+  durationSec: number;
+  coinsEarned: number;
+  performanceTier: 'bronze' | 'silver' | 'gold';
+  playedAtMs: number;
+}
+
 export interface RankingEntry {
   id: string;
   playerName: string;
@@ -72,6 +84,8 @@ export interface RankingEntry {
   totalScore: number;
   bestStage: number;
   coinsEarned: number;
+  gameScores?: Partial<Record<GameId, number>>;
+  gameStages?: Partial<Record<GameId, number>>;
   isCurrentUser?: boolean;
   updatedAtMs: number;
 }
