@@ -281,10 +281,6 @@ async function startServer() {
         middlewareMode: true,
         allowedHosts: true,
         hmr: false,
-        ws: {
-          server,
-          path: '/__vite_hmr',
-        },
       },
       appType: 'spa',
     });
@@ -305,6 +301,8 @@ async function startServer() {
       wss.handleUpgrade(req, socket, head, (ws) => {
         wss.emit('connection', ws, req);
       });
+    } else {
+      socket.destroy();
     }
   });
 

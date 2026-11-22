@@ -466,6 +466,23 @@ function isValidExistingUserDoc(
   return true;
 }
 
+const userWriteQueues = new Map<string, Promise<void>>();
+
+function enqueueUserWrite<T>(uid: string, task: () => Promise<T>): Promise<T> {
+  const prev = userWriteQueues.get(uid) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(task);
+  const tracked = run.then(
+    () => undefined,
+    () => undefined
+  );
+  userWriteQueues.set(uid, tracked);
+  return run.finally(() => {
+    if (userWriteQueues.get(uid) === tracked) {
+      userWriteQueues.delete(uid);
+    }
+  });
+}
+
 export async function loadOrCreatePetProfile(
   user: User
 ): Promise<UserPetProfile> {
@@ -476,40 +493,48 @@ export async function loadOrCreatePetProfile(
 
   let snap;
   try {
-    snap = await getDoc(userRef);
-  } catch (error) {
-    handleFirestoreError(error, OperationType.GET, userPath);
+    snap = await getDocFromServer(userRef);
+  } catch {
+    try {
+      snap = await getDoc(userRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, userPath);
+    }
   }
 
   if (snap.exists()) {
     const raw = snap.data() as Record<string, unknown>;
     const sanitized = sanitizeProfile(raw as Partial<UserPetProfile>, user.uid);
     if (!isValidExistingUserDoc(raw, user.uid)) {
-      try {
-        await setDoc(userRef, {
-          ...sanitized,
-          createdAt: isFirestoreTimestamp(raw.createdAt)
-            ? raw.createdAt
-            : serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } catch (error) {
-        console.warn('Falha ao normalizar perfil legado no Firestore:', error);
-      }
+      await enqueueUserWrite(user.uid, async () => {
+        try {
+          await setDoc(userRef, {
+            ...sanitized,
+            createdAt: isFirestoreTimestamp(raw.createdAt)
+              ? raw.createdAt
+              : serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (error) {
+          console.warn('Falha ao normalizar perfil legado no Firestore:', error);
+        }
+      });
     }
     return sanitized;
   }
 
   const initial = sanitizeProfile(createDefaultProfile(user.uid), user.uid);
-  try {
-    await setDoc(userRef, {
-      ...initial,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  } catch (error) {
-    handleFirestoreError(error, OperationType.CREATE, userPath);
-  }
+  await enqueueUserWrite(user.uid, async () => {
+    try {
+      await setDoc(userRef, {
+        ...initial,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, userPath);
+    }
+  });
 
   try {
     await setDoc(privateRef, {
@@ -554,76 +579,125 @@ function diagnoseUserDocMismatch(
   return 'validExistingDoc';
 }
 
+function buildRepairedDocPayload(
+  raw: Record<string, unknown> | null,
+  payload: Record<string, unknown>,
+  fullProfileFallback: Partial<UserPetProfile>,
+  uid: string
+): Record<string, unknown> {
+  const baseRaw = raw ? (raw as Partial<UserPetProfile>) : fullProfileFallback;
+  const payloadWithoutTs: Partial<UserPetProfile> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (k !== 'updatedAt' && k !== 'createdAt') {
+      (payloadWithoutTs as Record<string, unknown>)[k] = v;
+    }
+  }
+  const merged = sanitizeProfile(
+    {
+      ...baseRaw,
+      ...payloadWithoutTs,
+      ownerId: uid,
+    },
+    uid
+  );
+  // Preserve existing valid ownedItems unless ownedItems was explicitly updated or missing
+  if (
+    raw &&
+    !('ownedItems' in payloadWithoutTs) &&
+    Array.isArray(raw.ownedItems) &&
+    raw.ownedItems.length >= 1
+  ) {
+    const preservedOwned = sanitizeStringList(raw.ownedItems, 50, 64);
+    if (preservedOwned.length >= 1) {
+      merged.ownedItems = preservedOwned;
+    }
+  }
+  return {
+    ...merged,
+    createdAt:
+      raw && isFirestoreTimestamp(raw.createdAt)
+        ? raw.createdAt
+        : serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+}
+
 async function updateUserDocWithLegacyRepair(
   uid: string,
   path: string,
   payload: Record<string, unknown>,
   fullProfileFallback: Partial<UserPetProfile>
 ): Promise<void> {
-  const userRef = doc(db, 'users', uid);
-  try {
-    await updateDoc(userRef, payload);
-  } catch (error) {
-    const errCode = (error as { code?: string })?.code || '';
-    const errMsg = error instanceof Error ? error.message : String(error);
-    const isPermissionError =
-      errCode === 'permission-denied' ||
-      errMsg.includes('Missing or insufficient permissions') ||
-      errMsg.includes('PERMISSION_DENIED');
+  return enqueueUserWrite(uid, async () => {
+    const userRef = doc(db, 'users', uid);
+    try {
+      await updateDoc(userRef, payload);
+    } catch (error) {
+      const errCode = (error as { code?: string })?.code || '';
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const isPermissionError =
+        errCode === 'permission-denied' ||
+        errMsg.includes('Missing or insufficient permissions') ||
+        errMsg.includes('PERMISSION_DENIED');
 
-    let diag = '';
-    if (isPermissionError && auth.currentUser?.uid === uid) {
-      try {
-        let snap;
+      let diag = '';
+      if (isPermissionError && auth.currentUser?.uid === uid) {
         try {
-          snap = await getDocFromServer(userRef);
-        } catch {
-          snap = await getDoc(userRef);
-        }
-        const raw = snap.exists()
-          ? (snap.data() as Record<string, unknown>)
-          : null;
-        diag = diagnoseUserDocMismatch(raw, uid);
-        if (diag !== 'validExistingDoc') {
-          const merged = sanitizeProfile(
-            {
-              ...(raw as Partial<UserPetProfile> | null),
-              ...fullProfileFallback,
-              ownerId: uid,
-            },
-            uid
+          let snap;
+          let fromServer = true;
+          try {
+            snap = await getDocFromServer(userRef);
+          } catch {
+            fromServer = false;
+            snap = await getDoc(userRef);
+          }
+          const raw = snap.exists()
+            ? (snap.data() as Record<string, unknown>)
+            : null;
+          diag = diagnoseUserDocMismatch(raw, uid);
+
+          // If read from local cache while a serverTimestamp write was pending,
+          // updatedAt/createdAt may temporarily appear null locally; avoid
+          // clobbering createdAt with serverTimestamp() unless confirmed by server.
+          const isLocalPendingTimestamp =
+            !fromServer &&
+            raw !== null &&
+            (diag === 'invalid:updatedAt' || diag === 'invalid:createdAt');
+
+          if (!isLocalPendingTimestamp) {
+            const repaired = buildRepairedDocPayload(
+              raw,
+              payload,
+              fullProfileFallback,
+              uid
+            );
+            await setDoc(userRef, repaired);
+            return;
+          }
+        } catch (repairError) {
+          const repairMsg =
+            repairError instanceof Error
+              ? repairError.message
+              : String(repairError);
+          handleFirestoreError(
+            new Error(
+              `${repairMsg} [diag=${diag || 'repairFailed'},keys=${Object.keys(payload).join(',')}]`
+            ),
+            OperationType.UPDATE,
+            path
           );
-          await setDoc(userRef, {
-            ...merged,
-            createdAt:
-              raw && isFirestoreTimestamp(raw.createdAt)
-                ? raw.createdAt
-                : serverTimestamp(),
-            updatedAt: serverTimestamp(),
-          });
-          return;
         }
-      } catch (repairError) {
-        const repairMsg =
-          repairError instanceof Error
-            ? repairError.message
-            : String(repairError);
+      }
+      if (diag) {
         handleFirestoreError(
-          new Error(`${repairMsg} [diag=${diag || 'repairFailed'}]`),
+          new Error(`${errMsg} [diag=${diag},keys=${Object.keys(payload).join(',')}]`),
           OperationType.UPDATE,
           path
         );
       }
+      handleFirestoreError(error, OperationType.UPDATE, path);
     }
-    if (diag) {
-      handleFirestoreError(
-        new Error(`${errMsg} [diag=${diag}]`),
-        OperationType.UPDATE,
-        path
-      );
-    }
-    handleFirestoreError(error, OperationType.UPDATE, path);
-  }
+  });
 }
 
 export async function saveStatsProgress(

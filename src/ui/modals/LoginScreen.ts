@@ -52,8 +52,12 @@ export function renderLoginScreenHtml(params: LoginScreenRenderParams): string {
         : 'Miau';
 
   return `
-    <div class="w-full h-full miau-wallpaper flex items-center justify-center p-4 overflow-y-auto">
-      <div class="w-full max-w-[390px] min-h-[600px] glass-card rounded-[38px] p-7 flex flex-col justify-between relative">
+    <div
+      class="w-full h-full relative flex items-center justify-center p-4 overflow-y-auto"
+      style="background: linear-gradient(180deg, #e5d4ff 0%, #cdb2fb 55%, #b591f5 100%);"
+    >
+      <div class="pointer-events-none absolute inset-0 miau-wallpaper"></div>
+      <div class="w-full max-w-[390px] min-h-[600px] glass-card rounded-[38px] p-7 flex flex-col justify-between relative z-10">
         <!-- Top Brand -->
         <div class="flex flex-col items-center pt-2">
           <div class="relative w-24 h-24 rounded-full bg-white/80 border-2 border-white shadow-md flex items-center justify-center mb-3">

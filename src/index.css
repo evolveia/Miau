@@ -29,12 +29,14 @@ h3,
 
 /* Keep XR Blocks default launch & desktop simulator overlays tucked away */
 body:not(.xr-mode-active) #XRButtonWrapper,
+body:not(.xr-mode-active) > canvas,
 xrblocks-simulator-settings,
 xrblocks-simulator-instructions,
 xrblocks-simulator-overlay-instructions,
 xrblocks-simulator-hand-pose-panel,
 body:not(.xr-mode-active) #miau-xr-hud {
   display: none !important;
+  pointer-events: none !important;
 }
 
 body:not(.xr-mode-active) #miau-2d-shell {

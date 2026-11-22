@@ -3,9 +3,10 @@ export function renderPreloaderHtml(progress: number): string {
   const dashOffset = 289 - (289 * clamped) / 100;
   return `
     <div
-      class="w-full h-full miau-wallpaper flex flex-col items-center justify-center p-6 relative overflow-hidden"
-      style="background-color: transparent;"
+      class="w-full h-full flex flex-col items-center justify-center p-6 relative overflow-hidden"
+      style="background: linear-gradient(180deg, #e5d4ff 0%, #cdb2fb 55%, #b591f5 100%);"
     >
+      <div class="pointer-events-none absolute inset-0 miau-wallpaper"></div>
       <div
         class="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[155%] h-[36.5%] min-h-[210px] rounded-b-[100%] overflow-hidden"
         style="background: linear-gradient(180deg, #4b2184 0%, #552694 100%);"

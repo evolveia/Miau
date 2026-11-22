@@ -1681,7 +1681,8 @@ export class MiauAppUI {
 
     this.root.innerHTML = `
       <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#dfd0ff] via-[#cbb1fb] to-[#b896f5] md:p-4">
-        <div class="relative w-full h-full md:max-w-[440px] md:max-h-[860px] md:rounded-[42px] md:border-[6px] md:border-white/80 md:shadow-[0_24px_70px_rgba(64,33,117,0.3)] overflow-hidden flex flex-col bg-gradient-to-b ${theme.wall} ${theme.useWallpaper ? 'miau-wallpaper' : ''}">
+        <div class="relative w-full h-full md:max-w-[440px] md:max-h-[860px] md:rounded-[42px] md:border-[6px] md:border-white/80 md:shadow-[0_24px_70px_rgba(64,33,117,0.3)] overflow-hidden flex flex-col bg-gradient-to-b ${theme.wall}">
+          ${theme.useWallpaper ? '<div class="pointer-events-none absolute inset-0 miau-wallpaper z-0"></div>' : ''}
 
           <!-- Night / Sleep Dimmer -->
           <div class="pointer-events-none absolute inset-0 transition-opacity duration-500 bg-indigo-950/35 z-10 ${this.isSleeping ? 'opacity-100' : 'opacity-0'}"></div>
