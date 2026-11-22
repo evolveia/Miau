@@ -161,6 +161,22 @@ export interface ChatMessage {
   createdAtMs: number;
 }
 
+export interface ChatTemporalContext {
+  weekdayIndex: number;
+  weekdayName: string;
+  isWeekend: boolean;
+  periodOfDay: 'madrugada' | 'manhã' | 'tarde' | 'noite';
+  timeStr: string;
+  dateKey: string;
+}
+
+export interface ChatUserContext {
+  firstName: string;
+  age: number | null;
+  schooling: SchoolingLevel | '';
+  schoolingLabel: string;
+}
+
 export interface FoodItem {
   id: string;
   name: string;

@@ -186,8 +186,20 @@ service cloud.firestore {
       return !('ownerId' in data)
         || !(data.ownerId is string)
         || data.ownerId != userId
+        || !data.keys().hasOnly([
+          'ownerId', 'petName', 'coins', 'level', 'xp',
+          'stats', 'equipped', 'ownedItems', 'soundEnabled',
+          'unlockedAchievements', 'progress', 'gameRecords', 'dailyRoutine',
+          'createdAt', 'updatedAt'
+        ])
         || !('createdAt' in data)
         || !(data.createdAt is timestamp)
+        || !('updatedAt' in data)
+        || !(data.updatedAt is timestamp)
+        || !('petName' in data)
+        || !('stats' in data)
+        || !('equipped' in data)
+        || !('soundEnabled' in data)
         || !('coins' in data)
         || !(data.coins is int)
         || !('level' in data)
@@ -288,8 +300,13 @@ service cloud.firestore {
     match /rankings/{userId} {
       allow get: if isValidId(userId) && isSignedIn();
       allow list: if isSignedIn();
-      allow create, update: if isValidId(userId)
+      allow create: if isValidId(userId)
         && isOwner(userId)
+        && isValidRankingEntry(incoming(), userId)
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && incoming().ownerId == existing().ownerId
         && isValidRankingEntry(incoming(), userId)
         && incoming().updatedAt == request.time;
       allow delete: if isValidId(userId) && isOwner(userId);

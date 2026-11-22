@@ -80,18 +80,18 @@ export class UserProfileModalController {
 
     if (this.mode === 'view' && hasSaved) {
       return `
-        <div class="flex items-start justify-between gap-2 mb-3 text-left">
+        <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
           <div class="flex items-center gap-2 min-w-0">
-            <button id="btn-profile-back" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">←</button>
+            <button id="btn-profile-back" type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold text-xs shrink-0">← Voltar</button>
             <div class="min-w-0">
               <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight truncate">Perfil do Usuário 👤</h2>
               <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Seus dados salvos no jogo e aprendizado</p>
             </div>
           </div>
-          <button id="modal-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold shrink-0">✕</button>
+          <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
         </div>
 
-        <div class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
+        <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
           <div class="bg-white/95 rounded-2xl p-4 border border-purple-100 shadow-sm flex items-center gap-3.5">
             <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-purple-200 border-2 border-white shadow overflow-hidden flex items-center justify-center shrink-0">
               ${
@@ -186,18 +186,18 @@ export class UserProfileModalController {
     );
 
     return `
-      <div class="flex items-start justify-between gap-2 mb-3 text-left">
+      <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
         <div class="flex items-center gap-2 min-w-0">
-          <button id="btn-profile-back" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">←</button>
+          <button id="btn-profile-back" type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold text-xs shrink-0">← Voltar</button>
           <div class="min-w-0">
             <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight truncate">${hasSaved ? 'Editar Perfil 👤' : 'Criar Perfil 👤'}</h2>
             <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Foto, idade automática, escolaridade e região</p>
           </div>
         </div>
-        <button id="modal-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold shrink-0">✕</button>
+        <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
       </div>
 
-      <form id="user-profile-form" class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
+      <form id="user-profile-form" class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
         ${
           this.errorMessage
             ? `<div class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2">${escapeHtml(this.errorMessage)}</div>`

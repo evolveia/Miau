@@ -27,18 +27,18 @@ export function renderLearnModalHtml(
     humanProfile.fullName.trim().split(/\s+/)[0] || 'Explorador(a)';
 
   return `
-    <div class="flex items-start justify-between gap-2 mb-3 text-left">
+    <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
       <div class="flex items-center gap-2 min-w-0">
-        <button id="btn-learn-back" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">←</button>
+        <button id="btn-learn-back" type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold text-xs shrink-0">← Voltar</button>
         <div class="min-w-0">
           <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight truncate">Vamos Aprender 🎓</h2>
           <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Trilhas educativas personalizadas com o Miau</p>
         </div>
       </div>
-      <button id="modal-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold shrink-0">✕</button>
+      <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
     </div>
 
-    <div class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
+    <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
       <!-- Context Banner linked to User Profile -->
       <div class="rounded-2xl p-3 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 border border-indigo-200 flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2 flex-wrap">

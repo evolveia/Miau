@@ -116,7 +116,8 @@ export function mountMemoryGame(
   container: HTMLElement,
   onComplete: (result: MiniGameResult) => void,
   onClose: () => void,
-  highScore = 0
+  highScore = 0,
+  onToggleMute?: () => boolean
 ): () => void {
   let stage = 1;
   let round = 1;
@@ -135,8 +136,8 @@ export function mountMemoryGame(
   };
 
   container.innerHTML = `
-    <div class="flex flex-col h-full relative">
-      <div class="flex items-center justify-between mb-1.5">
+    <div class="flex-1 flex flex-col min-h-0 h-full relative">
+      <div class="flex items-center justify-between mb-1.5 shrink-0">
         <div>
           <div class="flex items-center gap-2">
             <h3 class="font-display text-base font-bold text-[#3b1f6e]">Memória dos Miados 🐾</h3>
@@ -144,7 +145,10 @@ export function mountMemoryGame(
           </div>
           <p id="mem-stage-sub" class="text-[11px] text-[#6b4d9e] font-semibold">Ouça a sequência de miados e repita!</p>
         </div>
-        <button id="mem-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center hover:bg-purple-200 shrink-0">✕</button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="mem-mute" type="button" aria-pressed="${!soundService.enabled}" aria-label="${soundService.enabled ? 'Silenciar áudio' : 'Ativar áudio'}" class="w-8 h-8 rounded-full ${soundService.enabled ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold flex items-center justify-center shrink-0">${soundService.enabled ? '🔊' : '🔇'}</button>
+          <button id="mem-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center hover:bg-purple-200 shrink-0">✕</button>
+        </div>
       </div>
 
       <div class="grid grid-cols-4 gap-1.5 bg-purple-50 rounded-2xl px-2.5 py-1.5 mb-2 border border-purple-200 text-center">
@@ -193,7 +197,21 @@ export function mountMemoryGame(
   const grid = container.querySelector('#mem-grid') as HTMLDivElement;
   const replayBtn = container.querySelector('#mem-replay') as HTMLButtonElement;
   const overlayEl = container.querySelector('#mem-overlay') as HTMLDivElement;
+  const muteBtn = container.querySelector('#mem-mute') as HTMLButtonElement | null;
   const closeBtn = container.querySelector('#mem-close') as HTMLButtonElement;
+
+  muteBtn?.addEventListener('click', () => {
+    const next = onToggleMute
+      ? onToggleMute()
+      : (() => {
+          soundService.setEnabled(!soundService.enabled);
+          return soundService.enabled;
+        })();
+    muteBtn.textContent = next ? '🔊' : '🔇';
+    muteBtn.setAttribute('aria-pressed', String(!next));
+    muteBtn.setAttribute('aria-label', next ? 'Silenciar áudio' : 'Ativar áudio');
+    muteBtn.className = `w-8 h-8 rounded-full ${next ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold flex items-center justify-center shrink-0`;
+  });
 
   const padButtons: HTMLButtonElement[] = [];
 

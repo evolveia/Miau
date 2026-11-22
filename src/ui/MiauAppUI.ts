@@ -33,10 +33,10 @@ import {
 import {
   GeminiApiError,
   askMiau,
-  synthesizeMiauVoice,
   transcribeUserAudio,
 } from '../services/geminiClient';
 import { hapticService } from '../services/hapticService';
+import { miauSpeechService } from '../services/miauSpeechService';
 import {
   pwaService,
   type CameraPermissionState,
@@ -55,6 +55,14 @@ import type {
   ScreenVisibilityPrefs,
   UserPetProfile,
 } from '../types';
+import {
+  buildContextualGreeting,
+  buildConversationContextSnapshot,
+} from '../data/chatContext';
+import {
+  mountInteractiveBall,
+  type InteractiveBallController,
+} from './InteractiveBall';
 import { MiauARCamera } from './MiauARCamera';
 import { renderMiauSvg } from './MiauIllustration';
 import {
@@ -178,6 +186,8 @@ export class MiauAppUI {
   private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
   private learnPreviewLevel: SchoolingLevel | null = null;
   private profileModal: UserProfileModalController;
+  private ballController: InteractiveBallController | null = null;
+  private lastGreetedPeriodKey = '';
 
   constructor(
     container: HTMLElement,
@@ -187,6 +197,10 @@ export class MiauAppUI {
     this.root.id = 'miau-2d-shell';
     this.root.className = 'fixed inset-0 z-20 flex items-center justify-center';
     container.appendChild(this.root);
+    miauSpeechService.setSpeakingListener((speaking) => {
+      this.isSpeaking = speaking;
+      this.updateSpeakerButtonDOM();
+    });
     this.profileModal = new UserProfileModalController({
       getProfile: () => this.humanProfile,
       onSave: async (draft) => {
@@ -311,7 +325,7 @@ export class MiauAppUI {
         try {
           this.profile = await loadOrCreatePetProfile(user);
           this.ensureProfileDefaults();
-          soundService.enabled = this.profile.soundEnabled;
+          soundService.setEnabled(this.profile.soundEnabled);
           const [msgs, humanProf] = await Promise.all([
             loadMessages(user.uid),
             loadUserHumanProfile(user, user.uid),
@@ -762,7 +776,7 @@ export class MiauAppUI {
         this.render();
       }
     });
-    soundService.enabled = this.profile.soundEnabled;
+    soundService.setEnabled(this.profile.soundEnabled);
     const savedMsgs = localStorage.getItem(LOCAL_DEMO_MSGS_KEY);
     if (savedMsgs) {
       try {
@@ -816,6 +830,7 @@ export class MiauAppUI {
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
+    this.speakCurrentCaption({ pitchMultiplier: 1.05 });
     void this.persistStats();
   }
 
@@ -826,7 +841,7 @@ export class MiauAppUI {
     this.ensureProfileDefaults();
     const lines: Array<[string, string]> = [
       ['Miau! 😺', '(Que alegria ter você aqui comigo!)'],
-      ['Miauuu~ ✨', '(Vamos brincar de bolinha na sala?)'],
+      ['Miauuu~ ✨', '(Adoro passar esse tempinho com você!)'],
       ['Purrr~ 🐾', '(Estou cheio de energia e carinho!)'],
       ['Miau! 💕', '(Você é o melhor amigo do mundo!)'],
     ];
@@ -846,6 +861,7 @@ export class MiauAppUI {
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
+    this.speakCurrentCaption();
     void this.persistStats();
   }
 
@@ -888,6 +904,7 @@ export class MiauAppUI {
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
+    this.speakCurrentCaption();
     void this.persistStats();
     window.setTimeout(() => {
       if (this.mood === 'eating') {
@@ -926,6 +943,7 @@ export class MiauAppUI {
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
+    this.speakCurrentCaption();
     void this.persistStats();
   }
 
@@ -959,6 +977,7 @@ export class MiauAppUI {
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
+    this.speakCurrentCaption({ pitchMultiplier: 1.12 });
     void this.persistStats();
   }
 
@@ -1001,6 +1020,7 @@ export class MiauAppUI {
               meowPrefix: 'Zzz...',
               text: '(Hora da soneca gostosa...)',
             };
+      this.speakCurrentCaption();
       void this.persistStats();
       this.sleepTimer = window.setInterval(() => {
         if (!this.isSleeping) return;
@@ -1024,6 +1044,7 @@ export class MiauAppUI {
         meowPrefix: 'Miau!',
         text: '(Acordei cheio de energia!)',
       };
+      this.speakCurrentCaption();
     }
     this.render();
     if (!this.isSleeping) {
@@ -1155,6 +1176,7 @@ export class MiauAppUI {
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
+    this.speakCurrentCaption();
     void this.persistStats();
   }
 
@@ -1171,30 +1193,66 @@ export class MiauAppUI {
     window.setTimeout(() => el.remove(), 1250);
   }
 
-  private async playCurrentMiauSpeech(autoSpeakTTS = true): Promise<void> {
-    soundService.playMeow(1.05);
-    if (!autoSpeakTTS || !this.profile.soundEnabled) return;
-    this.isSpeaking = true;
-    this.updateSpeakerButtonDOM();
-    try {
-      const spoken = `${this.currentSpeech.meowPrefix} ${this.currentSpeech.text}`;
-      const { audioBase64, mimeType } = await synthesizeMiauVoice(spoken);
-      await soundService.playBase64Wav(
-        audioBase64,
-        mimeType,
-        () => {
-          this.isSpeaking = true;
-          this.updateSpeakerButtonDOM();
-        },
-        () => {
-          this.isSpeaking = false;
-          this.updateSpeakerButtonDOM();
-        }
-      );
-    } catch {
-      this.isSpeaking = false;
-      this.updateSpeakerButtonDOM();
+  private speakCurrentCaption(options?: {
+    withLeadingMeow?: boolean;
+    pitchMultiplier?: number;
+    fallbackMeowOnError?: boolean;
+  }): void {
+    void miauSpeechService.speakPhrase(
+      this.currentSpeech.meowPrefix,
+      this.currentSpeech.text,
+      options
+    );
+  }
+
+  private toggleSoundMute = (): boolean => {
+    hapticService.tap();
+    this.profile.soundEnabled = !this.profile.soundEnabled;
+    soundService.setEnabled(this.profile.soundEnabled);
+    miauSpeechService.cancel();
+    this.liveSession?.setMuted(!this.profile.soundEnabled);
+    this.updateMuteButtonsDOM();
+    void this.persistSettings();
+    return this.profile.soundEnabled;
+  };
+
+  private updateMuteButtonsDOM(): void {
+    const enabled = this.profile.soundEnabled;
+    const topBtn = this.root.querySelector('#btn-top-sound') as HTMLButtonElement | null;
+    if (topBtn) {
+      topBtn.textContent = enabled ? '🔊' : '🔇';
+      topBtn.setAttribute('aria-pressed', String(!enabled));
+      topBtn.setAttribute('aria-label', enabled ? 'Silenciar áudio' : 'Ativar áudio');
+      topBtn.className = `w-9 h-9 rounded-full backdrop-blur border flex items-center justify-center text-base shadow-sm hover:scale-105 transition ${
+        enabled
+          ? 'bg-white/75 border-white/80 text-[#3b1f6e]'
+          : 'bg-rose-100/95 border-rose-300 text-rose-700'
+      }`;
     }
+    const chatMuteBtn = this.root.querySelector('#btn-chat-mute') as HTMLButtonElement | null;
+    if (chatMuteBtn) {
+      chatMuteBtn.textContent = enabled ? '🔊 Som' : '🔇 Mudo';
+      chatMuteBtn.setAttribute('aria-pressed', String(!enabled));
+      chatMuteBtn.setAttribute('aria-label', enabled ? 'Silenciar áudio' : 'Ativar áudio');
+      chatMuteBtn.className = `px-3 py-1.5 rounded-full text-xs font-extrabold shadow-sm border transition ${
+        enabled
+          ? 'bg-white/95 border-purple-200 text-[#4c2a85] hover:bg-purple-50'
+          : 'bg-rose-100 border-rose-300 text-rose-800 hover:bg-rose-200'
+      }`;
+    }
+  }
+
+  private async playCurrentMiauSpeech(autoSpeakTTS = true): Promise<void> {
+    if (!this.profile.soundEnabled) return;
+    if (!autoSpeakTTS) {
+      soundService.playMeow(1.05);
+      return;
+    }
+    await miauSpeechService.speakPhrase(
+      this.currentSpeech.meowPrefix,
+      this.currentSpeech.text,
+      { withLeadingMeow: true, pitchMultiplier: 1.05 }
+    );
   }
 
   private async sendChatToMiau(userText: string): Promise<void> {
@@ -1210,6 +1268,7 @@ export class MiauAppUI {
     this.updateSpeechDOM();
 
     const recentHistory = this.messages.slice(-4);
+    const contextSnapshot = buildConversationContextSnapshot(this.humanProfile);
     const userPersistPromise = this.persistMessage({
       sender: 'user',
       meowPrefix: '',
@@ -1224,6 +1283,8 @@ export class MiauAppUI {
         stats: this.profile.stats,
         equipped: this.profile.equipped,
         petName: this.profile.petName,
+        temporalContext: contextSnapshot.temporal,
+        userContext: contextSnapshot.user,
       });
 
       this.currentSpeech = {
@@ -1373,6 +1434,7 @@ export class MiauAppUI {
           : 'divertido (iniciante/bronze)';
     const prompt = `Acabamos de jogar o minijogo "${res.gameName}" juntos! Meu resultado foi: ${res.summaryText}, desempenho ${tierDesc}, e ganhamos ${res.coinsEarned} moedas. Reaja e comente de forma carinhosa e divertida sobre o meu desempenho!`;
 
+    const contextSnapshot = buildConversationContextSnapshot(this.humanProfile);
     try {
       const reply = await askMiau({
         message: prompt,
@@ -1380,6 +1442,8 @@ export class MiauAppUI {
         stats: this.profile.stats,
         equipped: this.profile.equipped,
         petName: this.profile.petName,
+        temporalContext: contextSnapshot.temporal,
+        userContext: contextSnapshot.user,
       });
       if (this.isThinking) return;
       this.currentSpeech = {
@@ -1399,6 +1463,7 @@ export class MiauAppUI {
       void this.playCurrentMiauSpeech(true);
     } catch (err) {
       console.warn('Não foi possível gerar comentário de IA do minijogo:', err);
+      this.speakCurrentCaption();
     }
   }
 
@@ -1688,23 +1753,36 @@ export class MiauAppUI {
           <div class="pointer-events-none absolute inset-0 transition-opacity duration-500 bg-indigo-950/35 z-10 ${this.isSleeping ? 'opacity-100' : 'opacity-0'}"></div>
 
           <!-- Top Header -->
-          <header class="relative z-20 px-4 pt-3.5 pb-2 flex items-center justify-between">
-            <button id="btn-menu" aria-label="Abrir menu" class="w-10 h-10 rounded-full bg-white/60 backdrop-blur border border-white/80 flex items-center justify-center text-[#3b1f6e] shadow-sm hover:scale-105 transition">
+          <header class="relative z-20 px-4 pt-3.5 pb-2 flex items-center justify-between gap-2">
+            <button id="btn-menu" aria-label="Abrir menu" class="w-10 h-10 rounded-full bg-white/60 backdrop-blur border border-white/80 flex items-center justify-center text-[#3b1f6e] shadow-sm hover:scale-105 transition shrink-0">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
               </svg>
             </button>
 
-            <h1 class="font-display text-2xl font-bold ${isNight ? 'text-white' : 'text-[#2d1b4e]'} tracking-tight">Sala de Estar</h1>
+            <h1 class="font-display text-2xl font-bold ${isNight ? 'text-white' : 'text-[#2d1b4e]'} tracking-tight truncate">Sala de Estar</h1>
 
-            ${
-              this.screenPrefs.showCoinsBadge
-                ? `<div class="flex items-center gap-1.5 bg-[#4a3566]/85 text-white rounded-full pl-1.5 pr-3 py-1 shadow-md border border-white/30">
-                     <span class="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 border border-yellow-100 flex items-center justify-center text-xs font-extrabold text-amber-900 shadow-inner">$</span>
-                     <span id="miau-coins" class="text-sm font-extrabold">${this.profile.coins.toLocaleString('pt-BR')}</span>
-                   </div>`
-                : `<div class="w-10"></div>`
-            }
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button
+                id="btn-top-sound"
+                type="button"
+                aria-pressed="${!this.profile.soundEnabled}"
+                aria-label="${this.profile.soundEnabled ? 'Silenciar áudio' : 'Ativar áudio'}"
+                class="w-9 h-9 rounded-full backdrop-blur border flex items-center justify-center text-base shadow-sm hover:scale-105 transition ${
+                  this.profile.soundEnabled
+                    ? 'bg-white/75 border-white/80 text-[#3b1f6e]'
+                    : 'bg-rose-100/95 border-rose-300 text-rose-700'
+                }"
+              >${this.profile.soundEnabled ? '🔊' : '🔇'}</button>
+              ${
+                this.screenPrefs.showCoinsBadge
+                  ? `<div class="flex items-center gap-1.5 bg-[#4a3566]/85 text-white rounded-full pl-1.5 pr-3 py-1 shadow-md border border-white/30">
+                       <span class="w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-amber-500 border border-yellow-100 flex items-center justify-center text-xs font-extrabold text-amber-900 shadow-inner">$</span>
+                       <span id="miau-coins" class="text-sm font-extrabold">${this.profile.coins.toLocaleString('pt-BR')}</span>
+                     </div>`
+                  : ''
+              }
+            </div>
           </header>
 
           ${
@@ -1947,6 +2025,7 @@ export class MiauAppUI {
         hasLiveSession: Boolean(this.liveSession),
         liveTranscript: this.liveTranscript,
         messages: this.messages,
+        soundEnabled: this.profile.soundEnabled,
       });
     } else if (this.activeModal === 'achievements') {
       body = renderAchievementsModalHtml(this.profile);
@@ -2000,15 +2079,58 @@ export class MiauAppUI {
     }
 
     return `
-      <div id="modal-backdrop" class="absolute inset-0 z-30 bg-purple-950/35 backdrop-blur-sm flex items-end md:items-center justify-center p-3">
-        <div class="w-full max-w-[400px] glass-card rounded-[30px] p-4.5 shadow-2xl flex flex-col max-h-[82%]">
+      <div id="modal-fullscreen" class="fixed inset-0 z-30 flex flex-col bg-gradient-to-b from-[#ede4ff] via-[#e4d5fc] to-[#d9c4fa] overflow-hidden">
+        <div class="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-6 min-h-0">
           ${body}
         </div>
       </div>
     `;
   }
 
+  private openConversarModal(): void {
+    this.activeModal = 'chat';
+    const ctx = buildConversationContextSnapshot(this.humanProfile);
+    const periodKey = `${ctx.temporal.dateKey}_${ctx.temporal.periodOfDay}`;
+    const isNewPeriod = this.lastGreetedPeriodKey !== periodKey;
+    if (isNewPeriod) {
+      this.lastGreetedPeriodKey = periodKey;
+      const greeting = buildContextualGreeting(ctx, this.profile.petName);
+      this.currentSpeech = {
+        meowPrefix: greeting.meowPrefix,
+        text: greeting.text,
+      };
+      this.mood = greeting.mood;
+      this.render();
+      this.speakCurrentCaption();
+      void this.persistMessage({
+        sender: 'miau',
+        meowPrefix: greeting.meowPrefix,
+        text: greeting.text,
+        mood: greeting.mood,
+      }).then(() => this.refreshChatModalIfOpen());
+    } else {
+      this.render();
+    }
+  }
+
   private bindGameEvents(): void {
+    this.ballController?.dispose();
+    this.ballController = null;
+    if (
+      this.screen === 'game' &&
+      this.activeModal === 'none' &&
+      !this.isSleeping &&
+      !this.isCleaningMode
+    ) {
+      const stageEl = this.root.querySelector('#miau-stage') as HTMLElement | null;
+      const charWrapEl = this.root.querySelector('#miau-character-wrap') as HTMLElement | null;
+      if (stageEl) {
+        this.ballController = mountInteractiveBall(stageEl, charWrapEl, () => {
+          this.handleQuickPlay('ball');
+        });
+      }
+    }
+
     // Pet Miau or rub bubbles in cleaning mode
     const miauWrap = this.root.querySelector('#miau-character-wrap');
     miauWrap?.addEventListener('click', () => {
@@ -2043,12 +2165,17 @@ export class MiauAppUI {
               };
           this.render();
           this.triggerMiauReaction('spin');
+          this.speakCurrentCaption();
         }
         void this.persistStats();
       } else {
         this.handlePetInteraction();
       }
     });
+
+    this.root
+      .querySelector('#btn-top-sound')
+      ?.addEventListener('click', () => void this.toggleSoundMute());
 
     // Speaker button
     this.root.querySelector('#btn-speaker')?.addEventListener('click', () => {
@@ -2146,22 +2273,25 @@ export class MiauAppUI {
         this.activeMiniGame = 'none';
         this.miniGameCleanup?.();
         this.miniGameCleanup = null;
+        if (target === 'chat' && this.activeModal !== 'chat') {
+          this.openConversarModal();
+          return;
+        }
         this.activeModal = this.activeModal === target ? 'none' : target;
         this.render();
       });
     });
 
-    // Modal Backdrop & Close
-    this.root
-      .querySelector('#modal-backdrop')
-      ?.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).id === 'modal-backdrop') {
-          this.closeActiveModal();
-        }
-      });
+    // Full-screen close / back controls
+    this.root.querySelectorAll('[data-modal-close]').forEach((btn) => {
+      btn.addEventListener('click', () => this.closeActiveModal());
+    });
     this.root
       .querySelector('#modal-close')
       ?.addEventListener('click', () => this.closeActiveModal());
+    this.root
+      .querySelector('#btn-chat-mute')
+      ?.addEventListener('click', () => void this.toggleSoundMute());
 
     // Food actions
     this.root.querySelectorAll('[data-food]').forEach((btn) => {
@@ -2215,6 +2345,7 @@ export class MiauAppUI {
             : 'jump'
         );
         this.spawnFloatingParticle(food.emoji);
+        this.speakCurrentCaption();
         void this.persistStats();
         window.setTimeout(() => {
           if (this.mood === 'eating') {
@@ -2254,6 +2385,7 @@ export class MiauAppUI {
       this.triggerMiauReaction('spin');
       this.spawnFloatingParticle('🫧');
       this.spawnFloatingParticle('✨');
+      this.speakCurrentCaption();
       void this.persistStats();
     });
 
@@ -2290,13 +2422,37 @@ export class MiauAppUI {
         this.render();
       };
       if (id === 'fish') {
-        this.miniGameCleanup = mountFishCatchGame(host, onDone, onExit, high);
+        this.miniGameCleanup = mountFishCatchGame(
+          host,
+          onDone,
+          onExit,
+          high,
+          this.toggleSoundMute
+        );
       } else if (id === 'memory') {
-        this.miniGameCleanup = mountMemoryGame(host, onDone, onExit, high);
+        this.miniGameCleanup = mountMemoryGame(
+          host,
+          onDone,
+          onExit,
+          high,
+          this.toggleSoundMute
+        );
       } else if (id === 'escape') {
-        this.miniGameCleanup = mountEscapeRunGame(host, onDone, onExit, high);
+        this.miniGameCleanup = mountEscapeRunGame(
+          host,
+          onDone,
+          onExit,
+          high,
+          this.toggleSoundMute
+        );
       } else {
-        this.miniGameCleanup = mountGalaxyRatGame(host, onDone, onExit, high);
+        this.miniGameCleanup = mountGalaxyRatGame(
+          host,
+          onDone,
+          onExit,
+          high,
+          this.toggleSoundMute
+        );
       }
     };
 
@@ -2363,7 +2519,37 @@ export class MiauAppUI {
         if (item.category === 'background')
           this.profile.equipped.background = item.id;
 
+        const actionSpeech: Record<
+          'hat' | 'accessory' | 'background',
+          { prefix: string; text: string }
+        > = {
+          hat: {
+            prefix: owned ? 'Miau! 🎩' : 'Uau!! 🎩✨',
+            text: owned
+              ? `(Coloquei o chapéu ${item.name}! Fiquei estiloso?)`
+              : `(Comprei e equipei ${item.name}! Estou muito chique!)`,
+          },
+          accessory: {
+            prefix: owned ? 'Purrr~ 🎀' : 'Miau!! 🎀✨',
+            text: owned
+              ? `(Adorei usar ${item.name}! Combinou comigo?)`
+              : `(Novo visual com ${item.name}! Obrigado por me mimar!)`,
+          },
+          background: {
+            prefix: owned ? 'Miau~ 🏡' : 'Uau!! 🌈✨',
+            text: owned
+              ? `(Mudei meu cantinho para ${item.name}! Ficou aconchegante!)`
+              : `(Novo cenário ${item.name} desbloqueado! Que lindo!)`,
+          },
+        };
+        const picked = actionSpeech[item.category];
+        this.mood = 'happy';
+        this.currentSpeech = { meowPrefix: picked.prefix, text: picked.text };
+
         this.render();
+        this.triggerMiauReaction('spin');
+        this.spawnFloatingParticle(item.emoji);
+        this.speakCurrentCaption();
         void this.persistShop();
       });
     });
@@ -2438,6 +2624,7 @@ export class MiauAppUI {
           },
         });
         this.liveSession = session;
+        session.setMuted(!this.profile.soundEnabled);
         try {
           await session.start();
         } catch (err) {
@@ -2601,11 +2788,8 @@ export class MiauAppUI {
     this.root
       .querySelector('#btn-toggle-sound')
       ?.addEventListener('click', () => {
-        hapticService.tap();
-        this.profile.soundEnabled = !this.profile.soundEnabled;
-        soundService.enabled = this.profile.soundEnabled;
+        this.toggleSoundMute();
         this.render();
-        void this.persistSettings();
       });
 
     this.root
@@ -2681,6 +2865,9 @@ export class MiauAppUI {
       });
 
     this.root.querySelector('#btn-logout')?.addEventListener('click', async () => {
+      this.ballController?.dispose();
+      this.ballController = null;
+      miauSpeechService.cancel();
       this.profileModal.disposeCameraStream();
       this.liveSession?.stop();
       this.liveSession = null;

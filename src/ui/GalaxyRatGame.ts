@@ -53,8 +53,8 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
       name: 'Órbita Lunar',
       rows: 2,
       cols: 5,
-      enemySpeed: 34,
-      fireRateSec: 1.55,
+      enemySpeed: 18,
+      fireRateSec: 2.35,
       hasBoss: false,
       armoredChance: 0,
     };
@@ -64,8 +64,8 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
       name: 'Cinturão de Asteroides',
       rows: 3,
       cols: 5,
-      enemySpeed: 44,
-      fireRateSec: 1.25,
+      enemySpeed: 28,
+      fireRateSec: 1.8,
       hasBoss: false,
       armoredChance: 0.35,
     };
@@ -75,8 +75,8 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
       name: 'Nave-Mãe Queijo',
       rows: 2,
       cols: 5,
-      enemySpeed: 50,
-      fireRateSec: 1.05,
+      enemySpeed: 38,
+      fireRateSec: 1.35,
       hasBoss: true,
       armoredChance: 0.45,
     };
@@ -85,8 +85,8 @@ function getGalaxyStageConfig(stage: number): GalaxyStageConfig {
     name: 'Galáxia Infinita',
     rows: Math.min(4, 2 + Math.floor((stage - 2) / 2)),
     cols: 6,
-    enemySpeed: Math.min(82, 54 + (stage - 3) * 7),
-    fireRateSec: Math.max(0.65, 0.95 - (stage - 3) * 0.08),
+    enemySpeed: Math.min(72, 46 + (stage - 3) * 6),
+    fireRateSec: Math.max(0.75, 1.15 - (stage - 3) * 0.08),
     hasBoss: true,
     armoredChance: 0.55,
   };
@@ -103,7 +103,8 @@ export function mountGalaxyRatGame(
   container: HTMLElement,
   onComplete: (result: MiniGameResult) => void,
   onClose: () => void,
-  highScore = 0
+  highScore = 0,
+  onToggleMute?: () => boolean
 ): () => void {
   let stage = 1;
   let score = 0;
@@ -111,6 +112,7 @@ export function mountGalaxyRatGame(
   let lives = 3;
   let totalElapsedSec = 0;
   let autoFire = true;
+  let firingHeld = false;
   let paused = false;
   let ended = false;
   let rafId = 0;
@@ -122,7 +124,7 @@ export function mountGalaxyRatGame(
   let targetShipX = width / 2;
   let moveDir = 0; // -1, 0, 1 for buttons/keyboard
   let fireCooldown = 0;
-  let enemyFireCooldown = 1.0;
+  let enemyFireCooldown = 1.4;
   let enemyDir = 1;
   let doubleShotTimer = 0;
   let rapidFireTimer = 0;
@@ -143,8 +145,8 @@ export function mountGalaxyRatGame(
   }));
 
   container.innerHTML = `
-    <div class="flex flex-col gap-2 select-none">
-      <div class="flex items-center justify-between gap-2">
+    <div class="flex-1 flex flex-col gap-2 min-h-0 h-full select-none">
+      <div class="flex items-center justify-between gap-2 shrink-0">
         <div class="min-w-0">
           <div class="flex items-center gap-1.5">
             <h3 class="font-display text-base font-bold text-[#3b1f6e] truncate">Miau Galáxia vs. Ratos ETs 🚀</h3>
@@ -152,17 +154,20 @@ export function mountGalaxyRatGame(
           </div>
           <p id="gr-stage-sub" class="text-[11px] font-semibold text-[#6b4d9e] truncate">Órbita Lunar • Recorde: ${highScore}</p>
         </div>
-        <button id="gr-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">✕</button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="gr-mute" type="button" aria-pressed="${!soundService.enabled}" aria-label="${soundService.enabled ? 'Silenciar áudio' : 'Ativar áudio'}" class="w-8 h-8 rounded-full ${soundService.enabled ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold text-sm flex items-center justify-center shrink-0">${soundService.enabled ? '🔊' : '🔇'}</button>
+          <button id="gr-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">✕</button>
+        </div>
       </div>
 
-      <div class="grid grid-cols-4 gap-1 bg-white/85 rounded-2xl px-2.5 py-1.5 text-[11px] font-extrabold text-[#4c2a85] border border-purple-100 shadow-sm">
+      <div class="grid grid-cols-4 gap-1 bg-white/85 rounded-2xl px-2.5 py-1.5 text-[11px] font-extrabold text-[#4c2a85] border border-purple-100 shadow-sm shrink-0">
         <div>Pontos: <span id="gr-score" class="text-purple-700">0</span></div>
         <div class="text-center">Ratos: <span id="gr-enemies" class="text-emerald-700">10</span></div>
         <div class="text-center" id="gr-lives">❤️❤️❤️</div>
         <div class="text-right">⏱️ <span id="gr-time">00:00</span></div>
       </div>
 
-      <div id="gr-canvas-wrap" class="relative w-full h-[275px] rounded-3xl overflow-hidden border-2 border-white shadow-inner bg-[#0c0a24] touch-none">
+      <div id="gr-canvas-wrap" class="relative flex-1 min-h-[240px] w-full rounded-3xl overflow-hidden border-2 border-white shadow-inner bg-[#0c0a24] touch-none">
         <canvas id="gr-canvas" class="w-full h-full block"></canvas>
         <div id="gr-overlay" class="hidden absolute inset-0 bg-[#0d0929]/88 flex flex-col items-center justify-center p-4 text-center z-10">
           <div id="gr-ov-emoji" class="text-4xl mb-1">🛸</div>
@@ -172,11 +177,11 @@ export function mountGalaxyRatGame(
         </div>
       </div>
 
-      <div class="grid grid-cols-4 gap-1.5">
-        <button id="gr-btn-left" type="button" class="py-2 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-sm shadow-sm active:scale-95 transition">⬅️</button>
-        <button id="gr-btn-fire" type="button" class="py-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-xs shadow-sm active:scale-95 transition">🔫 Atirar</button>
+      <div class="grid grid-cols-4 gap-1.5 shrink-0">
+        <button id="gr-btn-left" type="button" class="py-2 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-sm shadow-sm active:scale-95 transition touch-none">⬅️</button>
+        <button id="gr-btn-fire" type="button" class="py-2 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-xs shadow-sm active:scale-95 transition touch-none">🔫 Atirar</button>
         <button id="gr-btn-auto" type="button" class="py-2 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[11px] shadow-sm active:scale-95 transition">Auto: ON</button>
-        <button id="gr-btn-right" type="button" class="py-2 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-sm shadow-sm active:scale-95 transition">➡️</button>
+        <button id="gr-btn-right" type="button" class="py-2 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-sm shadow-sm active:scale-95 transition touch-none">➡️</button>
       </div>
     </div>
   `;
@@ -191,6 +196,7 @@ export function mountGalaxyRatGame(
   const livesEl = container.querySelector('#gr-lives') as HTMLElement;
   const timeEl = container.querySelector('#gr-time') as HTMLElement;
   const autoBtn = container.querySelector('#gr-btn-auto') as HTMLButtonElement;
+  const muteBtn = container.querySelector('#gr-mute') as HTMLButtonElement | null;
   const overlayEl = container.querySelector('#gr-overlay') as HTMLElement;
   const ovEmojiEl = container.querySelector('#gr-ov-emoji') as HTMLElement;
   const ovTitleEl = container.querySelector('#gr-ov-title') as HTMLElement;
@@ -207,8 +213,16 @@ export function mountGalaxyRatGame(
     ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
     shipX = Math.max(24, Math.min(width - 24, shipX));
     targetShipX = Math.max(24, Math.min(width - 24, targetShipX));
+    for (const r of rats) {
+      r.x = Math.max(r.w / 2 + 8, Math.min(width - r.w / 2 - 8, r.x));
+    }
   };
   resizeCanvas();
+  const resizeObserver =
+    typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => resizeCanvas())
+      : null;
+  resizeObserver?.observe(wrap);
 
   const spawnWave = (st: number) => {
     const cfg = getGalaxyStageConfig(st);
@@ -559,7 +573,7 @@ export function mountGalaxyRatGame(
       }
       shipX += (targetShipX - shipX) * Math.min(1, dt * 16);
 
-      if (autoFire) {
+      if (autoFire || firingHeld) {
         firePlayerLaser();
       }
 
@@ -573,8 +587,9 @@ export function mountGalaxyRatGame(
       }
       if (hitEdge) {
         enemyDir *= -1;
+        const dropStep = stage === 1 ? 8 : 11;
         for (const r of rats) {
-          r.y += 12;
+          r.y += dropStep;
           r.x = Math.max(r.w / 2 + 8, Math.min(width - r.w / 2 - 8, r.x));
           if (r.y >= height - 48) {
             lives = 0;
@@ -595,7 +610,7 @@ export function mountGalaxyRatGame(
           x: shooter.x,
           y: shooter.y + shooter.h / 2,
           vx: 0,
-          vy: 175 + stage * 14,
+          vy: 110 + stage * 14,
           fromPlayer: false,
         });
       }
@@ -719,6 +734,11 @@ export function mountGalaxyRatGame(
 
   const onPointerDown = (e: PointerEvent) => {
     dragging = true;
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore synthetic events
+    }
     moveToPointer(e.clientX);
   };
   const onPointerMove = (e: PointerEvent) => {
@@ -727,6 +747,11 @@ export function mountGalaxyRatGame(
   };
   const onPointerUp = () => {
     dragging = false;
+  };
+  const resetInputs = () => {
+    dragging = false;
+    moveDir = 0;
+    firingHeld = false;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -738,6 +763,7 @@ export function mountGalaxyRatGame(
       moveDir = 1;
     } else if (e.key === ' ') {
       e.preventDefault();
+      firingHeld = true;
       firePlayerLaser();
     }
   };
@@ -752,31 +778,58 @@ export function mountGalaxyRatGame(
       moveDir === 1
     ) {
       moveDir = 0;
+    } else if (e.key === ' ') {
+      firingHeld = false;
     }
   };
 
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointercancel', resetInputs);
   window.addEventListener('pointerup', onPointerUp);
+  window.addEventListener('blur', resetInputs);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('resize', resizeCanvas);
 
   const leftBtn = container.querySelector('#gr-btn-left') as HTMLButtonElement | null;
   const rightBtn = container.querySelector('#gr-btn-right') as HTMLButtonElement | null;
+  const fireBtn = container.querySelector('#gr-btn-fire') as HTMLButtonElement | null;
 
-  const setMoveLeft = () => (moveDir = -1);
-  const setMoveRight = () => (moveDir = 1);
-  const clearMove = () => (moveDir = 0);
+  const setMoveLeft = (e: PointerEvent) => {
+    e.preventDefault();
+    moveDir = -1;
+  };
+  const setMoveRight = (e: PointerEvent) => {
+    e.preventDefault();
+    moveDir = 1;
+  };
+  const clearMove = () => {
+    moveDir = 0;
+  };
+  const startFireHold = (e: PointerEvent) => {
+    e.preventDefault();
+    firingHeld = true;
+    firePlayerLaser();
+  };
+  const stopFireHold = () => {
+    firingHeld = false;
+  };
 
   leftBtn?.addEventListener('pointerdown', setMoveLeft);
   leftBtn?.addEventListener('pointerup', clearMove);
+  leftBtn?.addEventListener('pointercancel', clearMove);
   leftBtn?.addEventListener('pointerleave', clearMove);
   rightBtn?.addEventListener('pointerdown', setMoveRight);
   rightBtn?.addEventListener('pointerup', clearMove);
+  rightBtn?.addEventListener('pointercancel', clearMove);
   rightBtn?.addEventListener('pointerleave', clearMove);
 
-  container.querySelector('#gr-btn-fire')?.addEventListener('click', firePlayerLaser);
+  fireBtn?.addEventListener('pointerdown', startFireHold);
+  fireBtn?.addEventListener('pointerup', stopFireHold);
+  fireBtn?.addEventListener('pointercancel', stopFireHold);
+  fireBtn?.addEventListener('pointerleave', stopFireHold);
+
   autoBtn?.addEventListener('click', () => {
     autoFire = !autoFire;
     autoBtn.textContent = autoFire ? 'Auto: ON' : 'Auto: OFF';
@@ -784,6 +837,20 @@ export function mountGalaxyRatGame(
       ? 'py-2 rounded-2xl bg-emerald-100 border border-emerald-300 text-emerald-800 font-bold text-[11px] shadow-sm active:scale-95 transition'
       : 'py-2 rounded-2xl bg-slate-100 border border-slate-300 text-slate-700 font-bold text-[11px] shadow-sm active:scale-95 transition';
   });
+
+  muteBtn?.addEventListener('click', () => {
+    const next = onToggleMute
+      ? onToggleMute()
+      : (() => {
+          soundService.setEnabled(!soundService.enabled);
+          return soundService.enabled;
+        })();
+    muteBtn.textContent = next ? '🔊' : '🔇';
+    muteBtn.setAttribute('aria-pressed', String(!next));
+    muteBtn.setAttribute('aria-label', next ? 'Silenciar áudio' : 'Ativar áudio');
+    muteBtn.className = `w-8 h-8 rounded-full ${next ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold text-sm flex items-center justify-center shrink-0`;
+  });
+
   container.querySelector('#gr-close')?.addEventListener('click', () => {
     ended = true;
     cancelAnimationFrame(rafId);
@@ -797,9 +864,12 @@ export function mountGalaxyRatGame(
   return () => {
     ended = true;
     cancelAnimationFrame(rafId);
+    resizeObserver?.disconnect();
     canvas.removeEventListener('pointerdown', onPointerDown);
     canvas.removeEventListener('pointermove', onPointerMove);
+    canvas.removeEventListener('pointercancel', resetInputs);
     window.removeEventListener('pointerup', onPointerUp);
+    window.removeEventListener('blur', resetInputs);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
     window.removeEventListener('resize', resizeCanvas);

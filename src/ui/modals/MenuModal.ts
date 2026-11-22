@@ -31,15 +31,18 @@ export function renderMenuModalHtml(params: MenuModalRenderParams): string {
   const locationStr = locationParts.join(' • ');
 
   return `
-    <div class="flex items-start justify-between gap-2 mb-3 text-left">
-      <div class="text-left">
-        <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight">Menu do Jogo 🐾</h2>
-        <p class="text-[11px] font-semibold text-[#6b4d9e]">Perfil, aprendizado, modos e configurações</p>
+    <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
+        <div class="text-left min-w-0">
+          <h2 class="font-display text-xl font-bold text-[#3b1f6e] leading-tight truncate">Menu do Jogo 🐾</h2>
+          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Perfil, aprendizado, modos e configurações</p>
+        </div>
       </div>
-      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold shrink-0">✕</button>
+      <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
     </div>
 
-    <div class="flex flex-col gap-2 overflow-y-auto miau-scroll pr-1 text-left">
+    <div class="flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-1 text-left">
       <!-- Perfil do Usuário Card -->
       <button
         id="btn-menu-profile"

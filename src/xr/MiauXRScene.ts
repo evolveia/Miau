@@ -1465,7 +1465,7 @@ export class MiauXRScene extends xb.Script {
     });
 
     this.speechLabel = new xb.UIText({
-      text: 'Miau! (Vamos brincar e explorar em 3D?)',
+      text: 'Miau! (Estou aqui na Sala 3D com você!)',
       style: {
         fontSize: 19,
         fontWeight: 'bold',
@@ -1993,22 +1993,7 @@ export class MiauXRScene extends xb.Script {
   }
 
   private updatePetBehavior(dt: number, t: number): void {
-    // Spontaneous adorable meow timer while awake
-    if (!this.isSleeping && this.isNonHeadsetActive()) {
-      this.spontaneousMeowCooldown -= dt;
-      if (this.spontaneousMeowCooldown <= 0) {
-        this.spontaneousMeowCooldown = 14 + Math.random() * 10;
-        this.meowAnimTime = 0.45;
-        if (soundService.enabled) {
-          soundService.playMeow(1.06 + Math.random() * 0.24);
-        }
-        if (this.petState === 'idle') {
-          this.triggerBounce();
-        }
-      }
-    }
-
-    // Autonomous state transitions
+    // Autonomous state transitions (ball chasing only happens when user throws the ball)
     this.petStateTimer -= dt;
     if (this.isSleeping) {
       this.petState = 'sleeping';
@@ -2017,19 +2002,14 @@ export class MiauXRScene extends xb.Script {
       this.petTarget.set(this.ballPos.x, 0, this.ballPos.z);
     } else if (this.petStateTimer <= 0) {
       const roll = Math.random();
-      if (roll < 0.56) {
+      if (roll < 0.65) {
         // Pick a fun cozy point on the rug
         const ang = Math.random() * Math.PI * 2;
         const dist = 0.16 + Math.random() * 0.5;
         this.petTarget.set(Math.cos(ang) * dist, 0, Math.sin(ang) * dist);
         this.petState = 'wander';
         this.petStateTimer = 3.2 + Math.random() * 2.2;
-      } else if (roll < 0.78) {
-        // Trot over to play with ball!
-        this.petTarget.set(this.ballPos.x, 0, this.ballPos.z);
-        this.petState = 'chase_ball';
-        this.petStateTimer = 4.0;
-      } else if (roll < 0.9) {
+      } else if (roll < 0.85) {
         // Visit the yarn ball
         this.petTarget.set(YARN_HOME.x + 0.14, 0, YARN_HOME.z - 0.08);
         this.petState = 'go_yarn';

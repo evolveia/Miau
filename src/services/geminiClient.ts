@@ -1,4 +1,11 @@
-import type { ChatMessage, EquippedItems, MiauMood, PetStats } from '../types';
+import type {
+  ChatMessage,
+  ChatTemporalContext,
+  ChatUserContext,
+  EquippedItems,
+  MiauMood,
+  PetStats,
+} from '../types';
 
 export interface MiauChatResponse {
   meowPrefix: string;
@@ -71,6 +78,8 @@ export async function askMiau(params: {
   stats: PetStats;
   equipped: EquippedItems;
   petName: string;
+  temporalContext?: ChatTemporalContext;
+  userContext?: ChatUserContext;
 }): Promise<MiauChatResponse> {
   let res: Response;
   try {
@@ -86,6 +95,8 @@ export async function askMiau(params: {
         stats: params.stats,
         equipped: params.equipped,
         petName: params.petName,
+        temporalContext: params.temporalContext,
+        userContext: params.userContext,
       }),
     });
   } catch {

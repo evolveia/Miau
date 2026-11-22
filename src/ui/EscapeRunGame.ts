@@ -37,10 +37,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   if (stage === 1) {
     return {
       name: 'Estrada Ensolarada',
-      goalDist: 450,
-      baseSpeed: 0.44,
-      spawnInterval: 0.78,
-      hazardRate: 0.56,
+      goalDist: 280,
+      baseSpeed: 0.24,
+      spawnInterval: 1.18,
+      hazardRate: 0.42,
       skyTop: '#60a5fa',
       skyBottom: '#dbeafe',
       horizonColor: '#86efac',
@@ -53,10 +53,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   if (stage === 2) {
     return {
       name: 'Pôr do Sol Dourado',
-      goalDist: 650,
-      baseSpeed: 0.56,
-      spawnInterval: 0.64,
-      hazardRate: 0.62,
+      goalDist: 420,
+      baseSpeed: 0.33,
+      spawnInterval: 0.94,
+      hazardRate: 0.52,
       skyTop: '#7c3aed',
       skyBottom: '#fb923c',
       horizonColor: '#fdba74',
@@ -69,10 +69,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   if (stage === 3) {
     return {
       name: 'Rodovia Neon Noturna',
-      goalDist: 850,
-      baseSpeed: 0.68,
-      spawnInterval: 0.54,
-      hazardRate: 0.66,
+      goalDist: 600,
+      baseSpeed: 0.44,
+      spawnInterval: 0.74,
+      hazardRate: 0.6,
       skyTop: '#0f172a',
       skyBottom: '#4c1d95',
       horizonColor: '#a855f7',
@@ -84,10 +84,10 @@ function getEscapeStageConfig(stage: number): EscapeStageConfig {
   }
   return {
     name: 'Autoestrada Cósmica',
-    goalDist: 950 + (stage - 4) * 200,
-    baseSpeed: Math.min(0.95, 0.76 + (stage - 4) * 0.06),
-    spawnInterval: Math.max(0.36, 0.48 - (stage - 4) * 0.03),
-    hazardRate: 0.68,
+    goalDist: 760 + (stage - 4) * 180,
+    baseSpeed: Math.min(0.84, 0.54 + (stage - 4) * 0.06),
+    spawnInterval: Math.max(0.42, 0.62 - (stage - 4) * 0.04),
+    hazardRate: 0.64,
     skyTop: '#020617',
     skyBottom: '#312e81',
     horizonColor: '#22d3ee',
@@ -109,7 +109,8 @@ export function mountEscapeRunGame(
   container: HTMLElement,
   onComplete: (result: MiniGameResult) => void,
   onClose: () => void,
-  highScore = 0
+  highScore = 0,
+  onToggleMute?: () => boolean
 ): () => void {
   let stage = 1;
   let score = 0;
@@ -138,8 +139,8 @@ export function mountEscapeRunGame(
   let notices: FloatingNotice[] = [];
 
   container.innerHTML = `
-    <div class="flex flex-col gap-2 select-none">
-      <div class="flex items-center justify-between gap-2">
+    <div class="flex-1 flex flex-col gap-2 min-h-0 h-full select-none">
+      <div class="flex items-center justify-between gap-2 shrink-0">
         <div class="min-w-0">
           <div class="flex items-center gap-1.5">
             <h3 class="font-display text-base font-bold text-[#3b1f6e] truncate">Miau Escape Run 🚗</h3>
@@ -147,21 +148,24 @@ export function mountEscapeRunGame(
           </div>
           <p id="er-stage-sub" class="text-[11px] font-semibold text-[#6b4d9e] truncate">Estrada Ensolarada • Recorde: ${highScore}</p>
         </div>
-        <button id="er-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">✕</button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="er-mute" type="button" aria-pressed="${!soundService.enabled}" aria-label="${soundService.enabled ? 'Silenciar áudio' : 'Ativar áudio'}" class="w-8 h-8 rounded-full ${soundService.enabled ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold text-sm flex items-center justify-center shrink-0">${soundService.enabled ? '🔊' : '🔇'}</button>
+          <button id="er-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm shrink-0">✕</button>
+        </div>
       </div>
 
-      <div class="grid grid-cols-4 gap-1 bg-white/85 rounded-2xl px-2.5 py-1.5 text-[11px] font-extrabold text-[#4c2a85] border border-purple-100 shadow-sm">
+      <div class="grid grid-cols-4 gap-1 bg-white/85 rounded-2xl px-2.5 py-1.5 text-[11px] font-extrabold text-[#4c2a85] border border-purple-100 shadow-sm shrink-0">
         <div>Pontos: <span id="er-score" class="text-purple-700">0</span></div>
-        <div class="text-center">Meta: <span id="er-dist" class="text-sky-700">0/450m</span></div>
+        <div class="text-center">Meta: <span id="er-dist" class="text-sky-700">0/280m</span></div>
         <div class="text-center" id="er-lives">❤️❤️❤️</div>
         <div class="text-right">⏱️ <span id="er-time">00:00</span></div>
       </div>
 
-      <div class="w-full h-1.5 bg-purple-100 rounded-full overflow-hidden">
+      <div class="w-full h-1.5 bg-purple-100 rounded-full overflow-hidden shrink-0">
         <div id="er-goal-bar" class="h-full bg-gradient-to-r from-amber-400 via-orange-500 to-fuchsia-500 transition-all duration-150" style="width: 0%"></div>
       </div>
 
-      <div id="er-canvas-wrap" class="relative w-full h-[270px] rounded-3xl overflow-hidden border-2 border-white shadow-inner bg-slate-900 touch-none">
+      <div id="er-canvas-wrap" class="relative flex-1 min-h-[240px] w-full rounded-3xl overflow-hidden border-2 border-white shadow-inner bg-slate-900 touch-none">
         <canvas id="er-canvas" class="w-full h-full block"></canvas>
         <div id="er-overlay" class="hidden absolute inset-0 bg-[#1e1038]/85 flex flex-col items-center justify-center p-4 text-center z-10">
           <div id="er-ov-emoji" class="text-4xl mb-1">🏁</div>
@@ -171,10 +175,10 @@ export function mountEscapeRunGame(
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-2">
-        <button id="er-btn-left" type="button" class="py-2.5 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-base shadow-sm active:scale-95 transition">⬅️ Esq</button>
-        <button id="er-btn-turbo" type="button" class="py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-display font-bold text-xs shadow-sm active:scale-95 transition">⚡ Turbo</button>
-        <button id="er-btn-right" type="button" class="py-2.5 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-base shadow-sm active:scale-95 transition">Dir ➡️</button>
+      <div class="grid grid-cols-3 gap-2 shrink-0">
+        <button id="er-btn-left" type="button" class="py-2.5 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-base shadow-sm active:scale-95 transition touch-none">⬅️ Esq</button>
+        <button id="er-btn-turbo" type="button" class="py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-display font-bold text-xs shadow-sm active:scale-95 transition touch-none">⚡ Turbo</button>
+        <button id="er-btn-right" type="button" class="py-2.5 rounded-2xl bg-white/95 border border-purple-200 text-[#3b1f6e] font-display font-bold text-base shadow-sm active:scale-95 transition touch-none">Dir ➡️</button>
       </div>
     </div>
   `;
@@ -195,6 +199,7 @@ export function mountEscapeRunGame(
   const ovDescEl = container.querySelector('#er-ov-desc') as HTMLElement;
   const ovActionsEl = container.querySelector('#er-ov-actions') as HTMLElement;
 
+  const muteBtn = container.querySelector('#er-mute') as HTMLButtonElement | null;
   let width = 340;
   let height = 270;
 
@@ -208,6 +213,11 @@ export function mountEscapeRunGame(
     ctx?.setTransform(dpr, 0, 0, dpr, 0, 0);
   };
   resizeCanvas();
+  const resizeObserver =
+    typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => resizeCanvas())
+      : null;
+  resizeObserver?.observe(wrap);
 
   const updateHud = () => {
     const cfg = getEscapeStageConfig(stage);
@@ -810,20 +820,47 @@ export function mountEscapeRunGame(
 
   // Touch swipe & tap on canvas
   let pointerStartX: number | null = null;
+  let lastSteerX: number | null = null;
+  let didSwipeSteer = false;
+
   const onPointerDown = (e: PointerEvent) => {
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore synthetic events
+    }
     pointerStartX = e.clientX;
+    lastSteerX = e.clientX;
+    didSwipeSteer = false;
+  };
+  const onPointerMove = (e: PointerEvent) => {
+    if (lastSteerX === null) return;
+    const dx = e.clientX - lastSteerX;
+    if (Math.abs(dx) >= 28) {
+      steer(dx > 0 ? 1 : -1);
+      lastSteerX = e.clientX;
+      didSwipeSteer = true;
+    }
   };
   const onPointerUp = (e: PointerEvent) => {
     if (pointerStartX === null) return;
     const dx = e.clientX - pointerStartX;
     pointerStartX = null;
-    if (Math.abs(dx) > 22) {
-      steer(dx > 0 ? 1 : -1);
-    } else {
-      const rect = canvas.getBoundingClientRect();
-      const relX = e.clientX - rect.left;
-      steer(relX < rect.width / 2 ? -1 : 1);
+    lastSteerX = null;
+    if (!didSwipeSteer) {
+      if (Math.abs(dx) > 22) {
+        steer(dx > 0 ? 1 : -1);
+      } else {
+        const rect = canvas.getBoundingClientRect();
+        const relX = e.clientX - rect.left;
+        steer(relX < rect.width / 2 ? -1 : 1);
+      }
     }
+  };
+  const onPointerCancel = () => {
+    pointerStartX = null;
+    lastSteerX = null;
+    didSwipeSteer = false;
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
@@ -839,14 +876,46 @@ export function mountEscapeRunGame(
     }
   };
 
+  const onLeftPress = (e: PointerEvent) => {
+    e.preventDefault();
+    steer(-1);
+  };
+  const onRightPress = (e: PointerEvent) => {
+    e.preventDefault();
+    steer(1);
+  };
+  const onTurboPress = (e: PointerEvent) => {
+    e.preventDefault();
+    activateManualBoost();
+  };
+
   canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerCancel);
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('resize', resizeCanvas);
 
-  container.querySelector('#er-btn-left')?.addEventListener('click', () => steer(-1));
-  container.querySelector('#er-btn-right')?.addEventListener('click', () => steer(1));
-  container.querySelector('#er-btn-turbo')?.addEventListener('click', activateManualBoost);
+  const leftBtn = container.querySelector('#er-btn-left');
+  const rightBtn = container.querySelector('#er-btn-right');
+  const turboBtn = container.querySelector('#er-btn-turbo');
+  leftBtn?.addEventListener('pointerdown', onLeftPress as EventListener);
+  rightBtn?.addEventListener('pointerdown', onRightPress as EventListener);
+  turboBtn?.addEventListener('pointerdown', onTurboPress as EventListener);
+
+  muteBtn?.addEventListener('click', () => {
+    const next = onToggleMute
+      ? onToggleMute()
+      : (() => {
+          soundService.setEnabled(!soundService.enabled);
+          return soundService.enabled;
+        })();
+    muteBtn.textContent = next ? '🔊' : '🔇';
+    muteBtn.setAttribute('aria-pressed', String(!next));
+    muteBtn.setAttribute('aria-label', next ? 'Silenciar áudio' : 'Ativar áudio');
+    muteBtn.className = `w-8 h-8 rounded-full ${next ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold text-sm flex items-center justify-center shrink-0`;
+  });
+
   container.querySelector('#er-close')?.addEventListener('click', () => {
     ended = true;
     cancelAnimationFrame(rafId);
@@ -859,8 +928,11 @@ export function mountEscapeRunGame(
   return () => {
     ended = true;
     cancelAnimationFrame(rafId);
+    resizeObserver?.disconnect();
     canvas.removeEventListener('pointerdown', onPointerDown);
+    canvas.removeEventListener('pointermove', onPointerMove);
     canvas.removeEventListener('pointerup', onPointerUp);
+    canvas.removeEventListener('pointercancel', onPointerCancel);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', resizeCanvas);
   };

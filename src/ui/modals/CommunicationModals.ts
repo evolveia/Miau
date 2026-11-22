@@ -29,17 +29,36 @@ export function renderChatModalHtml(params: {
   hasLiveSession: boolean;
   liveTranscript: string;
   messages: ChatMessage[];
+  soundEnabled: boolean;
 }): string {
   return `
-    <div class="flex items-center justify-between mb-2">
-      <div>
-        <h2 class="font-display text-lg font-bold text-[#3b1f6e]">Conversar com ${escapeHtml(params.petName)} 💬</h2>
-        <p class="text-[11px] font-semibold text-[#6b4d9e]">Histórico com Gemini IA & Conversa por Voz ao Vivo</p>
+    <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
+        <div class="min-w-0">
+          <h2 class="font-display text-lg font-bold text-[#3b1f6e] truncate">Conversar com ${escapeHtml(params.petName)} 💬</h2>
+          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Companhia acolhedora & Voz ao Vivo</p>
+        </div>
       </div>
-      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <button
+          id="btn-chat-mute"
+          type="button"
+          aria-pressed="${!params.soundEnabled}"
+          aria-label="${params.soundEnabled ? 'Silenciar áudio' : 'Ativar áudio'}"
+          class="px-3 py-1.5 rounded-full text-xs font-extrabold shadow-sm border transition ${
+            params.soundEnabled
+              ? 'bg-white/95 border-purple-200 text-[#4c2a85] hover:bg-purple-50'
+              : 'bg-rose-100 border-rose-300 text-rose-800 hover:bg-rose-200'
+          }"
+        >
+          ${params.soundEnabled ? '🔊 Som' : '🔇 Mudo'}
+        </button>
+        <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold">✕</button>
+      </div>
     </div>
 
-    <div class="mb-2.5 bg-purple-50 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2">
+    <div class="mb-2.5 bg-white/85 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2 shrink-0">
       <div class="min-w-0">
         <div class="text-xs font-extrabold text-[#4c2a85]">Voz ao Vivo (Gemini Live)</div>
         <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${escapeHtml(params.liveStatus || 'Fale em tempo real com o Miau!')}</div>
@@ -51,17 +70,17 @@ export function renderChatModalHtml(params: {
 
     ${
       params.liveTranscript
-        ? `<div class="mb-2 bg-white/90 rounded-xl p-2 text-xs text-[#3b1f6e] border border-purple-100 max-h-20 overflow-y-auto miau-scroll whitespace-pre-line">${escapeHtml(params.liveTranscript)}</div>`
+        ? `<div class="mb-2 bg-white/90 rounded-xl p-2.5 text-xs text-[#3b1f6e] border border-purple-100 max-h-24 overflow-y-auto miau-scroll whitespace-pre-line shrink-0">${escapeHtml(params.liveTranscript)}</div>`
         : ''
     }
 
-    <div id="chat-history-list" class="flex-1 max-h-[210px] min-h-[160px] overflow-y-auto miau-scroll flex flex-col gap-2 pr-1 mb-2.5">
+    <div id="chat-history-list" class="flex-1 min-h-0 overflow-y-auto miau-scroll flex flex-col gap-2.5 pr-1 mb-3 bg-white/40 rounded-2xl p-3 border border-white/60">
       ${renderChatHistoryItemsHtml(params.messages)}
     </div>
 
-    <form id="modal-chat-form" class="flex items-center gap-2 bg-white rounded-full p-1.5 pl-3.5 border border-purple-200">
-      <input id="modal-chat-input" type="text" placeholder="Escreva para o Miau..." class="flex-1 text-xs font-semibold text-[#3b1f6e] bg-transparent focus:outline-none" />
-      <button type="submit" class="px-3.5 py-1.5 rounded-full bg-[#6e45a5] text-white text-xs font-extrabold">Enviar</button>
+    <form id="modal-chat-form" class="flex items-center gap-2 bg-white rounded-full p-1.5 pl-4 border border-purple-200 shadow-sm shrink-0">
+      <input id="modal-chat-input" type="text" placeholder="Escreva para o Miau..." class="flex-1 text-sm font-semibold text-[#3b1f6e] bg-transparent focus:outline-none min-w-0" />
+      <button type="submit" class="px-4 py-2 rounded-full bg-[#6e45a5] text-white text-xs font-extrabold shrink-0">Enviar</button>
     </form>
   `;
 }
@@ -112,15 +131,15 @@ export function renderSettingsModalHtml(params: {
         : 'bg-amber-100 text-amber-800';
 
   return `
-    <div class="flex items-center justify-between mb-3">
+    <div class="flex items-center justify-between mb-3 shrink-0">
       <div class="flex items-center gap-2">
-        <button id="btn-settings-back" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold text-sm">←</button>
+        <button id="btn-settings-back" type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold text-xs">← Voltar</button>
         <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Configurações ⚙️</h2>
       </div>
-      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+      <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold">✕</button>
     </div>
 
-    <div class="flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+    <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
       <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2">
         <div class="flex items-center justify-between">
           <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal (Sala)</span>
@@ -185,13 +204,18 @@ export function renderSupportModalHtml(
   waHref: string
 ): string {
   return `
-    <div class="flex items-center justify-between mb-2">
-      <div>
-        <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Suporte Miau 💬</h2>
-        <p class="text-[11px] font-semibold text-[#6b4d9e]">Envie sua dúvida direto para o WhatsApp +55 91 99615-6672</p>
+    <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
+      <div class="flex items-center gap-2 min-w-0">
+        <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
+        <div class="min-w-0">
+          <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Suporte Miau 💬</h2>
+          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Envie sua dúvida direto para o WhatsApp +55 91 99615-6672</p>
+        </div>
       </div>
-      <button id="modal-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold">✕</button>
+      <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
     </div>
+
+    <div class="flex-1 min-h-0 flex flex-col overflow-y-auto miau-scroll pr-1 max-w-xl mx-auto w-full">
 
     <div class="flex flex-wrap gap-1.5 mb-2.5">
       ${[
@@ -227,10 +251,11 @@ export function renderSupportModalHtml(
       <button
         id="btn-copy-support"
         type="button"
-        class="w-full py-2 rounded-2xl bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold hover:bg-white transition"
+        class="w-full py-2.5 rounded-2xl bg-white/85 border border-purple-200 text-[#4c2a85] text-xs font-extrabold hover:bg-white transition"
       >
         📋 Copiar Pergunta
       </button>
+    </div>
     </div>
   `;
 }

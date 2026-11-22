@@ -26,12 +26,12 @@ function getFishStageConfig(stage: number): FishStageConfig {
     return {
       name: 'Manhã Tranquila',
       goal: 8,
-      duration: 24,
-      spawnMs: 640,
-      minSpeed: 24,
-      maxSpeed: 36,
-      badChance: 0.1,
-      goldChance: 0.14,
+      duration: 28,
+      spawnMs: 740,
+      minSpeed: 18,
+      maxSpeed: 28,
+      badChance: 0.08,
+      goldChance: 0.16,
       comboEnabled: false,
     };
   }
@@ -78,7 +78,8 @@ export function mountFishCatchGame(
   container: HTMLElement,
   onComplete: (result: MiniGameResult) => void,
   onClose: () => void,
-  highScore = 0
+  highScore = 0,
+  onToggleMute?: () => boolean
 ): () => void {
   let stage = 1;
   let score = 0;
@@ -108,8 +109,8 @@ export function mountFishCatchGame(
   let spawnTimer: number | null = null;
 
   container.innerHTML = `
-    <div class="flex flex-col h-full">
-      <div class="flex items-center justify-between mb-1.5">
+    <div class="flex-1 flex flex-col min-h-0 h-full">
+      <div class="flex items-center justify-between mb-1.5 shrink-0">
         <div>
           <div class="flex items-center gap-2">
             <h3 class="font-display text-base font-bold text-[#3b1f6e]">Caça aos Peixinhos 🐟</h3>
@@ -117,7 +118,10 @@ export function mountFishCatchGame(
           </div>
           <p id="mg-stage-sub" class="text-[11px] text-[#6b4d9e] font-semibold">Manhã Tranquila • Meta: 8 itens</p>
         </div>
-        <button id="mg-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center hover:bg-purple-200 shrink-0">✕</button>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="mg-mute" type="button" aria-pressed="${!soundService.enabled}" aria-label="${soundService.enabled ? 'Silenciar áudio' : 'Ativar áudio'}" class="w-8 h-8 rounded-full ${soundService.enabled ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold flex items-center justify-center shrink-0">${soundService.enabled ? '🔊' : '🔇'}</button>
+          <button id="mg-close" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center hover:bg-purple-200 shrink-0">✕</button>
+        </div>
       </div>
 
       <div class="grid grid-cols-4 gap-1.5 bg-purple-50 rounded-2xl px-2.5 py-1.5 mb-2 border border-purple-200 text-center">
@@ -163,6 +167,7 @@ export function mountFishCatchGame(
   const comboEl = container.querySelector('#mg-combo') as HTMLElement;
   const timeEl = container.querySelector('#mg-time') as HTMLElement;
   const progressBar = container.querySelector('#mg-progress-bar') as HTMLElement;
+  const muteBtn = container.querySelector('#mg-mute') as HTMLButtonElement | null;
   const closeBtn = container.querySelector('#mg-close') as HTMLButtonElement;
 
   const updateHud = () => {
@@ -188,13 +193,35 @@ export function mountFishCatchGame(
   const updateBasket = (clientX: number) => {
     if (paused || stopped) return;
     const rect = stageEl.getBoundingClientRect();
+    if (rect.width <= 0) return;
     const pct = ((clientX - rect.left) / rect.width) * 100;
     basketX = Math.max(8, Math.min(92, pct));
     basket.style.left = `${basketX}%`;
   };
 
   stageEl.addEventListener('pointermove', (e) => updateBasket(e.clientX));
-  stageEl.addEventListener('pointerdown', (e) => updateBasket(e.clientX));
+  stageEl.addEventListener('pointerdown', (e) => {
+    try {
+      stageEl.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore synthetic events
+    }
+    updateBasket(e.clientX);
+  });
+  stageEl.addEventListener('pointercancel', () => {});
+
+  muteBtn?.addEventListener('click', () => {
+    const next = onToggleMute
+      ? onToggleMute()
+      : (() => {
+          soundService.setEnabled(!soundService.enabled);
+          return soundService.enabled;
+        })();
+    muteBtn.textContent = next ? '🔊' : '🔇';
+    muteBtn.setAttribute('aria-pressed', String(!next));
+    muteBtn.setAttribute('aria-label', next ? 'Silenciar áudio' : 'Ativar áudio');
+    muteBtn.className = `w-8 h-8 rounded-full ${next ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold flex items-center justify-center shrink-0`;
+  });
 
   const showFloatingPop = (
     x: number,

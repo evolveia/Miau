@@ -6,7 +6,7 @@ class SoundService {
   public enabled = true;
 
   private getContext(): AudioContext | null {
-    if (typeof window === 'undefined') return null;
+    if (!this.enabled || typeof window === 'undefined') return null;
     if (!this.ctx) {
       const AudioCtx =
         window.AudioContext ||
@@ -20,6 +20,34 @@ class SoundService {
       void this.ctx.resume();
     }
     return this.ctx;
+  }
+
+  public stopAllAudio(): void {
+    if (this.activeAudio) {
+      try {
+        this.activeAudio.onplay = null;
+        this.activeAudio.onended = null;
+        this.activeAudio.onerror = null;
+        this.activeAudio.pause();
+        this.activeAudio.currentTime = 0;
+        this.activeAudio.src = '';
+      } catch {
+        // Ignore audio stop error
+      }
+      this.activeAudio = null;
+    }
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    if (!enabled) {
+      this.stopAllAudio();
+      if (this.ctx && this.ctx.state === 'running') {
+        void this.ctx.suspend().catch(() => {});
+      }
+    } else if (this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume().catch(() => {});
+    }
   }
 
   playMeow(pitchMultiplier = 1): void {
@@ -156,22 +184,34 @@ class SoundService {
     onStart?: () => void,
     onEnd?: () => void
   ): Promise<void> {
-    if (!this.enabled) return;
-    if (this.activeAudio) {
-      this.activeAudio.pause();
-      this.activeAudio = null;
+    if (!this.enabled) {
+      onEnd?.();
+      return;
     }
+    this.stopAllAudio();
     const audio = new Audio(`data:${mimeType};base64,${base64Audio}`);
     this.activeAudio = audio;
-    audio.onplay = () => onStart?.();
+    audio.onplay = () => {
+      if (!this.enabled) {
+        this.stopAllAudio();
+        onEnd?.();
+        return;
+      }
+      onStart?.();
+    };
     audio.onended = () => {
-      this.activeAudio = null;
+      if (this.activeAudio === audio) this.activeAudio = null;
       onEnd?.();
     };
     audio.onerror = () => {
-      this.activeAudio = null;
+      if (this.activeAudio === audio) this.activeAudio = null;
       onEnd?.();
     };
+    if (!this.enabled) {
+      this.stopAllAudio();
+      onEnd?.();
+      return;
+    }
     await audio.play();
   }
 
@@ -236,6 +276,14 @@ export class LiveVoiceSession {
 
   private hasErrored = false;
   private manualStop = false;
+  private muted = !soundService.enabled;
+
+  public setMuted(muted: boolean): void {
+    this.muted = muted;
+    if (muted) {
+      this.stopPlayback();
+    }
+  }
 
   async start(): Promise<void> {
     this.hasErrored = false;
@@ -369,7 +417,7 @@ export class LiveVoiceSession {
   }
 
   private playPcmChunk(base64: string): void {
-    if (!this.outputCtx) return;
+    if (!this.outputCtx || this.muted || !soundService.enabled) return;
     const binary = atob(base64);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) {
