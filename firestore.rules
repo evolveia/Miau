@@ -175,6 +175,34 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidUserUpdateKeys() {
+      let changed = incoming().diff(existing()).affectedKeys();
+      return changed.hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'gameRecords', 'dailyRoutine', 'updatedAt'])
+        || changed.hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
+        || changed.hasOnly(['petName', 'soundEnabled', 'updatedAt']);
+    }
+
+    function isLegacyUserDoc(data, userId) {
+      return !('ownerId' in data)
+        || !(data.ownerId is string)
+        || data.ownerId != userId
+        || !('createdAt' in data)
+        || !(data.createdAt is timestamp)
+        || !('coins' in data)
+        || !(data.coins is int)
+        || !('level' in data)
+        || !(data.level is int)
+        || !('xp' in data)
+        || !(data.xp is int)
+        || !('ownedItems' in data)
+        || !(data.ownedItems is list)
+        || data.ownedItems.size() == 0
+        || !('progress' in data)
+        || !('gameRecords' in data)
+        || !('dailyRoutine' in data)
+        || !('unlockedAchievements' in data);
+    }
+
     match /users/{userId} {
       allow get: if isValidId(userId) && isOwner(userId);
       allow list: if false;
@@ -190,10 +218,8 @@ service cloud.firestore {
         && (!('createdAt' in existing()) || !(existing().createdAt is timestamp) || incoming().createdAt == existing().createdAt)
         && incoming().updatedAt == request.time
         && (
-          incoming().diff(existing()).affectedKeys().hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'gameRecords', 'dailyRoutine', 'updatedAt'])
-          || incoming().diff(existing()).affectedKeys().hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
-          || incoming().diff(existing()).affectedKeys().hasOnly(['petName', 'soundEnabled', 'updatedAt'])
-          || !isValidUserPetProfile(existing(), userId)
+          isValidUserUpdateKeys()
+          || isLegacyUserDoc(existing(), userId)
         );
       allow delete: if isValidId(userId) && isOwner(userId);
 

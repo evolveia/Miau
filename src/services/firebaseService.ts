@@ -600,7 +600,36 @@ function buildRepairedDocPayload(
     },
     uid
   );
-  // Preserve existing valid ownedItems unless ownedItems was explicitly updated or missing
+  // Preserve existing valid petName, equipped, and ownedItems unless explicitly updated
+  if (raw && !('petName' in payloadWithoutTs)) {
+    if (
+      typeof raw.petName === 'string' &&
+      raw.petName.length >= 1 &&
+      raw.petName.length <= 32
+    ) {
+      merged.petName = raw.petName;
+    }
+  }
+  if (raw && !('equipped' in payloadWithoutTs)) {
+    const eq = raw.equipped as Record<string, unknown> | undefined;
+    if (
+      eq &&
+      typeof eq === 'object' &&
+      Object.keys(eq).length === 3 &&
+      typeof eq.hat === 'string' &&
+      eq.hat.length <= 64 &&
+      typeof eq.accessory === 'string' &&
+      eq.accessory.length <= 64 &&
+      typeof eq.background === 'string' &&
+      eq.background.length <= 64
+    ) {
+      merged.equipped = {
+        hat: eq.hat,
+        accessory: eq.accessory,
+        background: eq.background,
+      };
+    }
+  }
   if (
     raw &&
     !('ownedItems' in payloadWithoutTs) &&
@@ -641,10 +670,10 @@ async function updateUserDocWithLegacyRepair(
         errMsg.includes('PERMISSION_DENIED');
 
       let diag = '';
+      let fromServer = true;
       if (isPermissionError && auth.currentUser?.uid === uid) {
         try {
           let snap;
-          let fromServer = true;
           try {
             snap = await getDocFromServer(userRef);
           } catch {
@@ -656,9 +685,6 @@ async function updateUserDocWithLegacyRepair(
             : null;
           diag = diagnoseUserDocMismatch(raw, uid);
 
-          // If read from local cache while a serverTimestamp write was pending,
-          // updatedAt/createdAt may temporarily appear null locally; avoid
-          // clobbering createdAt with serverTimestamp() unless confirmed by server.
           const isLocalPendingTimestamp =
             !fromServer &&
             raw !== null &&
@@ -681,7 +707,7 @@ async function updateUserDocWithLegacyRepair(
               : String(repairError);
           handleFirestoreError(
             new Error(
-              `${repairMsg} [diag=${diag || 'repairFailed'},keys=${Object.keys(payload).join(',')}]`
+              `${repairMsg} [diag=${diag || 'repairFailed'},fromServer=${fromServer},phase=setDoc,keys=${Object.keys(payload).join(',')}]`
             ),
             OperationType.UPDATE,
             path
@@ -690,7 +716,9 @@ async function updateUserDocWithLegacyRepair(
       }
       if (diag) {
         handleFirestoreError(
-          new Error(`${errMsg} [diag=${diag},keys=${Object.keys(payload).join(',')}]`),
+          new Error(
+            `${errMsg} [diag=${diag},fromServer=${fromServer},phase=updateDoc,keys=${Object.keys(payload).join(',')}]`
+          ),
           OperationType.UPDATE,
           path
         );
