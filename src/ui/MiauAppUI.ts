@@ -57,10 +57,12 @@ import type {
   UserPetProfile,
 } from '../types';
 import {
-  buildContextualGreeting,
   buildConversationContextSnapshot,
   buildFriendGreeting,
-  buildMainScreenCheckIn,
+  buildLowNeedAlert,
+  buildPeriodGreeting,
+  getDailyGreetingBucket,
+  type DailyGreetingBucket,
 } from '../data/chatContext';
 import {
   mountInteractiveBall,
@@ -121,6 +123,7 @@ const LOCAL_RANKING_KEY = 'miau_local_rankings_v1';
 const LOCAL_MATCH_HISTORY_PREFIX = 'miau_game_history_v1_';
 const SCREEN_PREFS_KEY = 'miau_screen_prefs_v1';
 const CAM_PROMPTED_SESSION_KEY = 'miau_cam_prompted_v1';
+const PERIOD_GREETINGS_STORAGE_PREFIX = 'miau_period_greetings_v1_';
 
 const DEFAULT_SCREEN_PREFS: ScreenVisibilityPrefs = {
   showStatusBars: true,
@@ -188,8 +191,8 @@ export class MiauAppUI {
   private proactiveTimer: number | null = null;
   private lastUserInteractionAt = Date.now();
   private lastProactivePromptAt = 0;
-  private proactiveStepIndex = 0;
-  private hasGreetedMainScreen = false;
+  private lastNeedAlertAt = 0;
+  private alertedLowNeeds: Set<'hunger' | 'sleep' | 'hygiene'> = new Set();
   private hasUserGesture = false;
   private lastFriendModalGreetAt = 0;
   private supportDraft = '';
@@ -342,6 +345,8 @@ export class MiauAppUI {
       this.firebaseUser = user;
       if (user) {
         this.isDemoSession = false;
+        this.alertedLowNeeds.clear();
+        this.lastNeedAlertAt = 0;
         try {
           this.profile = await loadOrCreatePetProfile(user);
           this.ensureProfileDefaults();
@@ -436,7 +441,66 @@ export class MiauAppUI {
     }, 5000);
   }
 
+  private getPeriodGreetingStorageKey(): string {
+    const ownerId =
+      this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+    return `${PERIOD_GREETINGS_STORAGE_PREFIX}${ownerId}`;
+  }
+
+  private hasSentPeriodGreetingToday(
+    dateKey: string,
+    period: DailyGreetingBucket
+  ): boolean {
+    try {
+      const raw = localStorage.getItem(this.getPeriodGreetingStorageKey());
+      if (!raw) return false;
+      const parsed = JSON.parse(raw) as {
+        dateKey?: string;
+        sent?: Partial<Record<DailyGreetingBucket, boolean>>;
+      };
+      if (parsed.dateKey !== dateKey) return false;
+      return Boolean(parsed.sent?.[period]);
+    } catch {
+      return false;
+    }
+  }
+
+  private markPeriodGreetingSentToday(
+    dateKey: string,
+    period: DailyGreetingBucket
+  ): void {
+    try {
+      const key = this.getPeriodGreetingStorageKey();
+      let sent: Partial<Record<DailyGreetingBucket, boolean>> = {};
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          dateKey?: string;
+          sent?: Partial<Record<DailyGreetingBucket, boolean>>;
+        };
+        if (parsed.dateKey === dateKey && parsed.sent) {
+          sent = { ...parsed.sent };
+        }
+      }
+      sent[period] = true;
+      localStorage.setItem(key, JSON.stringify({ dateKey, sent }));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+
+  private refreshNeedAlertHysteresis(): void {
+    if (this.profile.stats.hunger >= 45) this.alertedLowNeeds.delete('hunger');
+    if (this.profile.stats.sleep >= 45) this.alertedLowNeeds.delete('sleep');
+    if (this.profile.stats.hygiene >= 45) this.alertedLowNeeds.delete('hygiene');
+  }
+
   private evaluateProactiveInteraction(): void {
+    if (this.screen === 'game') {
+      this.ensureProfileDefaults();
+      this.refreshNeedAlertHysteresis();
+    }
+
     if (
       this.screen !== 'game' ||
       this.activeModal !== 'none' ||
@@ -453,43 +517,77 @@ export class MiauAppUI {
     if (activeEl?.id === 'quick-chat-input') return;
 
     const now = Date.now();
-    if (!this.hasGreetedMainScreen) {
-      if (now - this.lastUserInteractionAt >= 3500) {
-        this.hasGreetedMainScreen = true;
-        this.triggerProactiveCheckIn(true);
+    const dateKey = getTodayDateKey();
+    const period = getDailyGreetingBucket(new Date().getHours());
+
+    // 1. Mensagem padrão de manhã, tarde e noite (apenas 1 vez por período por dia)
+    if (!this.hasSentPeriodGreetingToday(dateKey, period)) {
+      if (
+        now - this.lastUserInteractionAt >= 3500 &&
+        now - this.lastProactivePromptAt >= 5000
+      ) {
+        this.markPeriodGreetingSentToday(dateKey, period);
+        const snapshot = buildConversationContextSnapshot(this.humanProfile);
+        const greeting = buildPeriodGreeting(
+          snapshot,
+          this.profile.petName,
+          period
+        );
+        const particle =
+          period === 'manhã' ? '☀️' : period === 'tarde' ? '🌤️' : '🌙';
+        this.deliverProactiveSpeech(greeting, particle);
       }
       return;
     }
 
+    // 2. Avisar apenas quando estiver com fome, sono ou sujo (com intervalo calmo, sem incomodar)
     if (
-      now - this.lastUserInteractionAt >= 24000 &&
-      now - this.lastProactivePromptAt >= 48000
+      now - this.lastUserInteractionAt < 25000 ||
+      now - this.lastProactivePromptAt < 60000 ||
+      now - this.lastNeedAlertAt < 180000
     ) {
-      this.triggerProactiveCheckIn(false);
+      return;
     }
+
+    const lowNeedOrder: Array<'hunger' | 'sleep' | 'hygiene'> = [
+      'hunger',
+      'sleep',
+      'hygiene',
+    ];
+    const pendingNeed = lowNeedOrder.find(
+      (need) =>
+        this.profile.stats[need] < 30 && !this.alertedLowNeeds.has(need)
+    );
+    if (!pendingNeed) return;
+
+    this.alertedLowNeeds.add(pendingNeed);
+    this.lastNeedAlertAt = now;
+    const snapshot = buildConversationContextSnapshot(this.humanProfile);
+    const alert = buildLowNeedAlert(
+      pendingNeed,
+      snapshot,
+      this.profile.petName
+    );
+    const particle =
+      pendingNeed === 'hunger' ? '🐟' : pendingNeed === 'sleep' ? '💤' : '🫧';
+    this.deliverProactiveSpeech(alert, particle);
   }
 
-  private triggerProactiveCheckIn(isInitial: boolean): void {
+  private deliverProactiveSpeech(
+    payload: { meowPrefix: string; text: string; mood: MiauMood },
+    particle: string
+  ): void {
     this.ensureProfileDefaults();
     this.lastProactivePromptAt = Date.now();
-    const snapshot = buildConversationContextSnapshot(this.humanProfile);
-    const checkIn = isInitial
-      ? buildContextualGreeting(snapshot, this.profile.petName)
-      : buildMainScreenCheckIn(
-          snapshot,
-          this.profile.stats,
-          this.profile.petName,
-          this.proactiveStepIndex++
-        );
     this.currentSpeech = {
-      meowPrefix: checkIn.meowPrefix,
-      text: checkIn.text,
+      meowPrefix: payload.meowPrefix,
+      text: payload.text,
     };
-    this.mood = checkIn.mood;
+    this.mood = payload.mood;
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
     this.triggerMiauReaction('bounce');
-    this.spawnFloatingParticle('💬');
+    this.spawnFloatingParticle(particle);
     if (this.hasUserGesture && this.profile.soundEnabled) {
       void this.speakCurrentCaption({
         withLeadingMeow: false,
@@ -909,6 +1007,8 @@ export class MiauAppUI {
 
   private enterDemoMode(nameHint?: string): void {
     this.isDemoSession = true;
+    this.alertedLowNeeds.clear();
+    this.lastNeedAlertAt = 0;
     const saved = localStorage.getItem(LOCAL_DEMO_KEY);
     if (saved) {
       try {
@@ -991,7 +1091,7 @@ export class MiauAppUI {
     this.spawnFloatingParticle('💖');
     this.currentSpeech = {
       meowPrefix: 'Purrr~ 💖',
-      text: '(Que carinho gostoso, humano!)',
+      text: '(Obrigado pelo carinho gostoso! Adoro ficar com você!)',
     };
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
@@ -1058,13 +1158,13 @@ export class MiauAppUI {
     this.spawnFloatingParticle('🐟');
     if (!claimedRoutine) {
       this.currentSpeech = {
-        meowPrefix: 'Nham nham!',
-        text: '(Que peixinho delicioso, obrigado!)',
+        meowPrefix: 'Nham nham! 🐟',
+        text: '(Obrigado pela comida! Que peixinho delicioso!)',
       };
     } else {
       this.currentSpeech = {
         meowPrefix: 'Nham nham! ⏰',
-        text: `(Refeição no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
+        text: `(Obrigado pela refeição no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
       };
     }
     this.updateStatusBarsDOM();
@@ -1100,11 +1200,11 @@ export class MiauAppUI {
     this.currentSpeech = claimedRoutine
       ? {
           meowPrefix: 'Purrr~ ⏰',
-          text: `(Banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
+          text: `(Obrigado pelo banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
         }
       : {
-          meowPrefix: 'Purrr~',
-          text: '(Fiquei limpinho e cheiroso!)',
+          meowPrefix: 'Purrr~ 🫧',
+          text: '(Obrigado pelo banho! Fiquei limpinho e cheiroso!)',
         };
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
@@ -1134,11 +1234,11 @@ export class MiauAppUI {
       source === 'ball'
         ? {
             meowPrefix: 'Miau!! ⚽',
-            text: '(Peguei a bolinha! Joga de novo!)',
+            text: '(Peguei a bolinha! Obrigado por brincar comigo!)',
           }
         : {
             meowPrefix: 'Miau!! 🧶',
-            text: '(Adorei brincar com o novelo de lã!)',
+            text: '(Obrigado por brincar comigo com o novelo de lã!)',
           };
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
@@ -1427,6 +1527,7 @@ export class MiauAppUI {
 
     this.ensureProfileDefaults();
     this.lastUserInteractionAt = Date.now();
+    this.lastProactivePromptAt = Date.now();
     this.hasUserGesture = true;
     this.isThinking = true;
     this.currentSpeech = {
@@ -1474,6 +1575,8 @@ export class MiauAppUI {
       this.evaluateAchievements();
 
       this.isThinking = false;
+      this.lastUserInteractionAt = Date.now();
+      this.lastProactivePromptAt = Date.now();
       this.triggerMiauReaction('jump');
       hapticService.coin();
       this.updateSpeechDOM();
@@ -1525,6 +1628,8 @@ export class MiauAppUI {
 
   private async handleMiniGameComplete(res: MiniGameResult): Promise<void> {
     this.ensureProfileDefaults();
+    this.lastUserInteractionAt = Date.now();
+    this.lastProactivePromptAt = Date.now();
     this.activeMiniGame = 'none';
     this.activeModal = 'none';
     this.profile.stats.fun = Math.min(100, this.profile.stats.fun + res.funBoost);
@@ -1572,22 +1677,22 @@ export class MiauAppUI {
     if (isNewRecord) {
       this.currentSpeech = {
         meowPrefix: 'NOVO RECORDE!! 🏆',
-        text: `(${res.gameName}: ${res.score} pts • Fase ${res.stageReached}! +${totalCoinsGained} moedas com bônus!)`,
+        text: `(${res.gameName}: ${res.score} pts • Fase ${res.stageReached}! Obrigado por jogar comigo! +${totalCoinsGained} moedas!)`,
       };
     } else if (res.performanceTier === 'gold') {
       this.currentSpeech = {
         meowPrefix: 'Miau!! 🏆',
-        text: `(${res.gameName}: ${res.summaryText}! Você arrasou, ganhamos +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! Obrigado por brincar comigo, +${totalCoinsGained} moedas!)`,
       };
     } else if (res.performanceTier === 'silver') {
       this.currentSpeech = {
         meowPrefix: 'Miau! ✨',
-        text: `(${res.gameName}: ${res.summaryText}! Mandou super bem, +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! Obrigado por jogar comigo, +${totalCoinsGained} moedas!)`,
       };
     } else {
       this.currentSpeech = {
         meowPrefix: 'Purrr~ 🐾',
-        text: `(${res.gameName}: ${res.summaryText}! Foi muito divertido, +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! Obrigado por brincar comigo, +${totalCoinsGained} moedas!)`,
       };
     }
 
@@ -1626,7 +1731,8 @@ export class MiauAppUI {
         temporalContext: contextSnapshot.temporal,
         userContext: contextSnapshot.user,
       });
-      if (this.isThinking) return;
+      if (this.isThinking || this.activeModal === 'chat') return;
+      this.lastProactivePromptAt = Date.now();
       this.currentSpeech = {
         meowPrefix: reply.meowPrefix,
         text: reply.text,
@@ -2426,11 +2532,11 @@ export class MiauAppUI {
           this.currentSpeech = claimedRoutine
             ? {
                 meowPrefix: 'Purrr~ ⏰',
-                text: `(Banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
+                text: `(Obrigado pelo banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
               }
             : {
-                meowPrefix: 'Purrr~',
-                text: '(Estou limpinho e reluzente!)',
+                meowPrefix: 'Purrr~ ✨',
+                text: '(Obrigado pelo banho de espuma! Estou limpinho e reluzente!)',
               };
           this.render();
           this.triggerMiauReaction('spin');
@@ -2586,11 +2692,11 @@ export class MiauAppUI {
         this.currentSpeech = claimedRoutine
           ? {
               meowPrefix: 'Nham nham! ⏰',
-              text: `(${food.name} no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
+              text: `(Obrigado pelo ${food.name} no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
             }
           : {
-              meowPrefix: 'Nham nham!',
-              text: `(Adorei o ${food.name}! Que delícia!)`,
+              meowPrefix: 'Nham nham! 😋',
+              text: `(Obrigado pelo ${food.name}! Que delícia!)`,
             };
         this.activeModal = 'none';
         this.render();
@@ -2629,11 +2735,11 @@ export class MiauAppUI {
       this.currentSpeech = claimedRoutine
         ? {
             meowPrefix: 'Purrr~ ⏰',
-            text: `(Banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
+            text: `(Obrigado pelo banho no horário! +${claimedRoutine.bonusCoins} moedas de bônus!)`,
           }
         : {
-            meowPrefix: 'Purrr~',
-            text: '(Banho quentinho! Estou cheiroso demais!)',
+            meowPrefix: 'Purrr~ 🫧',
+            text: '(Obrigado pelo banho quentinho! Estou cheiroso demais!)',
           };
       this.activeModal = 'none';
       this.render();
@@ -3182,6 +3288,8 @@ export class MiauAppUI {
       this.liveSession = null;
       this.activeModal = 'none';
       this.isDemoSession = false;
+      this.alertedLowNeeds.clear();
+      this.lastNeedAlertAt = 0;
       this.humanProfile = createEmptyHumanProfile('guest');
       this.learnPreviewLevel = null;
       if (this.firebaseUser) {

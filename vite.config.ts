@@ -11,8 +11,7 @@ export default defineConfig({
         'favicon.ico',
         'apple-touch-icon.png',
         'icon.svg',
-        'og-miau.png',
-        'assets/aistudio/og-miau_bd9d2fe1.jpg',
+        'og-miau.jpg',
       ],
       manifest: {
         id: '/',

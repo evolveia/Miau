@@ -199,64 +199,101 @@ export function buildFriendGreeting(
   };
 }
 
+export type DailyGreetingBucket = 'manhã' | 'tarde' | 'noite';
+
+export function getDailyGreetingBucket(hour: number): DailyGreetingBucket {
+  if (hour >= 5 && hour < 12) return 'manhã';
+  if (hour >= 12 && hour < 18) return 'tarde';
+  return 'noite';
+}
+
+export function buildPeriodGreeting(
+  snapshot: ConversationContextSnapshot,
+  petName = 'Miau',
+  bucket?: DailyGreetingBucket
+): { meowPrefix: string; text: string; mood: MiauMood } {
+  const { temporal, user } = snapshot;
+  const targetBucket =
+    bucket ??
+    (temporal.periodOfDay === 'manhã'
+      ? 'manhã'
+      : temporal.periodOfDay === 'tarde'
+        ? 'tarde'
+        : 'noite');
+  const nameSuffix = user.firstName ? `, ${user.firstName}` : '';
+  const schoolAge = isSchoolAgeUser(user);
+
+  if (targetBucket === 'manhã') {
+    return {
+      meowPrefix: 'Bom dia! ☀️',
+      text: schoolAge
+        ? `(Bom dia${nameSuffix}! Que a sua manhã de ${temporal.weekdayName} seja super leve e divertida! Se quiser perguntar ou conversar comigo, é só chamar o ${petName}!)`
+        : `(Bom dia${nameSuffix}! Desejo uma linda manhã de ${temporal.weekdayName} para você! Quando quiser conversar ou me perguntar algo, estou por aqui!)`,
+      mood: 'happy',
+    };
+  }
+
+  if (targetBucket === 'tarde') {
+    return {
+      meowPrefix: 'Boa tarde! 🌤️',
+      text: `(Boa tarde${nameSuffix}! Espero que o seu dia esteja indo super bem! Se quiser bater um papo, brincar ou perguntar algo para o ${petName}, estou aqui!)`,
+      mood: 'affectionate',
+    };
+  }
+
+  return {
+    meowPrefix: 'Boa noite! 🌙',
+    text: `(Boa noite${nameSuffix}! Que a sua noite seja tranquila e acolhedora! Se quiser conversar ou perguntar alguma coisa antes de descansar, é só falar com o ${petName}!)`,
+    mood: 'affectionate',
+  };
+}
+
+export function buildLowNeedAlert(
+  need: 'hunger' | 'sleep' | 'hygiene',
+  snapshot: ConversationContextSnapshot,
+  petName = 'Miau'
+): { meowPrefix: string; text: string; mood: MiauMood } {
+  const nameSuffix = snapshot.user.firstName ? `, ${snapshot.user.firstName}` : '';
+
+  if (need === 'hunger') {
+    return {
+      meowPrefix: 'Miau... 🐟',
+      text: `(Oi${nameSuffix}! Estou ficando com fominha... quando puder, me dá uma comidinha gostosa?)`,
+      mood: 'hungry',
+    };
+  }
+
+  if (need === 'sleep') {
+    return {
+      meowPrefix: 'Miau~ 😴',
+      text: `(Estou com bastante soninho${nameSuffix}... que tal o ${petName} tirar uma soneca gostosa?)`,
+      mood: 'sleepy',
+    };
+  }
+
+  return {
+    meowPrefix: 'Purrr~ 🫧',
+    text: `(Oi${nameSuffix}! Fiquei um pouquinho sujo... um banho quentinho ia deixar o ${petName} bem cheiroso!)`,
+    mood: 'happy',
+  };
+}
+
 export function buildMainScreenCheckIn(
   snapshot: ConversationContextSnapshot,
   stats: PetStats,
   petName = 'Miau',
   stepIndex = 0
 ): { meowPrefix: string; text: string; mood: MiauMood } {
-  const { temporal, user } = snapshot;
-  const nameSuffix = user.firstName ? `, ${user.firstName}` : '';
-  const schoolAge = isSchoolAgeUser(user);
-
-  if (stats.hunger < 25) {
-    return {
-      meowPrefix: 'Miau... 🐟',
-      text: `(Oi${nameSuffix}! Minha barriguinha deu uma roncada leve... mas me conta, você já comeu alguma coisa gostosa hoje?)`,
-      mood: 'hungry',
-    };
+  if (stats.hunger < 30) {
+    return buildLowNeedAlert('hunger', snapshot, petName);
   }
-  if (stats.sleep < 25) {
-    return {
-      meowPrefix: 'Miau~ 😴',
-      text: `(Estou ficando com soninho${nameSuffix}... e você, conseguiu descansar bem hoje?)`,
-      mood: 'sleepy',
-    };
+  if (stats.sleep < 30) {
+    return buildLowNeedAlert('sleep', snapshot, petName);
   }
-  if (stats.hygiene < 25) {
-    return {
-      meowPrefix: 'Purrr~ 🫧',
-      text: `(Acho que já cabe um banho cheiroso depois, né${nameSuffix}? Como você está se sentindo agora?)`,
-      mood: 'happy',
-    };
+  if (stats.hygiene < 30) {
+    return buildLowNeedAlert('hygiene', snapshot, petName);
   }
 
-  const prompts: Array<{ meowPrefix: string; text: string; mood: MiauMood }> = [
-    {
-      meowPrefix: 'Miau! 👋💛',
-      text: `(Ei${nameSuffix}, tudo bem por aí? Como você está se sentindo nesta ${temporal.periodOfDay}? Clica em Conversar para batermos um papo!)`,
-      mood: 'affectionate',
-    },
-    {
-      meowPrefix: 'Purrr~ 💬',
-      text: schoolAge
-        ? `(Oi${nameSuffix}! Como foram suas aulas ou tarefas hoje? O ${petName} adora ouvir suas novidades!)`
-        : `(Oi${nameSuffix}! Que bom ter você aqui na Sala de Estar! Quer me contar como está sendo o seu dia?)`,
-      mood: 'happy',
-    },
-    {
-      meowPrefix: 'Miau~ 🌟',
-      text: `(Faz um carinho em mim ou toca no microfone para conversarmos por áudio! Quero saber como você está!)`,
-      mood: 'playful',
-    },
-    {
-      meowPrefix: 'Purrr~ 💕',
-      text: temporal.isWeekend
-        ? `(Bom fim de semana${nameSuffix}! O que você está aprontando de legal hoje para descansar e se divertir?)`
-        : `(Passando só para dar um abraço virtual${nameSuffix}! Se quiser desabafar ou rir um pouco, estou aqui!)`,
-      mood: 'affectionate',
-    },
-  ];
-
-  return prompts[Math.abs(stepIndex) % prompts.length];
+  void stepIndex;
+  return buildPeriodGreeting(snapshot, petName);
 }
