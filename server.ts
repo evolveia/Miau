@@ -8,64 +8,24 @@ import {
   GoogleGenAI,
   LiveServerMessage,
   Modality,
-  ThinkingLevel,
   Type,
 } from '@google/genai';
+import {
+  MissingGeminiApiKeyError,
+  getAIClient,
+  getCachedTtsWav,
+  getGeminiFallbackStatus,
+  getRecommendedThinkingLevel,
+  probeSuperiorModelRecovery,
+  runWithModelFallback,
+  setCachedTtsWav,
+  startSuperiorModelRecoveryMonitor,
+} from './api/gemini/_shared.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const IS_PROD = process.env.NODE_ENV === 'production';
-
-class MissingGeminiApiKeyError extends Error {
-  public readonly statusCode = 503;
-  public readonly code = 'MISSING_GEMINI_API_KEY';
-
-  constructor() {
-    super(
-      'GEMINI_API_KEY não configurada no ambiente do servidor. Adicione GEMINI_API_KEY nas variáveis de ambiente e reinicie/reimplante o servidor.'
-    );
-    this.name = 'MissingGeminiApiKeyError';
-  }
-}
-
-function getAIClient(): GoogleGenAI {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) {
-    throw new MissingGeminiApiKeyError();
-  }
-  return new GoogleGenAI({
-    apiKey,
-    apiVersion: 'v1beta',
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
-}
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    try {
-      return await fn();
-    } catch (err) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      const isTransient =
-        msg.includes('"code":503') ||
-        msg.includes('UNAVAILABLE') ||
-        msg.includes('"code":429') ||
-        msg.includes('RESOURCE_EXHAUSTED');
-      if (!isTransient || attempt === retries) {
-        throw err;
-      }
-      await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
-    }
-  }
-  throw lastError;
-}
 
 interface ChatTemporalInput {
   weekdayName?: string;
@@ -144,6 +104,27 @@ async function startServer() {
   const app = express();
   const server = http.createServer(app);
   app.use(express.json({ limit: '15mb' }));
+  startSuperiorModelRecoveryMonitor(getAIClient);
+
+  app.get('/api/gemini/status', async (req, res) => {
+    if (req.query?.probe === '1') {
+      try {
+        const status = getGeminiFallbackStatus();
+        const degraded = (['chat', 'tts', 'transcribe'] as const).filter(
+          (cap) => status[cap].fallbackActive
+        );
+        if (degraded.length > 0) {
+          const ai = getAIClient();
+          await Promise.allSettled(
+            degraded.map((cap) => probeSuperiorModelRecovery(ai, cap))
+          );
+        }
+      } catch {
+        // Ignore probe failures and still return current status
+      }
+    }
+    res.json(getGeminiFallbackStatus());
+  });
 
   app.post('/api/gemini/chat', async (req, res) => {
     try {
@@ -172,42 +153,45 @@ async function startServer() {
         { role: 'user', parts: [{ text: message }] },
       ];
 
-      const response = await withRetry(() =>
-        ai.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
-          contents,
-          config: {
-            systemInstruction: buildMiauSystemInstruction({
-              petName,
-              stats,
-              equipped,
-              temporalContext,
-              userContext,
-            }),
-            thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-            maxOutputTokens: 180,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              required: ['meowPrefix', 'text', 'mood'],
-              properties: {
-                meowPrefix: {
-                  type: Type.STRING,
-                  description: 'Short cat vocalization like Miau! or Purrr~',
-                },
-                text: {
-                  type: Type.STRING,
-                  description: 'Translated Brazilian Portuguese speech in parentheses.',
-                },
-                mood: {
-                  type: Type.STRING,
-                  description: 'One of happy, playful, hungry, sleepy, affectionate.',
+      const { result: response, modelUsed, fallbackActive } =
+        await runWithModelFallback('chat', (model) =>
+          ai.models.generateContent({
+            model,
+            contents,
+            config: {
+              systemInstruction: buildMiauSystemInstruction({
+                petName,
+                stats,
+                equipped,
+                temporalContext,
+                userContext,
+              }),
+              thinkingConfig: {
+                thinkingLevel: getRecommendedThinkingLevel(model),
+              },
+              maxOutputTokens: 180,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                required: ['meowPrefix', 'text', 'mood'],
+                properties: {
+                  meowPrefix: {
+                    type: Type.STRING,
+                    description: 'Short cat vocalization like Miau! or Purrr~',
+                  },
+                  text: {
+                    type: Type.STRING,
+                    description: 'Translated Brazilian Portuguese speech in parentheses.',
+                  },
+                  mood: {
+                    type: Type.STRING,
+                    description: 'One of happy, playful, hungry, sleepy, affectionate.',
+                  },
                 },
               },
             },
-          },
-        })
-      );
+          })
+        );
 
       const raw = response.text?.trim();
       if (!raw) {
@@ -220,6 +204,8 @@ async function startServer() {
         meowPrefix: parsed.meowPrefix || 'Miau!',
         text: parsed.text || '(Oi, humano!)',
         mood: parsed.mood || 'happy',
+        modelUsed,
+        fallbackActive,
       });
     } catch (error) {
       if (error instanceof MissingGeminiApiKeyError) {
@@ -241,34 +227,46 @@ async function startServer() {
       }
 
       const cleanText = text.replace(/[()]/g, '').trim();
+      const cached = getCachedTtsWav(cleanText);
+      if (cached) {
+        res.json({
+          audioBase64: cached.audioBase64,
+          mimeType: cached.mimeType,
+          modelUsed: cached.modelUsed,
+          cached: true,
+        });
+        return;
+      }
+
       const ai = getAIClient();
-      const response = await withRetry(() =>
-        ai.models.generateContent({
-          model: 'gemini-3.8-flash-lite-tts',
-          contents: [
-            {
-              role: 'user',
-              parts: [
-                {
-                  text: cleanText,
-                  speechMetadata: {
-                    style:
-                      'Cute, cheerful, playful Brazilian Portuguese virtual cat companion voice',
+      const { result: response, modelUsed, fallbackActive } =
+        await runWithModelFallback('tts', (model) =>
+          ai.models.generateContent({
+            model,
+            contents: [
+              {
+                role: 'user',
+                parts: [
+                  {
+                    text: cleanText,
+                    speechMetadata: {
+                      style:
+                        'Cute, cheerful, playful Brazilian Portuguese virtual cat companion voice',
+                    },
                   },
+                ],
+              },
+            ],
+            config: {
+              responseModalities: ['AUDIO'],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Zephyr' },
                 },
-              ],
-            },
-          ],
-          config: {
-            responseModalities: ['AUDIO'],
-            speechConfig: {
-              voiceConfig: {
-                prebuiltVoiceConfig: { voiceName: 'Zephyr' },
               },
             },
-          },
-        })
-      );
+          })
+        );
 
       const base64Audio =
         response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -277,7 +275,18 @@ async function startServer() {
         return;
       }
 
-      res.json({ audioBase64: base64Audio, mimeType: 'audio/wav' });
+      setCachedTtsWav(cleanText, {
+        audioBase64: base64Audio,
+        mimeType: 'audio/wav',
+        modelUsed,
+      });
+
+      res.json({
+        audioBase64: base64Audio,
+        mimeType: 'audio/wav',
+        modelUsed,
+        fallbackActive,
+      });
     } catch (error) {
       if (error instanceof MissingGeminiApiKeyError) {
         res.status(error.statusCode).json({ code: error.code, error: error.message });
@@ -298,26 +307,41 @@ async function startServer() {
       }
 
       const ai = getAIClient();
-      const response = await withRetry(() =>
-        ai.models.generateContent({
-          model: 'gemini-3.5-transcribe',
-          contents: {
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: audioBase64,
+      const { result: response, modelUsed, fallbackActive } =
+        await runWithModelFallback('transcribe', (model) =>
+          ai.models.generateContent({
+            model,
+            contents: {
+              parts: [
+                {
+                  inlineData: {
+                    mimeType,
+                    data: audioBase64,
+                  },
                 },
-              },
-              {
-                text: 'Transcreva exatamente o que foi dito em português do Brasil. Retorne apenas a transcrição.',
-              },
-            ],
-          },
-        })
-      );
+                {
+                  text: 'Transcreva exatamente o que foi dito em português do Brasil. Retorne apenas a transcrição.',
+                },
+              ],
+            },
+            ...(model !== 'gemini-3.5-transcribe'
+              ? {
+                  config: {
+                    thinkingConfig: {
+                      thinkingLevel: getRecommendedThinkingLevel(model),
+                    },
+                    maxOutputTokens: 120,
+                  },
+                }
+              : {}),
+          })
+        );
 
-      res.json({ transcript: (response.text ?? '').trim() });
+      res.json({
+        transcript: (response.text ?? '').trim(),
+        modelUsed,
+        fallbackActive,
+      });
     } catch (error) {
       if (error instanceof MissingGeminiApiKeyError) {
         res.status(error.statusCode).json({ code: error.code, error: error.message });
@@ -398,73 +422,78 @@ async function startServer() {
       null;
     try {
       const ai = getAIClient();
-      session = await ai.live.connect({
-        model: 'gemini-3.8-live',
-        config: {
-          responseModalities: [Modality.AUDIO],
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Zephyr' },
+      const { result: connectedSession } = await runWithModelFallback(
+        'live',
+        (liveModel) =>
+          ai.live.connect({
+            model: liveModel,
+            config: {
+              responseModalities: [Modality.AUDIO],
+              inputAudioTranscription: {},
+              outputAudioTranscription: {},
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: { voiceName: 'Zephyr' },
+                },
+              },
+              systemInstruction:
+                'Você é o Miau, um gatinho virtual e melhor amigo próximo do tutor, que fala em Português do Brasil. Demonstre interesse genuíno em saber como o tutor está se sentindo, pergunte sobre o dia dele com carinho e responda de forma leve, acolhedora e natural, começando às vezes com um "Miau!" ou "Purrr~" simpático.',
             },
-          },
-          systemInstruction:
-            'Você é o Miau, um gatinho virtual e melhor amigo próximo do tutor, que fala em Português do Brasil. Demonstre interesse genuíno em saber como o tutor está se sentindo, pergunte sobre o dia dele com carinho e responda de forma leve, acolhedora e natural, começando às vezes com um "Miau!" ou "Purrr~" simpático.',
-        },
-        callbacks: {
-          onopen: () => {
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({ status: 'connected' }));
-            }
-          },
-          onmessage: (message: LiveServerMessage) => {
-            if (clientWs.readyState !== WebSocket.OPEN) return;
-            const content = message.serverContent;
-            if (content?.inputTranscription?.text) {
-              clientWs.send(
-                JSON.stringify({
-                  inputTranscript: content.inputTranscription.text,
-                })
-              );
-            }
-            if (content?.outputTranscription?.text) {
-              clientWs.send(
-                JSON.stringify({
-                  outputTranscript: content.outputTranscription.text,
-                })
-              );
-            }
-            for (const part of content?.modelTurn?.parts ?? []) {
-              if (part.inlineData?.data) {
-                clientWs.send(
-                  JSON.stringify({ audio: part.inlineData.data })
-                );
-              }
-            }
-            if (content?.interrupted) {
-              clientWs.send(JSON.stringify({ interrupted: true }));
-            }
-            if (content?.turnComplete) {
-              clientWs.send(JSON.stringify({ turnComplete: true }));
-            }
-          },
-          onerror: (err) => {
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(
-                JSON.stringify({
-                  error: err?.message || 'Erro na conexão Gemini Live.',
-                })
-              );
-            }
-          },
-          onclose: () => {
-            if (clientWs.readyState === WebSocket.OPEN) {
-              clientWs.send(JSON.stringify({ status: 'closed' }));
-            }
-          },
-        },
-      });
+            callbacks: {
+              onopen: () => {
+                if (clientWs.readyState === WebSocket.OPEN) {
+                  clientWs.send(JSON.stringify({ status: 'connected' }));
+                }
+              },
+              onmessage: (message: LiveServerMessage) => {
+                if (clientWs.readyState !== WebSocket.OPEN) return;
+                const content = message.serverContent;
+                if (content?.inputTranscription?.text) {
+                  clientWs.send(
+                    JSON.stringify({
+                      inputTranscript: content.inputTranscription.text,
+                    })
+                  );
+                }
+                if (content?.outputTranscription?.text) {
+                  clientWs.send(
+                    JSON.stringify({
+                      outputTranscript: content.outputTranscription.text,
+                    })
+                  );
+                }
+                for (const part of content?.modelTurn?.parts ?? []) {
+                  if (part.inlineData?.data) {
+                    clientWs.send(
+                      JSON.stringify({ audio: part.inlineData.data })
+                    );
+                  }
+                }
+                if (content?.interrupted) {
+                  clientWs.send(JSON.stringify({ interrupted: true }));
+                }
+                if (content?.turnComplete) {
+                  clientWs.send(JSON.stringify({ turnComplete: true }));
+                }
+              },
+              onerror: (err) => {
+                if (clientWs.readyState === WebSocket.OPEN) {
+                  clientWs.send(
+                    JSON.stringify({
+                      error: err?.message || 'Erro na conexão Gemini Live.',
+                    })
+                  );
+                }
+              },
+              onclose: () => {
+                if (clientWs.readyState === WebSocket.OPEN) {
+                  clientWs.send(JSON.stringify({ status: 'closed' }));
+                }
+              },
+            },
+          })
+      );
+      session = connectedSession;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       if (clientWs.readyState === WebSocket.OPEN) {

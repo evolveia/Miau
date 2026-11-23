@@ -13,6 +13,17 @@ export interface MiauChatResponse {
   mood: MiauMood;
 }
 
+let pendingRecoveryProbeTimer: number | null = null;
+
+function scheduleSuperiorModelRecoveryCheck(fallbackActive?: boolean): void {
+  if (!fallbackActive || typeof window === 'undefined') return;
+  if (pendingRecoveryProbeTimer !== null) return;
+  pendingRecoveryProbeTimer = window.setTimeout(() => {
+    pendingRecoveryProbeTimer = null;
+    void fetch('/api/gemini/status?probe=1').catch(() => {});
+  }, 46_000);
+}
+
 export class GeminiApiError extends Error {
   public readonly code?: string;
   public readonly status: number;
@@ -111,6 +122,7 @@ export async function askMiau(params: {
     meowPrefix?: string;
     text?: string;
     mood?: MiauMood;
+    fallbackActive?: boolean;
     error?: string;
     code?: string;
   }>(res);
@@ -122,6 +134,8 @@ export async function askMiau(params: {
       'Erro ao conversar com o Miau.'
     );
   }
+
+  scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
 
   return {
     meowPrefix: parsed.data.meowPrefix || 'Miau!',
@@ -151,6 +165,7 @@ export async function synthesizeMiauVoice(
   const parsed = await parseJsonSafely<{
     audioBase64?: string;
     mimeType?: string;
+    fallbackActive?: boolean;
     error?: string;
     code?: string;
   }>(res);
@@ -162,6 +177,8 @@ export async function synthesizeMiauVoice(
       'Erro ao gerar voz do Miau.'
     );
   }
+
+  scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
 
   return {
     audioBase64: parsed.data.audioBase64,
@@ -190,6 +207,7 @@ export async function transcribeUserAudio(
 
   const parsed = await parseJsonSafely<{
     transcript?: string;
+    fallbackActive?: boolean;
     error?: string;
     code?: string;
   }>(res);
@@ -201,6 +219,8 @@ export async function transcribeUserAudio(
       'Erro ao transcrever áudio.'
     );
   }
+
+  scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
 
   return parsed.data.transcript || '';
 }

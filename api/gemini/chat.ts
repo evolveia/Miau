@@ -1,11 +1,12 @@
-import { ThinkingLevel, Type } from '@google/genai';
+import { Type } from '@google/genai';
 import {
   getAIClient,
+  getRecommendedThinkingLevel,
   handleCorsAndMethod,
   readJsonBody,
+  runWithModelFallback,
   sendGeminiRouteError,
   sendJson,
-  withRetry,
   type VercelRequest,
   type VercelResponse,
 } from './_shared.js';
@@ -135,42 +136,45 @@ export default async function handler(
       { role: 'user', parts: [{ text: message }] },
     ];
 
-    const response = await withRetry(() =>
-      ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        contents,
-        config: {
-          systemInstruction: buildMiauSystemInstruction({
-            petName,
-            stats,
-            equipped,
-            temporalContext,
-            userContext,
-          }),
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-          maxOutputTokens: 180,
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            required: ['meowPrefix', 'text', 'mood'],
-            properties: {
-              meowPrefix: {
-                type: Type.STRING,
-                description: 'Short cat vocalization like Miau! or Purrr~',
-              },
-              text: {
-                type: Type.STRING,
-                description: 'Translated Brazilian Portuguese speech in parentheses.',
-              },
-              mood: {
-                type: Type.STRING,
-                description: 'One of happy, playful, hungry, sleepy, affectionate.',
+    const { result: response, modelUsed, fallbackActive } =
+      await runWithModelFallback('chat', (model) =>
+        ai.models.generateContent({
+          model,
+          contents,
+          config: {
+            systemInstruction: buildMiauSystemInstruction({
+              petName,
+              stats,
+              equipped,
+              temporalContext,
+              userContext,
+            }),
+            thinkingConfig: {
+              thinkingLevel: getRecommendedThinkingLevel(model),
+            },
+            maxOutputTokens: 180,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: Type.OBJECT,
+              required: ['meowPrefix', 'text', 'mood'],
+              properties: {
+                meowPrefix: {
+                  type: Type.STRING,
+                  description: 'Short cat vocalization like Miau! or Purrr~',
+                },
+                text: {
+                  type: Type.STRING,
+                  description: 'Translated Brazilian Portuguese speech in parentheses.',
+                },
+                mood: {
+                  type: Type.STRING,
+                  description: 'One of happy, playful, hungry, sleepy, affectionate.',
+                },
               },
             },
           },
-        },
-      })
-    );
+        })
+      );
 
     const raw = response.text?.trim();
     if (!raw) {
@@ -187,6 +191,8 @@ export default async function handler(
       meowPrefix: parsed.meowPrefix || 'Miau!',
       text: parsed.text || '(Oi, humano!)',
       mood: parsed.mood || 'happy',
+      modelUsed,
+      fallbackActive,
     });
   } catch (error) {
     sendGeminiRouteError(res, '/api/gemini/chat', error);

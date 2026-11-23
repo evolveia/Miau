@@ -91,17 +91,17 @@ export class LearningModuleController {
       const badgeEl = document.getElementById('el-miau-audio-badge');
       if (badgeEl) {
         if (state.loading) {
-          badgeEl.textContent = '🐾 Miau preparando a voz fofinha...';
+          badgeEl.textContent = '🐾 Preparando voz...';
           badgeEl.className =
-            'inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-purple-100 text-[#5a3696] animate-pulse';
+            'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] animate-pulse';
         } else if (state.speaking) {
           badgeEl.textContent = '🔊 Miau falando...';
           badgeEl.className =
-            'inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 animate-pulse';
+            'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse';
         } else {
-          badgeEl.textContent = '💬 Toque para ouvir a voz do Miau';
+          badgeEl.textContent = '💬 Voz do Miau';
           badgeEl.className =
-            'inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/80 text-[#6b4d9e] border border-purple-100';
+            'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/85 text-[#6b4d9e] border border-purple-100';
         }
       }
     });
@@ -170,16 +170,16 @@ export class LearningModuleController {
 
   private renderLoadingCardHtml(): string {
     return `
-      <div class="flex-1 min-h-0 flex flex-col items-center justify-center p-4 text-center">
-        <div class="rounded-3xl p-7 bg-white/95 border-2 border-purple-200 shadow-lg max-w-sm w-full flex flex-col items-center gap-4 animate-pulse">
-          <div class="w-24 h-24">
+      <div class="flex-1 min-h-0 flex flex-col items-center justify-center p-3 text-center">
+        <div class="rounded-2xl p-5 bg-white/95 border border-purple-200 shadow-md max-w-xs w-full flex flex-col items-center gap-3 animate-pulse">
+          <div class="w-16 h-16">
             ${renderMiauSvg('playful', this.deps.getEquipped(), false)}
           </div>
-          <div class="space-y-1.5">
-            <h3 class="font-display text-xl font-bold text-[#3b1f6e]">Preparando a lição...</h3>
-            <p class="text-xs font-semibold text-[#6b4d9e]">O Miau está organizando as letrinhas e a voz fofinha para você!</p>
+          <div class="space-y-1">
+            <h3 class="font-display text-base font-bold text-[#3b1f6e]">Preparando a lição...</h3>
+            <p class="text-[11px] font-semibold text-[#6b4d9e] leading-snug">O Miau está organizando as letrinhas e sua voz fofinha!</p>
           </div>
-          <div class="w-full h-2.5 rounded-full bg-purple-100 overflow-hidden">
+          <div class="w-full h-2 rounded-full bg-purple-100 overflow-hidden">
             <div class="h-full w-2/3 rounded-full bg-gradient-to-r from-[#7b52b8] via-[#a855f7] to-[#ec4899]"></div>
           </div>
         </div>
@@ -194,7 +194,7 @@ export class LearningModuleController {
         id="${id}"
         type="button"
         aria-pressed="${String(!enabled)}"
-        class="px-3 py-1.5 rounded-full text-xs font-extrabold border shadow-sm transition active:scale-95 shrink-0 ${
+        class="px-2.5 py-1 rounded-full text-[11px] font-extrabold border shadow-sm transition active:scale-95 shrink-0 ${
           enabled
             ? 'bg-white/95 border-purple-200 text-[#4c2a85] hover:bg-purple-50'
             : 'bg-rose-100 border-rose-300 text-rose-800 hover:bg-rose-200'
@@ -216,46 +216,46 @@ export class LearningModuleController {
     const currentUnit = this.getCurrentActiveUnit(progress);
 
     return `
-      <!-- Cabeçalho em Tela Cheia com Botão de Voltar ao Menu Principal -->
-      <div class="flex items-center justify-between gap-2 mb-2.5 text-left shrink-0 flex-wrap">
+      <!-- Barra superior compacta em tela cheia -->
+      <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
         <div class="flex items-center gap-1.5 min-w-0">
           <button
             id="btn-el-main-menu"
             type="button"
-            class="px-3 py-1.5 rounded-full bg-white/95 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
+            class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-[#4c2a85] font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
           >
-            🏠 Menu Principal
+            🏠 Menu
           </button>
           <button
             id="btn-el-back"
             type="button"
-            class="px-2.5 py-1.5 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-xs hover:bg-purple-200/80 active:scale-95 transition shrink-0"
+            class="px-2.5 py-1 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] hover:bg-purple-200/80 active:scale-95 transition shrink-0"
           >
             ← Trilhas
           </button>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
           ${this.renderSoundToggleButton('btn-el-sound')}
-          <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-bold active:scale-95 transition shrink-0">✕</button>
+          <button id="modal-close" type="button" class="w-7 h-7 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold active:scale-95 transition shrink-0">✕</button>
         </div>
       </div>
 
-      <!-- Título & Barra de Progresso Geral da Trilha -->
-      <div class="rounded-3xl p-3.5 mb-3 bg-white/90 border border-purple-200/80 shadow-sm text-left shrink-0">
-        <div class="flex items-center justify-between gap-2 flex-wrap mb-2">
+      <!-- Cabeçalho & Progresso Geral -->
+      <div class="rounded-2xl px-3 py-2.5 mb-2 bg-white/90 border border-purple-200/80 shadow-sm text-left shrink-0">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
           <div class="min-w-0">
-            <h2 class="font-display text-lg md:text-xl font-bold text-[#3b1f6e] leading-tight">
+            <h2 class="font-display text-sm sm:text-base font-bold text-[#3b1f6e] leading-tight">
               Vogais & Primeiras Palavras 🔤
             </h2>
-            <p class="text-[11px] font-semibold text-[#6b4d9e]">
-              Educação Infantil • Voz carinhosa do Miau & Leitura Interativa
+            <p class="text-[10px] font-semibold text-[#6b4d9e] leading-tight">
+              Educação Infantil • Voz do Miau & Leitura
             </p>
           </div>
-          <span class="px-2.5 py-1 rounded-full bg-purple-100 text-[#5a3696] text-[11px] font-extrabold shrink-0">
+          <span class="px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] text-[10px] font-extrabold shrink-0">
             ${trailPercent}% da trilha
           </span>
         </div>
-        <div class="w-full h-3 rounded-full bg-purple-100 border border-purple-200 overflow-hidden">
+        <div class="w-full h-2 rounded-full bg-purple-100 border border-purple-200/70 overflow-hidden">
           <div
             class="h-full rounded-full bg-gradient-to-r from-[#7b52b8] via-[#a855f7] to-[#ec4899] transition-all duration-500"
             style="width: ${Math.max(6, trailPercent)}%"
@@ -263,24 +263,24 @@ export class LearningModuleController {
         </div>
       </div>
 
-      <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
-        <!-- Unidade Atual em Destaque Dinâmico -->
-        <div class="rounded-3xl p-4 bg-gradient-to-br from-white via-[#f8f3ff] to-[#efe5ff] border-2 border-[#9b72cf] shadow-md flex items-center justify-between gap-3 flex-wrap">
-          <div class="flex items-center gap-3 min-w-0 flex-1">
+      <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
+        <!-- Unidade Atual em Destaque Compacto -->
+        <div class="rounded-2xl p-2.5 sm:p-3 bg-gradient-to-br from-white via-[#f8f3ff] to-[#efe5ff] border border-[#9b72cf] shadow-sm flex items-center justify-between gap-2.5 flex-wrap">
+          <div class="flex items-center gap-2.5 min-w-0 flex-1">
             <img
               src="${currentUnit.visualAssetUrl}"
               alt="${escapeHtml(currentUnit.title)}"
-              class="w-16 h-16 rounded-2xl shadow-sm shrink-0 bg-white"
+              class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl shadow-sm shrink-0 bg-white object-cover"
             />
             <div class="min-w-0">
-              <div class="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] mb-1">
-                ✨ ${completedCount === totalUnits ? 'Trilha Completa!' : `Unidade Atual • Nível ${currentUnit.challengeLevel}`}
+              <div class="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696] mb-0.5">
+                ✨ ${completedCount === totalUnits ? 'Trilha Completa!' : `Atual • Nível ${currentUnit.challengeLevel}`}
               </div>
-              <h3 class="font-display text-base md:text-lg font-bold text-[#3b1f6e] leading-snug">
+              <h3 class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-snug truncate">
                 ${currentUnit.number}. ${escapeHtml(currentUnit.title)}
               </h3>
-              <p class="text-[11px] font-semibold text-[#5e4294] leading-snug">
-                Palavras-chave: ${escapeHtml(currentUnit.keywords.slice(0, 4).join(' • '))}
+              <p class="text-[10px] font-semibold text-[#5e4294] leading-tight truncate">
+                ${escapeHtml(currentUnit.keywords.slice(0, 4).join(' • '))}
               </p>
             </div>
           </div>
@@ -288,26 +288,26 @@ export class LearningModuleController {
             id="btn-el-continue-current"
             type="button"
             data-el-start-unit="${currentUnit.id}"
-            class="px-5 py-3 rounded-2xl bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-xs md:text-sm shadow-md transition shrink-0"
+            class="px-3.5 py-2 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-[11px] sm:text-xs shadow-sm transition shrink-0"
           >
-            ${progress.completedUnits.includes(currentUnit.id) ? '🔁 Praticar Unidade' : '▶ Continuar Aula'}
+            ${progress.completedUnits.includes(currentUnit.id) ? '🔁 Praticar' : '▶ Continuar'}
           </button>
         </div>
 
-        <!-- Resumo de Progresso -->
-        <div class="rounded-3xl p-3.5 bg-white/90 border border-purple-100 shadow-sm flex flex-col gap-3">
-          <div class="flex items-center justify-between gap-3 flex-wrap">
-            <div class="flex items-center gap-2.5 min-w-0">
-              <div class="w-13 h-13 shrink-0">
+        <!-- Resumo de Progresso em Grade Compacta -->
+        <div class="rounded-2xl p-2.5 sm:p-3 bg-white/90 border border-purple-100 shadow-sm flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <div class="w-10 h-10 shrink-0">
                 ${renderMiauSvg('happy', this.deps.getEquipped(), false)}
               </div>
               <div class="min-w-0">
-                <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Jornada de ${escapeHtml(firstName)}</div>
-                <div class="font-display text-sm md:text-base font-bold text-[#3b1f6e] leading-snug">
+                <div class="text-[9px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Jornada de ${escapeHtml(firstName)}</div>
+                <div class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight truncate">
                   ${
                     completedCount === totalUnits
                       ? 'Parabéns! Pequeno Leitor! 🏅'
-                      : 'Vamos descobrir sons, ler e falar com o Miau!'
+                      : 'Vamos descobrir sons com o Miau!'
                   }
                 </div>
               </div>
@@ -315,42 +315,42 @@ export class LearningModuleController {
             <button
               id="btn-el-free-mode"
               type="button"
-              class="px-3 py-1.5 rounded-full text-[11px] font-extrabold border active:scale-95 transition shrink-0 ${
+              class="px-2.5 py-1 rounded-full text-[10px] font-extrabold border active:scale-95 transition shrink-0 ${
                 progress.freeExploreUnlocked
                   ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
                   : 'bg-purple-50 border-purple-200 text-[#5a3696] hover:bg-purple-100'
               }"
             >
-              ${progress.freeExploreUnlocked ? '🔓 Modo Livre Ativo' : '🔓 Desbloquear Todas'}
+              ${progress.freeExploreUnlocked ? '🔓 Livre' : '🔓 Liberar'}
             </button>
           </div>
 
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <div class="rounded-2xl p-2.5 bg-purple-50 border border-purple-100 text-center">
-              <div class="text-lg font-display font-bold text-[#4c2a85]">${completedCount}/${totalUnits}</div>
-              <div class="text-[10px] font-extrabold text-[#6b4d9e] uppercase">Unidades</div>
+          <div class="grid grid-cols-4 gap-1.5">
+            <div class="rounded-xl py-1.5 px-1 bg-purple-50 border border-purple-100 text-center">
+              <div class="text-sm font-display font-bold text-[#4c2a85] leading-tight">${completedCount}/${totalUnits}</div>
+              <div class="text-[9px] font-extrabold text-[#6b4d9e] uppercase">Unid.</div>
             </div>
-            <div class="rounded-2xl p-2.5 bg-amber-50 border border-amber-200 text-center">
-              <div class="text-lg font-display font-bold text-amber-700">★ ${progress.totalStars}</div>
-              <div class="text-[10px] font-extrabold text-amber-800 uppercase">Estrelas</div>
+            <div class="rounded-xl py-1.5 px-1 bg-amber-50 border border-amber-200 text-center">
+              <div class="text-sm font-display font-bold text-amber-700 leading-tight">★ ${progress.totalStars}</div>
+              <div class="text-[9px] font-extrabold text-amber-800 uppercase">Estrelas</div>
             </div>
-            <div class="rounded-2xl p-2.5 bg-pink-50 border border-pink-200 text-center">
-              <div class="text-lg font-display font-bold text-pink-700">${progress.masteredVowels.length}/5</div>
-              <div class="text-[10px] font-extrabold text-pink-800 uppercase">Vogais Dominadas</div>
+            <div class="rounded-xl py-1.5 px-1 bg-pink-50 border border-pink-200 text-center">
+              <div class="text-sm font-display font-bold text-pink-700 leading-tight">${progress.masteredVowels.length}/5</div>
+              <div class="text-[9px] font-extrabold text-pink-800 uppercase">Vogais</div>
             </div>
-            <div class="rounded-2xl p-2.5 bg-sky-50 border border-sky-200 text-center">
-              <div class="text-lg font-display font-bold text-sky-700">🔥 ${progress.streakDays}</div>
-              <div class="text-[10px] font-extrabold text-sky-800 uppercase">Dias de Estudo</div>
+            <div class="rounded-xl py-1.5 px-1 bg-sky-50 border border-sky-200 text-center">
+              <div class="text-sm font-display font-bold text-sky-700 leading-tight">🔥 ${progress.streakDays}</div>
+              <div class="text-[9px] font-extrabold text-sky-800 uppercase">Dias</div>
             </div>
           </div>
 
-          <div class="flex items-center justify-between gap-2 flex-wrap pt-0.5">
-            <span class="text-[11px] font-extrabold text-[#5a3696]">Vogais aprendidas:</span>
-            <div class="flex items-center gap-1.5">
+          <div class="flex items-center justify-between gap-2 pt-0.5">
+            <span class="text-[10px] font-extrabold text-[#5a3696]">Vogais:</span>
+            <div class="flex items-center gap-1">
               ${TRACKED_VOWELS.map((v) => {
                 const mastered = progress.masteredVowels.includes(v);
                 return `
-                  <span class="w-8 h-8 rounded-xl flex items-center justify-center font-display text-sm font-bold border transition ${
+                  <span class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center font-display text-xs font-bold border transition ${
                     mastered
                       ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white border-emerald-500 shadow-sm'
                       : 'bg-purple-50 text-purple-300 border-purple-200'
@@ -363,26 +363,26 @@ export class LearningModuleController {
           </div>
         </div>
 
-        <!-- Revisão Espaçada -->
+        <!-- Revisão Espaçada Compacta -->
         ${
           pendingReviews.length > 0
             ? `
-              <div class="rounded-3xl p-3.5 bg-gradient-to-r from-amber-50 via-orange-50 to-pink-50 border-2 border-amber-200 shadow-sm flex items-center justify-between gap-3 flex-wrap">
-                <div class="flex items-center gap-3 min-w-0">
-                  <div class="w-11 h-11 rounded-2xl bg-white border border-amber-200 flex items-center justify-center text-2xl shrink-0">🔄</div>
+              <div class="rounded-2xl p-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-pink-50 border border-amber-200 shadow-sm flex items-center justify-between gap-2">
+                <div class="flex items-center gap-2 min-w-0">
+                  <div class="w-8 h-8 rounded-xl bg-white border border-amber-200 flex items-center justify-center text-base shrink-0">🔄</div>
                   <div class="min-w-0">
-                    <div class="text-xs font-extrabold text-amber-900">Revisão Espaçada com o Miau</div>
-                    <div class="text-[11px] font-semibold text-amber-800">
-                      Temos ${pendingReviews.length} ${pendingReviews.length === 1 ? 'som especial' : 'sons especiais'} para praticar devagarinho e ganhar bônus!
+                    <div class="text-[11px] font-extrabold text-amber-900 leading-tight">Revisão com o Miau</div>
+                    <div class="text-[10px] font-semibold text-amber-800 leading-tight truncate">
+                      ${pendingReviews.length} ${pendingReviews.length === 1 ? 'som especial' : 'sons especiais'} para praticar!
                     </div>
                   </div>
                 </div>
                 <button
                   id="btn-el-start-review"
                   type="button"
-                  class="px-4 py-2 rounded-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-xs shadow-sm transition shrink-0"
+                  class="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition shrink-0"
                 >
-                  ✨ Praticar Revisão
+                  ✨ Revisar
                 </button>
               </div>
             `
@@ -390,8 +390,8 @@ export class LearningModuleController {
         }
 
         <!-- Trilha Progressiva das 6 Unidades -->
-        <div class="flex flex-col gap-2.5">
-          <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#5a3696] px-1">
+        <div class="flex flex-col gap-1.5">
+          <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#5a3696] px-1">
             Caminho das Descobertas (6 Unidades)
           </div>
           ${EARLY_LITERACY_UNITS.map((unit, idx) => {
@@ -401,43 +401,43 @@ export class LearningModuleController {
             const isNext = unit.id === currentUnit.id && !completed;
 
             return `
-              <div class="rounded-3xl p-3.5 border-2 transition-all duration-200 ${
+              <div class="rounded-2xl p-2.5 border transition-all duration-200 ${
                 isNext
-                  ? 'bg-white border-[#7b52b8] shadow-md'
+                  ? 'bg-white border-[#7b52b8] shadow-sm ring-1 ring-[#9b72cf]/40'
                   : unlocked
                     ? 'bg-white/95 border-purple-100 shadow-sm hover:border-purple-300'
                     : 'bg-white/60 border-purple-100/80 opacity-80'
               }">
-                <div class="flex items-center gap-3">
-                  <div class="w-14 h-14 rounded-2xl bg-gradient-to-br ${unit.accentGradient} border border-white shadow-inner flex flex-col items-center justify-center shrink-0 overflow-hidden">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-11 h-11 rounded-xl bg-gradient-to-br ${unit.accentGradient} border border-white shadow-inner flex flex-col items-center justify-center shrink-0 overflow-hidden">
                     ${
                       unlocked
-                        ? `<img src="${unit.visualAssetUrl}" alt="${escapeHtml(unit.title)}" class="w-14 h-14 object-cover" />`
-                        : `<span class="text-2xl leading-none">🔒</span><span class="text-[9px] font-extrabold text-[#4c2a85] mt-0.5">Un. ${unit.number}</span>`
+                        ? `<img src="${unit.visualAssetUrl}" alt="${escapeHtml(unit.title)}" class="w-11 h-11 object-cover" />`
+                        : `<span class="text-lg leading-none">🔒</span><span class="text-[8px] font-extrabold text-[#4c2a85]">Un.${unit.number}</span>`
                     }
                   </div>
 
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-1.5 flex-wrap">
-                      <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696]">
+                    <div class="flex items-center gap-1 flex-wrap">
+                      <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696]">
                         Un. ${unit.number} • ${escapeHtml(unit.themeLabel)}
                       </span>
                       ${
                         completed
-                          ? `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)} Concluída</span>`
+                          ? `<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>`
                           : isNext
-                            ? `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Próxima Lição!</span>`
+                            ? `<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Próxima</span>`
                             : ''
                       }
                     </div>
-                    <h3 class="font-display text-base font-bold text-[#3b1f6e] leading-snug mt-0.5">${escapeHtml(unit.title)}</h3>
-                    <p class="text-[11px] font-semibold text-[#5e4294] leading-snug">${escapeHtml(unit.subtitle)}</p>
-                    <div class="mt-1.5 flex items-center flex-wrap gap-2 text-[10px] font-extrabold text-[#6b4d9e]">
-                      <span>🧩 ${unit.challenges.length} desafios</span>
+                    <h3 class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight mt-0.5 truncate">${escapeHtml(unit.title)}</h3>
+                    <p class="text-[10px] font-semibold text-[#5e4294] leading-tight truncate">${escapeHtml(unit.subtitle)}</p>
+                    <div class="mt-1 flex items-center flex-wrap gap-1.5 text-[9px] font-bold text-[#6b4d9e]">
+                      <span>🧩 ${unit.challenges.length}</span>
                       <span>•</span>
-                      <span>🪙 +${unit.coinReward} moedas</span>
+                      <span>🪙 +${unit.coinReward}</span>
                       <span>•</span>
-                      <span>${unit.sticker.emoji} ${escapeHtml(unit.sticker.title)}</span>
+                      <span class="truncate">${unit.sticker.emoji} ${escapeHtml(unit.sticker.title)}</span>
                     </div>
                   </div>
 
@@ -448,16 +448,16 @@ export class LearningModuleController {
                           <button
                             type="button"
                             data-el-start-unit="${unit.id}"
-                            class="px-4 py-2.5 rounded-2xl font-extrabold text-xs shadow-sm active:scale-95 transition ${
+                            class="px-3 py-1.5 rounded-xl font-extrabold text-[11px] shadow-sm active:scale-95 transition ${
                               completed
                                 ? 'bg-purple-100 hover:bg-purple-200 text-[#4c2a85]'
                                 : 'bg-[#6e45a5] hover:bg-[#5c3691] text-white'
                             }"
                           >
-                            ${completed ? '🔁 Refazer' : '▶ Começar'}
+                            ${completed ? '🔁 Refazer' : '▶ Abrir'}
                           </button>
                         `
-                        : `<span class="inline-block px-3 py-2 rounded-2xl bg-purple-50 text-purple-400 text-[11px] font-extrabold border border-purple-100">Bloqueada</span>`
+                        : `<span class="inline-block px-2.5 py-1 rounded-xl bg-purple-50 text-purple-400 text-[10px] font-extrabold border border-purple-100">Bloq.</span>`
                     }
                   </div>
                 </div>
@@ -466,17 +466,17 @@ export class LearningModuleController {
           }).join('')}
         </div>
 
-        <!-- Estante de Adesivos e Medalha -->
-        <div class="rounded-3xl p-3.5 bg-white/90 border border-purple-100 shadow-sm mb-2">
-          <div class="flex items-center justify-between gap-2 mb-2">
-            <div class="text-xs font-extrabold text-[#3b1f6e]">🏅 Estante de Adesivos & Medalhas</div>
-            <span class="text-[11px] font-extrabold text-[#6b4d9e]">${progress.unlockedStickers.length}/${EARLY_LITERACY_UNITS.length}</span>
+        <!-- Estante Compacta de Adesivos -->
+        <div class="rounded-2xl p-2.5 bg-white/90 border border-purple-100 shadow-sm mb-1">
+          <div class="flex items-center justify-between gap-2 mb-1.5">
+            <div class="text-[11px] font-extrabold text-[#3b1f6e]">🏅 Estante de Adesivos</div>
+            <span class="text-[10px] font-extrabold text-[#6b4d9e]">${progress.unlockedStickers.length}/${EARLY_LITERACY_UNITS.length}</span>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
             ${EARLY_LITERACY_UNITS.map((u) => {
               const hasSticker = progress.unlockedStickers.includes(u.sticker.id);
               return `
-                <div class="rounded-2xl p-2.5 border flex items-center gap-2 transition ${
+                <div class="rounded-xl p-2 border flex items-center gap-2 transition ${
                   hasSticker
                     ? u.sticker.colorClass
                     : 'bg-slate-50 border-slate-200 text-slate-400 opacity-75'
@@ -484,11 +484,11 @@ export class LearningModuleController {
                   <img
                     src="${u.sticker.visualAssetUrl}"
                     alt="${escapeHtml(u.sticker.title)}"
-                    class="w-10 h-10 rounded-xl shrink-0 ${hasSticker ? '' : 'grayscale opacity-50'}"
+                    class="w-8 h-8 rounded-lg shrink-0 ${hasSticker ? '' : 'grayscale opacity-50'}"
                   />
                   <div class="min-w-0">
-                    <div class="text-[11px] font-extrabold leading-tight truncate">${escapeHtml(u.sticker.title)}</div>
-                    <div class="text-[9px] font-semibold leading-tight truncate">${hasSticker ? 'Desbloqueado!' : `Conclua Un. ${u.number}`}</div>
+                    <div class="text-[10px] font-extrabold leading-tight truncate">${escapeHtml(u.sticker.title)}</div>
+                    <div class="text-[8px] font-semibold leading-tight truncate">${hasSticker ? 'Desbloqueado' : `Un. ${u.number}`}</div>
                   </div>
                 </div>
               `;
@@ -507,85 +507,85 @@ export class LearningModuleController {
       ((lesson.cursor + (lesson.stepSolved ? 1 : 0)) / total) * 100
     );
     const titleLabel = lesson.unit
-      ? `Unidade ${lesson.unit.number}: ${lesson.unit.title}`
-      : 'Revisão Espaçada com o Miau';
+      ? `Un. ${lesson.unit.number}: ${lesson.unit.title}`
+      : 'Revisão com o Miau';
 
     return `
-      <div class="flex items-center justify-between gap-2 mb-2.5 text-left shrink-0">
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button id="btn-el-exit-lesson" type="button" class="px-3 py-1.5 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-xs shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0">← Trilha</button>
-          <button id="btn-el-lesson-menu" type="button" class="px-2.5 py-1.5 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-xs hover:bg-purple-200/80 active:scale-95 transition shrink-0">🏠 Menu</button>
+      <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
+        <div class="flex items-center gap-1 shrink-0">
+          <button id="btn-el-exit-lesson" type="button" class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0">← Trilha</button>
+          <button id="btn-el-lesson-menu" type="button" class="px-2 py-1 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] hover:bg-purple-200/80 active:scale-95 transition shrink-0">🏠</button>
         </div>
-        <div class="flex-1 min-w-0 px-1.5">
-          <div class="flex items-center justify-between text-[11px] font-extrabold text-[#4c2a85] mb-1 gap-2">
+        <div class="flex-1 min-w-0 px-1">
+          <div class="flex items-center justify-between text-[10px] font-extrabold text-[#4c2a85] mb-0.5 gap-1.5">
             <span class="truncate">${escapeHtml(titleLabel)}</span>
             <span class="shrink-0">${lesson.cursor + 1}/${total}</span>
           </div>
-          <div class="w-full h-3 rounded-full bg-white/85 border border-purple-200 overflow-hidden">
+          <div class="w-full h-2 rounded-full bg-white/85 border border-purple-200 overflow-hidden">
             <div class="h-full rounded-full bg-gradient-to-r from-[#7b52b8] via-[#a855f7] to-[#ec4899] transition-all duration-300" style="width:${Math.max(8, pct)}%"></div>
           </div>
         </div>
         ${this.renderSoundToggleButton('btn-el-lesson-sound')}
       </div>
 
-      <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1 text-left">
-        <!-- Companheiro Miau + Voz Fofinha & Legenda -->
-        <div class="rounded-3xl p-3.5 bg-white/95 border border-purple-100 shadow-sm flex flex-col gap-2.5">
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-1.5 flex-wrap">
-              <span class="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696]">
+      <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
+        <!-- Companheiro Miau + Voz Fofinha -->
+        <div class="rounded-2xl p-2.5 sm:p-3 bg-white/95 border border-purple-100 shadow-sm flex flex-col gap-2 shrink-0">
+          <div class="flex items-center justify-between gap-1.5 flex-wrap">
+            <div class="flex items-center gap-1 flex-wrap">
+              <span class="text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696]">
                 ${escapeHtml(ch.badgeLabel)}
               </span>
               ${
                 ch.storyContext
-                  ? `<span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">${escapeHtml(ch.storyContext)}</span>`
+                  ? `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${escapeHtml(ch.storyContext)}</span>`
                   : ''
               }
               ${
                 isRetry
-                  ? `<span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800">🔄 Vamos relembrar juntos!</span>`
+                  ? `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">🔄 Relembrar</span>`
                   : ''
               }
               <span id="el-miau-audio-badge" class="${
                 lesson.isLoadingAudio
-                  ? 'inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-purple-100 text-[#5a3696] animate-pulse'
+                  ? 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] animate-pulse'
                   : lesson.isSpeakingPrompt
-                    ? 'inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 animate-pulse'
-                    : 'inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/80 text-[#6b4d9e] border border-purple-100'
+                    ? 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse'
+                    : 'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/85 text-[#6b4d9e] border border-purple-100'
               }">
                 ${
                   lesson.isLoadingAudio
-                    ? '🐾 Miau preparando a voz fofinha...'
+                    ? '🐾 Preparando voz...'
                     : lesson.isSpeakingPrompt
                       ? '🔊 Miau falando...'
-                      : '💬 Voz amigável do Miau'
+                      : '💬 Voz do Miau'
                 }
               </span>
             </div>
-            <div class="flex items-center gap-1.5">
+            <div class="flex items-center gap-1">
               <button
                 id="btn-el-listen-normal"
                 type="button"
-                class="px-3 py-1.5 rounded-full bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-xs shadow-sm transition flex items-center gap-1 ${lesson.isSpeakingPrompt ? 'ring-2 ring-purple-300' : ''}"
+                class="px-2.5 py-1 rounded-full bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition flex items-center gap-1 ${lesson.isSpeakingPrompt ? 'ring-2 ring-purple-300' : ''}"
               >
-                🔊 Ouvir Miau
+                🔊 Ouvir
               </button>
               <button
                 id="btn-el-listen-slow"
                 type="button"
-                class="px-3 py-1.5 rounded-full bg-sky-100 hover:bg-sky-200 active:scale-95 text-sky-900 border border-sky-200 font-extrabold text-xs shadow-sm transition flex items-center gap-1"
+                class="px-2.5 py-1 rounded-full bg-sky-100 hover:bg-sky-200 active:scale-95 text-sky-900 border border-sky-200 font-extrabold text-[11px] shadow-sm transition flex items-center gap-1"
               >
-                🐢 Falar Devagar
+                🐢 Devagar
               </button>
             </div>
           </div>
 
-          <div class="flex items-center gap-3">
-            <div class="w-16 h-16 md:w-20 md:h-20 shrink-0 transition-transform duration-300 ${lesson.isSpeakingPrompt ? 'scale-105' : ''}">
+          <div class="flex items-center gap-2.5">
+            <div class="w-12 h-12 sm:w-14 sm:h-14 shrink-0 transition-transform duration-300 ${lesson.isSpeakingPrompt ? 'scale-105' : ''}">
               ${renderMiauSvg(lesson.miauMood, this.deps.getEquipped(), false)}
             </div>
-            <div class="flex-1 min-w-0 rounded-2xl p-3 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100">
-              <p class="font-display text-base md:text-lg font-bold text-[#3b1f6e] leading-snug">
+            <div class="flex-1 min-w-0 rounded-xl px-3 py-2 bg-gradient-to-br from-purple-50 to-indigo-50 border border-purple-100">
+              <p class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-snug">
                 ${escapeHtml(ch.instruction)}
               </p>
             </div>
@@ -593,11 +593,11 @@ export class LearningModuleController {
         </div>
 
         <!-- Área Interativa do Desafio -->
-        <div class="rounded-3xl p-4 bg-white/95 border border-purple-100 shadow-sm flex-1 flex flex-col justify-center gap-4 transition-all duration-200">
+        <div class="rounded-2xl p-3 bg-white/95 border border-purple-100 shadow-sm flex-1 flex flex-col justify-center gap-2.5 transition-all duration-200">
           ${this.renderExerciseBodyHtml(ch, lesson)}
         </div>
 
-        <!-- Feedback Imediato (Positivo / Mediano / Negativo / Dica) -->
+        <!-- Feedback Imediato -->
         ${this.renderFeedbackBannerHtml(ch, lesson)}
       </div>
     `;
@@ -624,10 +624,10 @@ export class LearningModuleController {
     }
 
     return `
-      <div class="rounded-3xl p-3.5 border-2 shadow-sm flex items-center justify-between gap-3 flex-wrap shrink-0 ${wrapperStyle}">
-        <div class="flex items-center gap-2.5 flex-1 min-w-0">
-          <span class="text-2xl shrink-0">${icon}</span>
-          <p class="text-sm font-extrabold leading-snug">${escapeHtml(lesson.lastFeedback.text)}</p>
+      <div class="rounded-2xl p-2.5 border shadow-sm flex items-center justify-between gap-2 flex-wrap shrink-0 ${wrapperStyle}">
+        <div class="flex items-center gap-2 flex-1 min-w-0">
+          <span class="text-lg shrink-0">${icon}</span>
+          <p class="text-xs font-bold leading-snug">${escapeHtml(lesson.lastFeedback.text)}</p>
         </div>
         ${
           lesson.stepSolved
@@ -635,9 +635,9 @@ export class LearningModuleController {
               <button
                 id="btn-el-continue"
                 type="button"
-                class="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-sm shadow-md transition shrink-0"
+                class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition shrink-0"
               >
-                ${lesson.cursor + 1 >= lesson.queue.length ? 'Ver Recompensa 🏆' : 'Continuar →'}
+                ${lesson.cursor + 1 >= lesson.queue.length ? 'Recompensa 🏆' : 'Continuar →'}
               </button>
             `
             : kind === 'medium' || kind === 'negative'
@@ -645,18 +645,18 @@ export class LearningModuleController {
                 <button
                   id="btn-el-replay-word"
                   type="button"
-                  class="px-3.5 py-2 rounded-2xl bg-white border border-purple-300 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
+                  class="px-3 py-1.5 rounded-xl bg-white border border-purple-300 text-[#4c2a85] font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
                 >
-                  🔊 Ouvir Palavra de Novo
+                  🔊 Ouvir Palavra
                 </button>
               `
               : `
                 <button
                   id="btn-el-hint-audio"
                   type="button"
-                  class="px-3.5 py-2 rounded-2xl bg-white border border-amber-300 text-amber-900 font-extrabold text-xs shadow-sm hover:bg-amber-100 active:scale-95 transition shrink-0"
+                  class="px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-900 font-extrabold text-[11px] shadow-sm hover:bg-amber-100 active:scale-95 transition shrink-0"
                 >
-                  🐢 Ouvir Dica
+                  🐢 Dica
                 </button>
               `
         }
@@ -671,9 +671,9 @@ export class LearningModuleController {
     if (ch.type === 'listen_pick' || ch.type === 'rhyme_fun') {
       const verseBlock = ch.anchorCard?.verseHtml
         ? `
-          <div class="rounded-2xl p-3.5 bg-gradient-to-br from-amber-50 to-pink-50 border border-amber-200 flex items-center gap-3">
-            <span class="text-4xl shrink-0">${ch.anchorCard.emoji}</span>
-            <div class="text-sm md:text-base font-bold text-[#3b1f6e] leading-relaxed">
+          <div class="rounded-xl p-2.5 bg-gradient-to-br from-amber-50 to-pink-50 border border-amber-200 flex items-center gap-2.5">
+            <span class="text-2xl shrink-0">${ch.anchorCard.emoji}</span>
+            <div class="text-xs sm:text-sm font-bold text-[#3b1f6e] leading-snug">
               ${ch.anchorCard.verseHtml}
             </div>
           </div>
@@ -683,7 +683,7 @@ export class LearningModuleController {
       const options = ch.options || [];
       return `
         ${verseBlock}
-        <div class="grid ${options.length === 4 ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-3'} gap-3">
+        <div class="grid ${options.length === 4 ? 'grid-cols-2' : 'grid-cols-3'} gap-2">
           ${options
             .map((opt) => {
               const isCorrect =
@@ -697,14 +697,14 @@ export class LearningModuleController {
                   type="button"
                   data-el-option="${opt.id}"
                   ${lesson.stepSolved ? 'disabled' : ''}
-                  class="rounded-3xl p-4 border-2 flex flex-col items-center justify-center gap-2 transition-all duration-200 active:scale-95 ${
+                  class="rounded-2xl p-2.5 sm:p-3 border-2 flex flex-col items-center justify-center gap-1 transition-all duration-200 active:scale-95 ${
                     isCorrect
-                      ? 'bg-emerald-100 border-emerald-500 ring-4 ring-emerald-200 shadow-md'
-                      : `${opt.accentClass || 'bg-purple-50 border-purple-200'} hover:border-[#6e45a5] hover:-translate-y-0.5 hover:shadow-md`
+                      ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-200 shadow-sm'
+                      : `${opt.accentClass || 'bg-purple-50 border-purple-200'} hover:border-[#6e45a5] hover:-translate-y-0.5 hover:shadow-sm`
                   }"
                 >
-                  <span class="text-5xl md:text-6xl leading-none">${opt.emoji}</span>
-                  <span class="font-display text-lg md:text-xl font-bold text-[#3b1f6e]">
+                  <span class="text-3xl sm:text-4xl leading-none">${opt.emoji}</span>
+                  <span class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight">
                     ${
                       prefix
                         ? `<span class="text-[#d946ef] underline decoration-2">${escapeHtml(prefix)}</span>${escapeHtml(restLabel)}`
@@ -722,15 +722,15 @@ export class LearningModuleController {
     if (ch.type === 'sound_to_letter') {
       const choices = ch.letterChoices || [];
       return `
-        <div class="flex flex-col items-center gap-4">
+        <div class="flex flex-col items-center gap-3">
           ${
             ch.anchorCard
               ? `
-                <div class="rounded-3xl px-5 py-4 bg-gradient-to-br from-sky-50 to-purple-50 border border-purple-200 flex items-center gap-4">
-                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-16 h-16 rounded-2xl shadow-sm bg-white shrink-0" />
+                <div class="rounded-2xl px-3.5 py-2.5 bg-gradient-to-br from-sky-50 to-purple-50 border border-purple-200 flex items-center gap-3">
+                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-12 h-12 rounded-xl shadow-sm bg-white shrink-0" />
                   <div class="text-left">
-                    <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Palavra</div>
-                    <div class="font-display text-2xl md:text-3xl font-bold text-[#3b1f6e]">
+                    <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Palavra</div>
+                    <div class="font-display text-lg sm:text-xl font-bold text-[#3b1f6e] leading-tight">
                       ${escapeHtml(ch.anchorCard.word)}
                     </div>
                   </div>
@@ -738,7 +738,7 @@ export class LearningModuleController {
               `
               : ''
           }
-          <div class="flex flex-wrap items-center justify-center gap-3 w-full">
+          <div class="flex flex-wrap items-center justify-center gap-2 w-full">
             ${choices
               .map((letter) => {
                 const isRight = lesson.stepSolved && letter === ch.correctLetter;
@@ -747,9 +747,9 @@ export class LearningModuleController {
                     type="button"
                     data-el-letter="${escapeHtml(letter)}"
                     ${lesson.stepSolved ? 'disabled' : ''}
-                    class="min-w-[82px] md:min-w-[96px] h-20 md:h-24 px-5 rounded-3xl border-2 font-display text-3xl md:text-4xl font-bold transition-all duration-200 active:scale-95 hover:-translate-y-0.5 shadow-sm ${
+                    class="min-w-[60px] sm:min-w-[70px] h-14 sm:h-16 px-4 rounded-2xl border-2 font-display text-xl sm:text-2xl font-bold transition-all duration-200 active:scale-95 hover:-translate-y-0.5 shadow-sm ${
                       isRight
-                        ? 'bg-emerald-500 text-white border-emerald-600 ring-4 ring-emerald-200'
+                        ? 'bg-emerald-500 text-white border-emerald-600 ring-2 ring-emerald-200'
                         : 'bg-gradient-to-b from-white to-purple-50 text-[#3b1f6e] border-purple-300 hover:border-[#6e45a5] hover:bg-purple-100'
                     }"
                   >
@@ -769,25 +769,25 @@ export class LearningModuleController {
       const filled = lesson.filledWordLetter;
 
       return `
-        <div class="flex flex-col items-center gap-4">
+        <div class="flex flex-col items-center gap-3">
           ${
             ch.anchorCard
               ? `
-                <div class="rounded-3xl px-5 py-3 bg-gradient-to-br from-amber-50 to-purple-50 border border-purple-200 flex items-center gap-3">
-                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-14 h-14 rounded-2xl shadow-sm bg-white shrink-0" />
-                  <span class="font-display text-xl font-bold text-[#4c2a85]">${escapeHtml(ch.anchorCard.word)}</span>
+                <div class="rounded-2xl px-3.5 py-2 bg-gradient-to-br from-amber-50 to-purple-50 border border-purple-200 flex items-center gap-2.5">
+                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-10 h-10 rounded-xl shadow-sm bg-white shrink-0" />
+                  <span class="font-display text-base font-bold text-[#4c2a85]">${escapeHtml(ch.anchorCard.word)}</span>
                 </div>
               `
               : ''
           }
 
-          <div class="flex flex-wrap items-center justify-center gap-2">
+          <div class="flex flex-wrap items-center justify-center gap-1.5">
             ${segments
               .map((seg, idx) => {
                 const isMissing = seg === null && idx === ch.missingSlotIndex;
                 if (!isMissing) {
                   return `
-                    <div class="w-14 h-16 md:w-16 md:h-20 rounded-2xl bg-purple-100 border-2 border-purple-300 flex items-center justify-center font-display text-3xl font-bold text-[#3b1f6e]">
+                    <div class="w-11 h-12 sm:w-12 sm:h-14 rounded-xl bg-purple-100 border border-purple-300 flex items-center justify-center font-display text-xl sm:text-2xl font-bold text-[#3b1f6e]">
                       ${escapeHtml(seg || '')}
                     </div>
                   `;
@@ -796,9 +796,9 @@ export class LearningModuleController {
                 return `
                   <div
                     id="el-word-dropzone"
-                    class="w-16 h-16 md:w-20 md:h-20 rounded-2xl border-[3px] flex items-center justify-center font-display text-3xl font-bold transition ${
+                    class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 flex items-center justify-center font-display text-xl sm:text-2xl font-bold transition ${
                       lesson.stepSolved
-                        ? 'bg-emerald-500 border-emerald-600 text-white ring-4 ring-emerald-200'
+                        ? 'bg-emerald-500 border-emerald-600 text-white ring-2 ring-emerald-200'
                         : 'bg-amber-50 border-dashed border-[#6e45a5] text-[#6e45a5] animate-pulse'
                     }"
                   >
@@ -809,11 +809,11 @@ export class LearningModuleController {
               .join('')}
           </div>
 
-          <div class="text-xs font-extrabold text-[#6b4d9e]">
-            Toque ou arraste a letra certa para o espaço pontilhado!
+          <div class="text-[11px] font-bold text-[#6b4d9e]">
+            Toque ou arraste a letra certa para o espaço!
           </div>
 
-          <div class="flex flex-wrap items-center justify-center gap-3">
+          <div class="flex flex-wrap items-center justify-center gap-2">
             ${bank
               .map((letter) => {
                 const isRight = lesson.stepSolved && letter === ch.missingAnswer;
@@ -823,7 +823,7 @@ export class LearningModuleController {
                     draggable="${!lesson.stepSolved}"
                     data-el-bank-letter="${escapeHtml(letter)}"
                     ${lesson.stepSolved ? 'disabled' : ''}
-                    class="w-16 h-16 md:w-20 md:h-20 rounded-2xl border-2 font-display text-3xl font-bold shadow-sm transition-all duration-150 active:scale-95 hover:-translate-y-0.5 cursor-grab ${
+                    class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 font-display text-xl sm:text-2xl font-bold shadow-sm transition-all duration-150 active:scale-95 hover:-translate-y-0.5 cursor-grab ${
                       isRight
                         ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
                         : 'bg-white border-purple-300 text-[#3b1f6e] hover:bg-purple-50 hover:border-[#6e45a5]'
@@ -852,40 +852,40 @@ export class LearningModuleController {
               box: 'bg-emerald-50 border-emerald-300 text-emerald-950',
               bar: 'bg-emerald-500',
               badge: 'bg-emerald-200 text-emerald-900',
-              label: `🌟 Pronúncia parecida! (${cmp.score}%)`,
+              label: `🌟 Parecida! (${cmp.score}%)`,
             }
           : cmp.verdict === 'medium'
             ? {
                 box: 'bg-amber-50 border-amber-300 text-amber-950',
                 bar: 'bg-amber-500',
                 badge: 'bg-amber-200 text-amber-900',
-                label: `🔁 Quase igual! Ouça e fale novamente (${cmp.score}%)`,
+                label: `🔁 Quase igual! (${cmp.score}%)`,
               }
             : {
                 box: 'bg-rose-50 border-rose-300 text-rose-950',
                 bar: 'bg-rose-500',
                 badge: 'bg-rose-200 text-rose-900',
-                label: `🎙️ Ainda não ficou igual (${cmp.score}%)`,
+                label: `🎙️ Vamos tentar de novo (${cmp.score}%)`,
               };
 
       comparisonHtml = `
-        <div class="w-full max-w-md rounded-2xl p-3 border-2 ${verdictMeta.box} text-left flex flex-col gap-2">
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <span class="text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${verdictMeta.badge}">
+        <div class="w-full max-w-sm rounded-xl p-2.5 border ${verdictMeta.box} text-left flex flex-col gap-1.5">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full ${verdictMeta.badge}">
               ${verdictMeta.label}
             </span>
           </div>
-          <div class="grid grid-cols-2 gap-2 text-xs">
-            <div class="rounded-xl p-2 bg-white/85 border border-black/5">
-              <div class="text-[10px] font-extrabold uppercase opacity-70">Palavra esperada</div>
+          <div class="grid grid-cols-2 gap-1.5 text-[11px]">
+            <div class="rounded-lg p-1.5 bg-white/85 border border-black/5">
+              <div class="text-[9px] font-extrabold uppercase opacity-70">Esperada</div>
               <div class="font-bold truncate">${escapeHtml(cmp.expectedDisplay)}</div>
             </div>
-            <div class="rounded-xl p-2 bg-white/85 border border-black/5">
-              <div class="text-[10px] font-extrabold uppercase opacity-70">O Miau ouviu</div>
+            <div class="rounded-lg p-1.5 bg-white/85 border border-black/5">
+              <div class="text-[9px] font-extrabold uppercase opacity-70">O Miau ouviu</div>
               <div class="font-bold truncate">${escapeHtml(cmp.spokenDisplay)}</div>
             </div>
           </div>
-          <div class="w-full h-2 rounded-full bg-white/90 overflow-hidden">
+          <div class="w-full h-1.5 rounded-full bg-white/90 overflow-hidden">
             <div class="h-full rounded-full ${verdictMeta.bar} transition-all duration-300" style="width:${Math.max(8, cmp.score)}%"></div>
           </div>
         </div>
@@ -893,26 +893,26 @@ export class LearningModuleController {
     }
 
     return `
-      <div class="flex flex-col items-center gap-3.5 text-center">
-        <div class="rounded-3xl px-5 py-4 bg-gradient-to-br from-pink-50 via-purple-50 to-sky-50 border-2 border-purple-200 flex flex-col items-center gap-2.5 max-w-md w-full shadow-inner">
+      <div class="flex flex-col items-center gap-2.5 text-center">
+        <div class="rounded-2xl px-4 py-3 bg-gradient-to-br from-pink-50 via-purple-50 to-sky-50 border border-purple-200 flex flex-col items-center gap-2 max-w-sm w-full shadow-inner">
           <img
             src="${ch.visualAssetUrl}"
             alt="${escapeHtml(ch.speakVisualLabel || ch.speakTargetText || '')}"
-            class="w-20 h-20 rounded-2xl shadow-sm bg-white"
+            class="w-14 h-14 rounded-xl shadow-sm bg-white"
           />
-          <div class="font-display text-2xl md:text-3xl font-bold text-[#3b1f6e]">
+          <div class="font-display text-lg sm:text-xl font-bold text-[#3b1f6e] leading-tight">
             ${escapeHtml(ch.speakVisualLabel || ch.speakTargetText || '')}
           </div>
           <button
             id="btn-el-target-word-audio"
             type="button"
-            class="px-3.5 py-1.5 rounded-full bg-white hover:bg-purple-100 border border-purple-200 text-[#5a3696] font-extrabold text-xs shadow-sm active:scale-95 transition"
+            class="px-3 py-1 rounded-full bg-white hover:bg-purple-100 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] shadow-sm active:scale-95 transition"
           >
-            🔊 Ouvir o Miau falar esta palavra
+            🔊 Ouvir palavra do Miau
           </button>
           ${
             lesson.voiceStatusText
-              ? `<div class="text-xs font-extrabold text-[#5a3696] bg-white/90 px-3 py-1 rounded-full border border-purple-200">${escapeHtml(lesson.voiceStatusText)}</div>`
+              ? `<div class="text-[11px] font-bold text-[#5a3696] bg-white/90 px-2.5 py-0.5 rounded-full border border-purple-200">${escapeHtml(lesson.voiceStatusText)}</div>`
               : ''
           }
         </div>
@@ -922,39 +922,37 @@ export class LearningModuleController {
         ${
           !lesson.stepSolved
             ? `
-              <div class="flex flex-col items-center gap-2.5 w-full">
-                <div class="flex flex-wrap items-center justify-center gap-2.5">
-                  <button
-                    id="btn-el-voice-record"
-                    type="button"
-                    ${lesson.isComparingVoice ? 'disabled' : ''}
-                    class="px-6 py-3.5 rounded-2xl font-extrabold text-sm shadow-md active:scale-95 transition flex items-center gap-2 ${
-                      lesson.isComparingVoice
-                        ? 'bg-purple-300 text-white cursor-wait'
-                        : lesson.isRecordingVoice
-                          ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
-                          : shouldRetryVoice
-                            ? 'bg-amber-500 hover:bg-amber-600 text-white ring-4 ring-amber-200'
-                            : 'bg-[#6e45a5] hover:bg-[#5c3691] text-white'
-                    }"
-                  >
-                    ${
-                      lesson.isComparingVoice
-                        ? '⏳ Comparando sua pronúncia...'
-                        : lesson.isRecordingVoice
-                          ? '⏹️ Parar e Comparar Voz'
-                          : shouldRetryVoice
-                            ? '🎤 Falar Novamente'
-                            : '🎤 Falar no Microfone'
-                    }
-                  </button>
-                </div>
+              <div class="flex flex-col items-center gap-2 w-full">
+                <button
+                  id="btn-el-voice-record"
+                  type="button"
+                  ${lesson.isComparingVoice ? 'disabled' : ''}
+                  class="px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition flex items-center gap-1.5 ${
+                    lesson.isComparingVoice
+                      ? 'bg-purple-300 text-white cursor-wait'
+                      : lesson.isRecordingVoice
+                        ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse'
+                        : shouldRetryVoice
+                          ? 'bg-amber-500 hover:bg-amber-600 text-white ring-2 ring-amber-200'
+                          : 'bg-[#6e45a5] hover:bg-[#5c3691] text-white'
+                  }"
+                >
+                  ${
+                    lesson.isComparingVoice
+                      ? '⏳ Comparando pronúncia...'
+                      : lesson.isRecordingVoice
+                        ? '⏹️ Parar e Comparar'
+                        : shouldRetryVoice
+                          ? '🎤 Falar Novamente'
+                          : '🎤 Falar no Microfone'
+                  }
+                </button>
                 <button
                   id="btn-el-voice-skip"
                   type="button"
-                  class="px-3.5 py-1.5 rounded-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-[#6b4d9e] font-bold text-[11px] transition"
+                  class="px-3 py-1 rounded-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-[#6b4d9e] font-bold text-[10px] transition"
                 >
-                  Não posso usar o microfone agora (Pular)
+                  Pular microfone agora
                 </button>
               </div>
             `
@@ -969,61 +967,61 @@ export class LearningModuleController {
     progress: EarlyLiteracyProgress
   ): string {
     return `
-      <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
+      <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
         <div class="flex items-center gap-1.5">
-          <button id="btn-el-cel-trail" type="button" class="px-3 py-1.5 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-xs shadow-sm active:scale-95 transition">← Trilha</button>
-          <button id="btn-el-cel-menu" type="button" class="px-2.5 py-1.5 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-xs active:scale-95 transition">🏠 Menu</button>
+          <button id="btn-el-cel-trail" type="button" class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-[11px] shadow-sm active:scale-95 transition">← Trilha</button>
+          <button id="btn-el-cel-menu" type="button" class="px-2.5 py-1 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] active:scale-95 transition">🏠 Menu</button>
         </div>
         <div class="flex items-center gap-1.5">
           ${this.renderSoundToggleButton('btn-el-cel-sound')}
-          <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-bold">✕</button>
+          <button id="modal-close" type="button" class="w-7 h-7 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold">✕</button>
         </div>
       </div>
 
       <div class="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto miau-scroll p-2 text-center">
-        <div class="rounded-3xl p-6 bg-white/95 border-2 border-amber-200 shadow-lg max-w-md w-full flex flex-col items-center gap-3.5">
-          <div class="w-24 h-24">
+        <div class="rounded-2xl p-4 sm:p-5 bg-white/95 border border-amber-200 shadow-md max-w-sm w-full flex flex-col items-center gap-2.5">
+          <div class="w-16 h-16">
             ${renderMiauSvg('affectionate', this.deps.getEquipped(), false)}
           </div>
-          <div class="text-3xl tracking-widest text-amber-400">
+          <div class="text-2xl tracking-widest text-amber-400 leading-none">
             ${'★'.repeat(cel.stars)}${'☆'.repeat(3 - cel.stars)}
           </div>
           <div>
-            <h2 class="font-display text-2xl font-bold text-[#3b1f6e]">${escapeHtml(cel.title)}</h2>
-            <p class="text-sm font-semibold text-[#5e4294] mt-1">${escapeHtml(cel.subtitle)}</p>
+            <h2 class="font-display text-lg sm:text-xl font-bold text-[#3b1f6e]">${escapeHtml(cel.title)}</h2>
+            <p class="text-xs font-semibold text-[#5e4294] mt-0.5">${escapeHtml(cel.subtitle)}</p>
           </div>
 
-          <div class="flex items-center justify-center gap-3 w-full">
-            <div class="flex-1 rounded-2xl p-3 bg-amber-50 border border-amber-200">
-              <div class="font-display text-xl font-bold text-amber-700">+${cel.coinsEarned} 🪙</div>
-              <div class="text-[10px] font-extrabold uppercase text-amber-800">Moedas pro Miau</div>
+          <div class="flex items-center justify-center gap-2 w-full">
+            <div class="flex-1 rounded-xl p-2 bg-amber-50 border border-amber-200">
+              <div class="font-display text-base font-bold text-amber-700">+${cel.coinsEarned} 🪙</div>
+              <div class="text-[9px] font-extrabold uppercase text-amber-800">Moedas</div>
             </div>
-            <div class="flex-1 rounded-2xl p-3 bg-purple-50 border border-purple-200">
-              <div class="font-display text-xl font-bold text-[#5a3696]">+${cel.xpEarned} ✨</div>
-              <div class="text-[10px] font-extrabold uppercase text-[#6b4d9e]">Experiência XP</div>
+            <div class="flex-1 rounded-xl p-2 bg-purple-50 border border-purple-200">
+              <div class="font-display text-base font-bold text-[#5a3696]">+${cel.xpEarned} ✨</div>
+              <div class="text-[9px] font-extrabold uppercase text-[#6b4d9e]">XP</div>
             </div>
           </div>
 
-          <div class="rounded-2xl p-3 w-full bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-300 flex items-center gap-3 text-left">
+          <div class="rounded-xl p-2.5 w-full bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-300 flex items-center gap-2.5 text-left">
             ${
               cel.stickerVisualUrl
-                ? `<img src="${cel.stickerVisualUrl}" alt="${escapeHtml(cel.stickerTitle)}" class="w-12 h-12 rounded-xl shrink-0" />`
-                : `<span class="text-3xl shrink-0">${cel.stickerEmoji}</span>`
+                ? `<img src="${cel.stickerVisualUrl}" alt="${escapeHtml(cel.stickerTitle)}" class="w-10 h-10 rounded-lg shrink-0" />`
+                : `<span class="text-2xl shrink-0">${cel.stickerEmoji}</span>`
             }
             <div class="min-w-0">
-              <div class="text-xs font-extrabold text-amber-950">
-                ${cel.newlyUnlockedSticker ? '🎉 Novo Adesivo Desbloqueado!' : 'Adesivo da Unidade'}
+              <div class="text-[11px] font-extrabold text-amber-950">
+                ${cel.newlyUnlockedSticker ? '🎉 Novo Adesivo!' : 'Adesivo da Unidade'}
               </div>
-              <div class="text-xs font-bold text-amber-900 truncate">${escapeHtml(cel.stickerTitle)}</div>
-              <div class="text-[10px] font-semibold text-amber-800">Ofensiva atual: 🔥 ${progress.streakDays} dia(s)</div>
+              <div class="text-[11px] font-bold text-amber-900 truncate">${escapeHtml(cel.stickerTitle)}</div>
+              <div class="text-[9px] font-semibold text-amber-800">Ofensiva: 🔥 ${progress.streakDays} dia(s)</div>
             </div>
           </div>
 
-          <div class="flex flex-col sm:flex-row gap-2 w-full mt-1">
+          <div class="flex gap-2 w-full mt-0.5">
             <button
               id="btn-el-cel-back"
               type="button"
-              class="flex-1 py-3 rounded-2xl bg-purple-100 hover:bg-purple-200 active:scale-95 text-[#4c2a85] font-extrabold text-sm transition"
+              class="flex-1 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 active:scale-95 text-[#4c2a85] font-extrabold text-xs transition"
             >
               Ver Trilha
             </button>
@@ -1034,9 +1032,9 @@ export class LearningModuleController {
                     id="btn-el-cel-next"
                     type="button"
                     data-next-unit="${cel.nextUnitId}"
-                    class="flex-1 py-3 rounded-2xl bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-sm shadow-md transition"
+                    class="flex-1 py-2.5 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-xs shadow-sm transition"
                   >
-                    Próxima Unidade →
+                    Próxima →
                   </button>
                 `
                 : ''

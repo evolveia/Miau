@@ -489,13 +489,6 @@ class PhonicsAudioEngine {
     this.speechSeq += 1;
     miauSpeechService.cancel();
     soundService.stopAllAudio();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {
-        // Ignore speech synthesis cancel error
-      }
-    }
     this.emitState({ speaking: false, loading: false, activeText: '' });
   }
 
@@ -530,19 +523,26 @@ class PhonicsAudioEngine {
     const existingPromise = this.inFlightSyntheses.get(cleanText);
     if (existingPromise) return existingPromise;
 
-    const promise = synthesizeMiauVoice(cleanText)
-      .then((res) => {
-        const clip: CachedAudioClip = {
-          audioBase64: res.audioBase64,
-          mimeType: res.mimeType || 'audio/wav',
-        };
-        this.setCacheClip(cleanText, clip);
-        return clip;
-      })
-      .catch(() => null)
-      .finally(() => {
-        this.inFlightSyntheses.delete(cleanText);
-      });
+    const promise = (async (): Promise<CachedAudioClip | null> => {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await synthesizeMiauVoice(cleanText);
+          const clip: CachedAudioClip = {
+            audioBase64: res.audioBase64,
+            mimeType: res.mimeType || 'audio/wav',
+          };
+          this.setCacheClip(cleanText, clip);
+          return clip;
+        } catch {
+          if (attempt === 0) {
+            await new Promise((r) => setTimeout(r, 300));
+          }
+        }
+      }
+      return null;
+    })().finally(() => {
+      this.inFlightSyntheses.delete(cleanText);
+    });
 
     this.inFlightSyntheses.set(cleanText, promise);
     return promise;
@@ -550,17 +550,13 @@ class PhonicsAudioEngine {
 
   public prefetchChallengeAudio(challenge: LiteracyChallenge): void {
     if (!soundService.enabled) return;
-    const phrases = [
-      challenge.audioNormalText,
-      challenge.speakTargetText,
-    ]
-      .filter((t): t is string => Boolean(t))
-      .map((t) => this.cleanText(t))
-      .filter(Boolean);
-
-    for (const phrase of phrases) {
-      void this.fetchMiauTtsClip(phrase);
-    }
+    const text = this.cleanText(challenge.audioNormalText);
+    if (!text || this.ttsCache.has(text)) return;
+    window.setTimeout(() => {
+      if (soundService.enabled) {
+        void this.fetchMiauTtsClip(text);
+      }
+    }, 900);
   }
 
   private async speakWithMiauTts(
@@ -580,7 +576,8 @@ class PhonicsAudioEngine {
     }
 
     if (!clip) {
-      this.emitState({ loading: false });
+      this.emitState({ loading: false, speaking: false, activeText: '' });
+      notify?.(false);
       return false;
     }
 
@@ -623,7 +620,6 @@ class PhonicsAudioEngine {
             }
           });
 
-        // Safety timeout in case onended is skipped by browser
         window.setTimeout(finish, slow ? 14000 : 11000);
       });
       return true;
@@ -634,75 +630,6 @@ class PhonicsAudioEngine {
       notify?.(false);
       return false;
     }
-  }
-
-  private async speakWithWebSpeechFallback(
-    reqId: number,
-    cleanText: string,
-    slow: boolean,
-    notify?: (speaking: boolean) => void
-  ): Promise<void> {
-    const canUseWebSpeech =
-      typeof window !== 'undefined' &&
-      'speechSynthesis' in window &&
-      typeof SpeechSynthesisUtterance !== 'undefined';
-
-    if (!canUseWebSpeech) {
-      if (soundService.enabled) {
-        soundService.playMeow(slow ? 0.96 : 1.08);
-      }
-      this.emitState({ loading: false, speaking: false, activeText: '' });
-      notify?.(false);
-      return;
-    }
-
-    const voices = window.speechSynthesis.getVoices();
-    const ptVoice =
-      voices.find((v) => v.lang.toLowerCase().startsWith('pt-br')) ||
-      voices.find((v) => v.lang.toLowerCase().startsWith('pt'));
-
-    if (!ptVoice) {
-      if (soundService.enabled) {
-        soundService.playMeow(slow ? 0.96 : 1.08);
-      }
-      this.emitState({ loading: false, speaking: false, activeText: '' });
-      notify?.(false);
-      return;
-    }
-
-    await new Promise<void>((resolve) => {
-      const utterance = new SpeechSynthesisUtterance(cleanText);
-      utterance.voice = ptVoice;
-      utterance.lang = 'pt-BR';
-      utterance.rate = slow ? 0.68 : 0.95;
-      utterance.pitch = 1.2;
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        if (reqId === this.speechSeq) {
-          this.emitState({ loading: false, speaking: false, activeText: '' });
-          notify?.(false);
-        }
-        resolve();
-      };
-      utterance.onstart = () => {
-        if (reqId === this.speechSeq && soundService.enabled) {
-          this.emitState({ loading: false, speaking: true, activeText: cleanText });
-          notify?.(true);
-        }
-      };
-      utterance.onend = finish;
-      utterance.onerror = finish;
-      try {
-        this.emitState({ loading: false, speaking: true, activeText: cleanText });
-        notify?.(true);
-        window.speechSynthesis.speak(utterance);
-        window.setTimeout(finish, slow ? 9500 : 7500);
-      } catch {
-        finish();
-      }
-    });
   }
 
   public async speak(
@@ -719,13 +646,6 @@ class PhonicsAudioEngine {
 
     miauSpeechService.cancel();
     soundService.stopAllAudio();
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      try {
-        window.speechSynthesis.cancel();
-      } catch {
-        // Ignore
-      }
-    }
 
     if (!soundService.enabled) {
       this.emitState({ loading: false, speaking: false, activeText: '' });
@@ -744,7 +664,7 @@ class PhonicsAudioEngine {
       soundService.playMeow(slow ? 0.98 : 1.08);
     }
 
-    // ALWAYS use Miau's cute, friendly Gemini TTS voice first (never robotic Web Speech)
+    // Usa EXCLUSIVAMENTE a voz fofinha e amigável do Miau (sem voz robotizada)
     const playedWithMiau = await this.speakWithMiauTts(
       reqId,
       clean,
@@ -752,12 +672,12 @@ class PhonicsAudioEngine {
       notify
     );
 
-    if (playedWithMiau || reqId !== this.speechSeq || !soundService.enabled) {
-      return;
+    if (!playedWithMiau && reqId === this.speechSeq && soundService.enabled) {
+      // Sem voz robótica: apenas um miado fofo suave se estiver totalmente offline
+      soundService.playMeow(slow ? 0.96 : 1.08);
+      this.emitState({ loading: false, speaking: false, activeText: '' });
+      notify?.(false);
     }
-
-    // Graceful offline fallback only if TTS endpoint is unreachable
-    await this.speakWithWebSpeechFallback(reqId, clean, slow, notify);
   }
 
   public async speakTargetWord(

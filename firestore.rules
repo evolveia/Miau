@@ -196,9 +196,12 @@ service cloud.firestore {
     }
 
     function isValidUserUpdateKeys() {
-      return incoming().diff(existing()).affectedKeys().hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'gameRecords', 'dailyRoutine', 'updatedAt'])
-        || incoming().diff(existing()).affectedKeys().hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
-        || incoming().diff(existing()).affectedKeys().hasOnly(['petName', 'soundEnabled', 'updatedAt']);
+      return incoming().diff(existing()).affectedKeys().hasOnly([
+        'petName', 'coins', 'level', 'xp',
+        'stats', 'equipped', 'ownedItems', 'soundEnabled',
+        'unlockedAchievements', 'progress', 'gameRecords', 'dailyRoutine',
+        'updatedAt'
+      ]);
     }
 
     function isLegacyUserDoc(data, userId) {

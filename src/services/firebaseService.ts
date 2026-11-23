@@ -651,6 +651,31 @@ function buildRepairedDocPayload(
   };
 }
 
+function isDeepEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') {
+    return false;
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+      return false;
+    }
+    for (let i = 0; i < a.length; i++) {
+      if (!isDeepEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  const objA = a as Record<string, unknown>;
+  const objB = b as Record<string, unknown>;
+  const keysA = Object.keys(objA);
+  const keysB = Object.keys(objB);
+  if (keysA.length !== keysB.length) return false;
+  for (const key of keysA) {
+    if (!(key in objB) || !isDeepEqual(objA[key], objB[key])) return false;
+  }
+  return true;
+}
+
 async function updateUserDocWithLegacyRepair(
   uid: string,
   path: string,
@@ -706,7 +731,7 @@ async function updateUserDocWithLegacyRepair(
                     (k) =>
                       k !== 'updatedAt' &&
                       k !== 'createdAt' &&
-                      JSON.stringify(raw[k]) !== JSON.stringify(repaired[k])
+                      !isDeepEqual(raw[k], repaired[k])
                   )
                 : Object.keys(repaired);
               const meta = raw

@@ -1,10 +1,12 @@
 import {
   getAIClient,
+  getCachedTtsWav,
   handleCorsAndMethod,
   readJsonBody,
+  runWithModelFallback,
   sendGeminiRouteError,
   sendJson,
-  withRetry,
+  setCachedTtsWav,
   type VercelRequest,
   type VercelResponse,
 } from './_shared.js';
@@ -26,34 +28,46 @@ export default async function handler(
     }
 
     const cleanText = text.replace(/[()]/g, '').trim();
+    const cached = getCachedTtsWav(cleanText);
+    if (cached) {
+      sendJson(res, 200, {
+        audioBase64: cached.audioBase64,
+        mimeType: cached.mimeType,
+        modelUsed: cached.modelUsed,
+        cached: true,
+      });
+      return;
+    }
+
     const ai = getAIClient();
-    const response = await withRetry(() =>
-      ai.models.generateContent({
-        model: 'gemini-3.8-flash-lite-tts',
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                text: cleanText,
-                speechMetadata: {
-                  style:
-                    'Cute, cheerful, playful Brazilian Portuguese virtual cat companion voice',
+    const { result: response, modelUsed, fallbackActive } =
+      await runWithModelFallback('tts', (model) =>
+        ai.models.generateContent({
+          model,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                {
+                  text: cleanText,
+                  speechMetadata: {
+                    style:
+                      'Cute, cheerful, playful Brazilian Portuguese virtual cat companion voice',
+                  },
                 },
+              ],
+            },
+          ],
+          config: {
+            responseModalities: ['AUDIO'],
+            speechConfig: {
+              voiceConfig: {
+                prebuiltVoiceConfig: { voiceName: 'Zephyr' },
               },
-            ],
-          },
-        ],
-        config: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Zephyr' },
             },
           },
-        },
-      })
-    );
+        })
+      );
 
     const base64Audio =
       response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -64,7 +78,18 @@ export default async function handler(
       return;
     }
 
-    sendJson(res, 200, { audioBase64: base64Audio, mimeType: 'audio/wav' });
+    setCachedTtsWav(cleanText, {
+      audioBase64: base64Audio,
+      mimeType: 'audio/wav',
+      modelUsed,
+    });
+
+    sendJson(res, 200, {
+      audioBase64: base64Audio,
+      mimeType: 'audio/wav',
+      modelUsed,
+      fallbackActive,
+    });
   } catch (error) {
     sendGeminiRouteError(res, '/api/gemini/tts', error);
   }
