@@ -343,8 +343,6 @@ async function startServer() {
   } else {
     const distPath = path.resolve(__dirname, 'dist');
     const distIndexPath = path.join(distPath, 'index.html');
-    const defaultOgOrigin =
-      'https://ais-pre-ut2qpnagl7anrwreyl65as-277512564730.us-west2.run.app';
     let cachedIndexHtml: string | null = null;
 
     app.use(express.static(distPath, { index: false }));
@@ -363,17 +361,21 @@ async function startServer() {
       )
         .split(',')[0]
         .trim();
+      const safeHost = /^[a-zA-Z0-9.-]+(:\d+)?$/.test(rawHost) ? rawHost : '';
+      const safeProto = rawProto === 'http' || rawProto === 'https' ? rawProto : 'https';
       const isLocalHost =
-        !rawHost ||
-        rawHost.startsWith('localhost') ||
-        rawHost.startsWith('127.0.0.1') ||
-        rawHost.startsWith('0.0.0.0');
+        !safeHost ||
+        safeHost.startsWith('localhost') ||
+        safeHost.startsWith('127.0.0.1') ||
+        safeHost.startsWith('0.0.0.0');
       const resolvedOrigin =
-        envOrigin || (!isLocalHost ? `${rawProto}://${rawHost}` : defaultOgOrigin);
-      const html =
-        resolvedOrigin && resolvedOrigin !== defaultOgOrigin
-          ? cachedIndexHtml.split(defaultOgOrigin).join(resolvedOrigin)
-          : cachedIndexHtml;
+        envOrigin || (!isLocalHost ? `${safeProto}://${safeHost}` : '');
+      const html = resolvedOrigin
+        ? cachedIndexHtml.replace(
+            '</head>',
+            `    <link rel="canonical" href="${resolvedOrigin}/" />\n    <meta property="og:url" content="${resolvedOrigin}/" />\n  </head>`
+          )
+        : cachedIndexHtml;
       res.type('html').send(html);
     });
   }

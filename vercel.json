@@ -21,7 +21,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|sw\\.js|workbox-.*\\.js|registerSW\\.js|manifest\\.webmanifest|favicon\\.ico|icon\\.svg|og-miau\\.png|apple-touch-icon\\.png|pwa-.*\\.png).*)",
+      "source": "/((?!api/|assets/|sw\\.js|workbox-.*\\.js|registerSW\\.js|manifest\\.webmanifest|favicon\\.ico|icon\\.svg|og-miau\\.jpg|og-miau\\.png|apple-touch-icon\\.png|pwa-.*\\.png).*)",
       "destination": "/index.html"
     }
   ]
