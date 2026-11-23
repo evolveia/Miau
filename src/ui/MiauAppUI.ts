@@ -107,6 +107,7 @@ import {
   renderLearnModalHtml,
 } from './modals/LearnModal';
 import { EarlyLiteracyController } from './modals/EarlyLiteracyView';
+import { WritingModuleController } from '../modules/writing/WritingModule';
 import {
   bindLoginScreenEvents,
   renderLoginScreenHtml,
@@ -203,8 +204,10 @@ export class MiauAppUI {
   private showInstallGuideModal = false;
   private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
   private learnPreviewLevel: SchoolingLevel | null = null;
-  private activeLearnTrack: 'none' | 'infantil_letras' = 'none';
+  private activeLearnTrack: 'none' | 'infantil_letras' | 'infantil_escrita' =
+    'none';
   private earlyLiteracyView: EarlyLiteracyController;
+  private writingView: WritingModuleController;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
 
@@ -259,6 +262,7 @@ export class MiauAppUI {
         this.learnPreviewLevel = null;
         this.activeLearnTrack = 'none';
         this.earlyLiteracyView.resetToTrail();
+        this.writingView.resetToTrail();
         this.activeModal = 'learn';
         this.render();
       },
@@ -296,6 +300,39 @@ export class MiauAppUI {
           this.screen === 'game' &&
           this.activeModal === 'learn' &&
           this.activeLearnTrack === 'infantil_letras'
+        ) {
+          this.render();
+        }
+      },
+      onToast: (msg) => this.showToast(msg),
+    });
+    this.writingView = new WritingModuleController({
+      getOwnerId: () =>
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
+      getHumanProfile: () => this.humanProfile,
+      getEquipped: () => this.profile.equipped,
+      isSoundEnabled: () => this.profile.soundEnabled,
+      onToggleSoundMute: () => this.toggleSoundMute(),
+      onGrantRewards: (coinsDelta, xpDelta) => {
+        this.ensureProfileDefaults();
+        this.addRewards(coinsDelta, xpDelta);
+        this.updateStatusBarsDOM();
+        void this.persistStats();
+      },
+      onExitToLearnHub: () => {
+        this.activeLearnTrack = 'none';
+        this.render();
+      },
+      onExitToMainMenu: () => {
+        this.activeLearnTrack = 'none';
+        this.activeModal = 'menu';
+        this.render();
+      },
+      onRequestRerender: () => {
+        if (
+          this.screen === 'game' &&
+          this.activeModal === 'learn' &&
+          this.activeLearnTrack === 'infantil_escrita'
         ) {
           this.render();
         }
@@ -2463,7 +2500,9 @@ export class MiauAppUI {
       body =
         this.activeLearnTrack === 'infantil_letras'
           ? this.earlyLiteracyView.render()
-          : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
+          : this.activeLearnTrack === 'infantil_escrita'
+            ? this.writingView.render()
+            : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
     } else if (this.activeModal === 'settings') {
       body = renderSettingsModalHtml({
         screenPrefs: this.screenPrefs,
@@ -3108,6 +3147,7 @@ export class MiauAppUI {
         this.learnPreviewLevel = null;
         this.activeLearnTrack = 'none';
         this.earlyLiteracyView.resetToTrail();
+        this.writingView.resetToTrail();
         this.activeModal = 'learn';
         this.render();
       });
@@ -3119,6 +3159,8 @@ export class MiauAppUI {
     if (this.activeModal === 'learn') {
       if (this.activeLearnTrack === 'infantil_letras') {
         this.earlyLiteracyView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_escrita') {
+        this.writingView.bind(this.root);
       } else {
         bindLearnModalEvents(this.root, {
           onBackToMenu: () => {
@@ -3138,6 +3180,10 @@ export class MiauAppUI {
             if (trackId === 'infantil_letras') {
               this.earlyLiteracyView.resetToTrail();
               this.activeLearnTrack = 'infantil_letras';
+              this.render();
+            } else if (trackId === 'infantil_escrita') {
+              this.writingView.resetToTrail();
+              this.activeLearnTrack = 'infantil_escrita';
               this.render();
             }
           },
@@ -3348,6 +3394,7 @@ export class MiauAppUI {
       this.learnPreviewLevel = null;
       this.activeLearnTrack = 'none';
       this.earlyLiteracyView.resetToTrail();
+      this.writingView.resetToTrail();
       if (this.firebaseUser) {
         await logoutUser();
       }
@@ -3411,6 +3458,7 @@ export class MiauAppUI {
   private closeActiveModal(): void {
     this.profileModal.disposeCameraStream();
     this.earlyLiteracyView.resetToTrail();
+    this.writingView.resetToTrail();
     this.activeLearnTrack = 'none';
     this.miniGameCleanup?.();
     this.miniGameCleanup = null;

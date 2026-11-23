@@ -60,6 +60,15 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
       statusLabel: 'Disponível agora • Toque para aprender',
     },
     {
+      id: 'infantil_escrita',
+      title: 'Vamos Escrever',
+      description: 'A IA do Miau ensina o traçado de cada vogal e palavras fáceis para você cobrir com o dedo e treinar a coordenação motora fina.',
+      emoji: '✍️',
+      tags: ['Escrita Guiada', 'IA + Dedo', '7 Unidades'],
+      accentBg: 'from-purple-100 to-indigo-100',
+      statusLabel: 'Disponível agora • Toque para escrever',
+    },
+    {
       id: 'infantil_cores_numeros',
       title: 'Cores, Formas & Contagem',
       description: 'Brincadeiras guiadas para contar até 20 com peixinhos e estrelinhas.',

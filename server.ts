@@ -353,6 +353,11 @@ async function startServer() {
     }
   });
 
+  app.post('/api/gemini/writing-coach', async (req, res) => {
+    const { default: handler } = await import('./api/gemini/writing-coach.ts');
+    await handler(req, res);
+  });
+
   if (!IS_PROD) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

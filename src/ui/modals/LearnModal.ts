@@ -4,6 +4,8 @@ import {
   getSchoolingLabel,
 } from '../../data/educationModules';
 import { EARLY_LITERACY_UNITS } from '../../data/earlyLiteracyData';
+import { WRITING_UNITS } from '../../modules/writing/data';
+import { loadWritingProgress } from '../../modules/writing/writingEngine';
 import { loadEarlyLiteracyProgress } from '../../services/phonicsEngineService';
 import { calculateAgeFromBirthDate } from '../../services/userProfileService';
 import type { SchoolingLevel, UserHumanProfile } from '../../types';
@@ -29,6 +31,9 @@ export function renderLearnModalHtml(
   const firstName =
     humanProfile.fullName.trim().split(/\s+/)[0] || 'Explorador(a)';
   const literacyProgress = loadEarlyLiteracyProgress(
+    humanProfile.ownerId || 'guest'
+  );
+  const writingProgress = loadWritingProgress(
     humanProfile.ownerId || 'guest'
   );
 
@@ -110,12 +115,28 @@ export function renderLearnModalHtml(
       <div class="flex flex-col gap-2.5">
         ${tracks
           .map((track) => {
-            const isActiveEarlyLiteracy = track.id === 'infantil_letras';
-            const completedUnits = literacyProgress.completedUnits.length;
-            const totalUnits = EARLY_LITERACY_UNITS.length;
+            const isLiteracy = track.id === 'infantil_letras';
+            const isWriting = track.id === 'infantil_escrita';
+            const isActiveTrack = isLiteracy || isWriting;
+            const completedUnits = isLiteracy
+              ? literacyProgress.completedUnits.length
+              : isWriting
+                ? writingProgress.completedUnits.length
+                : 0;
+            const totalUnits = isLiteracy
+              ? EARLY_LITERACY_UNITS.length
+              : isWriting
+                ? WRITING_UNITS.length
+                : 0;
+            const totalStars = isLiteracy
+              ? literacyProgress.totalStars
+              : isWriting
+                ? writingProgress.totalStars
+                : 0;
+
             return `
               <div class="rounded-2xl p-3.5 ${
-                isActiveEarlyLiteracy
+                isActiveTrack
                   ? 'bg-white border-2 border-[#7b52b8] shadow-md'
                   : 'bg-white/95 border border-purple-100 shadow-sm'
               } flex items-start gap-3">
@@ -126,7 +147,7 @@ export function renderLearnModalHtml(
                   <div class="flex items-start justify-between gap-2 flex-wrap">
                     <h3 class="font-display text-sm md:text-base font-bold text-[#3b1f6e] leading-snug">${escapeHtml(track.title)}</h3>
                     ${
-                      isActiveEarlyLiteracy
+                      isActiveTrack
                         ? `<button
                              type="button"
                              data-learn-open-track="${track.id}"
@@ -146,13 +167,13 @@ export function renderLearnModalHtml(
                       )
                       .join('')}
                     <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
-                      isActiveEarlyLiteracy
+                      isActiveTrack
                         ? 'bg-emerald-100 text-emerald-800'
                         : 'bg-amber-100 text-amber-800'
                     }">
                       ${
-                        isActiveEarlyLiteracy && completedUnits > 0
-                          ? `✅ ${completedUnits}/${totalUnits} unidades • ★ ${literacyProgress.totalStars}`
+                        isActiveTrack && completedUnits > 0
+                          ? `✅ ${completedUnits}/${totalUnits} unidades • ★ ${totalStars}`
                           : escapeHtml(track.statusLabel)
                       }
                     </span>

@@ -224,3 +224,94 @@ export async function transcribeUserAudio(
 
   return parsed.data.transcript || '';
 }
+
+export interface WritingTeachResponse {
+  coachTip: string;
+  audioScript: string;
+}
+
+export interface WritingEvaluateResponse {
+  verdict: 'positive' | 'medium' | 'retry';
+  stars: number;
+  feedbackText: string;
+  audioScript: string;
+}
+
+export async function requestWritingTeach(params: {
+  targetText: string;
+  studentName: string;
+  motorLevel: 'largo' | 'medio' | 'fino';
+  strokeHints: string[];
+}): Promise<WritingTeachResponse> {
+  const res = await fetch('/api/gemini/writing-coach', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'teach',
+      ...params,
+    }),
+  });
+  const parsed = await parseJsonSafely<{
+    coachTip?: string;
+    audioScript?: string;
+    fallbackActive?: boolean;
+    error?: string;
+    code?: string;
+  }>(res);
+  if (!res.ok || !parsed.data) {
+    throw buildFriendlyHttpError(
+      res.status,
+      parsed,
+      'Não foi possível carregar a explicação da IA.'
+    );
+  }
+  scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
+  return {
+    coachTip: parsed.data.coachTip || '',
+    audioScript: parsed.data.audioScript || '',
+  };
+}
+
+export async function requestWritingEvaluation(params: {
+  targetText: string;
+  studentName: string;
+  motorLevel: 'largo' | 'medio' | 'fino';
+  imageBase64: string;
+  mimeType?: string;
+  coveragePct: number;
+  precisionPct: number;
+  strokeCount: number;
+}): Promise<WritingEvaluateResponse> {
+  const res = await fetch('/api/gemini/writing-coach', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      mode: 'evaluate',
+      ...params,
+    }),
+  });
+  const parsed = await parseJsonSafely<{
+    verdict?: 'positive' | 'medium' | 'retry';
+    stars?: number;
+    feedbackText?: string;
+    audioScript?: string;
+    fallbackActive?: boolean;
+    error?: string;
+    code?: string;
+  }>(res);
+  if (!res.ok || !parsed.data) {
+    throw buildFriendlyHttpError(
+      res.status,
+      parsed,
+      'Não foi possível avaliar o traçado com a IA.'
+    );
+  }
+  scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
+  return {
+    verdict: parsed.data.verdict || 'medium',
+    stars: typeof parsed.data.stars === 'number' ? parsed.data.stars : 1,
+    feedbackText: parsed.data.feedbackText || '',
+    audioScript: parsed.data.audioScript || '',
+  };
+}
+
