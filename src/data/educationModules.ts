@@ -53,11 +53,11 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     {
       id: 'infantil_letras',
       title: 'Vogais & Primeiras Palavras',
-      description: 'Associação sonora com as sílabas faladas pelo Miau e figuras divertidas.',
+      description: 'Método fônico com o Miau: sons das vogais, rimas, encontros vocálicos e primeiras palavras em 6 unidades.',
       emoji: '🔤',
-      tags: ['Alfabetização', 'Sons'],
+      tags: ['Método Fônico', '6 Unidades', 'Áudio & Voz'],
       accentBg: 'from-pink-100 to-rose-100',
-      statusLabel: 'Em breve • Módulo configurável por escolaridade',
+      statusLabel: 'Disponível agora • Toque para aprender',
     },
     {
       id: 'infantil_cores_numeros',

@@ -182,7 +182,8 @@ class SoundService {
     base64Audio: string,
     mimeType = 'audio/wav',
     onStart?: () => void,
-    onEnd?: () => void
+    onEnd?: () => void,
+    playbackRate = 1
   ): Promise<void> {
     if (!this.enabled) {
       onEnd?.();
@@ -190,6 +191,10 @@ class SoundService {
     }
     this.stopAllAudio();
     const audio = new Audio(`data:${mimeType};base64,${base64Audio}`);
+    if (playbackRate !== 1) {
+      audio.preservesPitch = true;
+      audio.playbackRate = Math.max(0.5, Math.min(1.5, playbackRate));
+    }
     this.activeAudio = audio;
     audio.onplay = () => {
       if (!this.enabled) {

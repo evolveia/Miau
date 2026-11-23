@@ -3,6 +3,8 @@ import {
   SCHOOLING_OPTIONS,
   getSchoolingLabel,
 } from '../../data/educationModules';
+import { EARLY_LITERACY_UNITS } from '../../data/earlyLiteracyData';
+import { loadEarlyLiteracyProgress } from '../../services/phonicsEngineService';
 import { calculateAgeFromBirthDate } from '../../services/userProfileService';
 import type { SchoolingLevel, UserHumanProfile } from '../../types';
 import { escapeHtml } from '../../utils/html';
@@ -11,6 +13,7 @@ export interface LearnModalCallbacks {
   onBackToMenu: () => void;
   onGoToProfile: () => void;
   onSelectPreviewLevel: (level: SchoolingLevel) => void;
+  onOpenTrack?: (trackId: string) => void;
 }
 
 export function renderLearnModalHtml(
@@ -25,6 +28,9 @@ export function renderLearnModalHtml(
   const activeOption = SCHOOLING_OPTIONS.find((o) => o.id === activeLevel);
   const firstName =
     humanProfile.fullName.trim().split(/\s+/)[0] || 'Explorador(a)';
+  const literacyProgress = loadEarlyLiteracyProgress(
+    humanProfile.ownerId || 'guest'
+  );
 
   return `
     <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
@@ -103,15 +109,33 @@ export function renderLearnModalHtml(
       <!-- Adaptive Module Cards -->
       <div class="flex flex-col gap-2.5">
         ${tracks
-          .map(
-            (track) => `
-              <div class="rounded-2xl p-3 bg-white/95 border border-purple-100 shadow-sm flex items-start gap-3">
-                <div class="w-11 h-11 rounded-2xl bg-gradient-to-br ${track.accentBg} border border-white shadow-inner flex items-center justify-center text-2xl shrink-0">
+          .map((track) => {
+            const isActiveEarlyLiteracy = track.id === 'infantil_letras';
+            const completedUnits = literacyProgress.completedUnits.length;
+            const totalUnits = EARLY_LITERACY_UNITS.length;
+            return `
+              <div class="rounded-2xl p-3.5 ${
+                isActiveEarlyLiteracy
+                  ? 'bg-white border-2 border-[#7b52b8] shadow-md'
+                  : 'bg-white/95 border border-purple-100 shadow-sm'
+              } flex items-start gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-gradient-to-br ${track.accentBg} border border-white shadow-inner flex items-center justify-center text-2xl shrink-0">
                   ${track.emoji}
                 </div>
                 <div class="flex-1 min-w-0">
-                  <div class="flex items-start justify-between gap-2">
-                    <h3 class="font-display text-sm font-bold text-[#3b1f6e] leading-snug">${escapeHtml(track.title)}</h3>
+                  <div class="flex items-start justify-between gap-2 flex-wrap">
+                    <h3 class="font-display text-sm md:text-base font-bold text-[#3b1f6e] leading-snug">${escapeHtml(track.title)}</h3>
+                    ${
+                      isActiveEarlyLiteracy
+                        ? `<button
+                             type="button"
+                             data-learn-open-track="${track.id}"
+                             class="px-3.5 py-1.5 rounded-full bg-[#6e45a5] hover:bg-[#5c3691] text-white font-extrabold text-xs shadow-sm transition shrink-0"
+                           >
+                             ▶ ${completedUnits > 0 ? 'Continuar' : 'Começar'}
+                           </button>`
+                        : ''
+                    }
                   </div>
                   <p class="text-[11px] text-[#5e4294] leading-snug mt-0.5">${escapeHtml(track.description)}</p>
                   <div class="mt-2 flex items-center flex-wrap gap-1.5">
@@ -121,12 +145,22 @@ export function renderLearnModalHtml(
                           `<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696]">${escapeHtml(tag)}</span>`
                       )
                       .join('')}
-                    <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">${escapeHtml(track.statusLabel)}</span>
+                    <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full ${
+                      isActiveEarlyLiteracy
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-800'
+                    }">
+                      ${
+                        isActiveEarlyLiteracy && completedUnits > 0
+                          ? `✅ ${completedUnits}/${totalUnits} unidades • ★ ${literacyProgress.totalStars}`
+                          : escapeHtml(track.statusLabel)
+                      }
+                    </span>
                   </div>
                 </div>
               </div>
-            `
-          )
+            `;
+          })
           .join('')}
       </div>
     </div>
@@ -147,6 +181,12 @@ export function bindLearnModalEvents(
     btn.addEventListener('click', () => {
       const level = btn.getAttribute('data-learn-level') as SchoolingLevel | null;
       if (level) callbacks.onSelectPreviewLevel(level);
+    });
+  });
+  root.querySelectorAll('[data-learn-open-track]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const trackId = btn.getAttribute('data-learn-open-track');
+      if (trackId) callbacks.onOpenTrack?.(trackId);
     });
   });
 }

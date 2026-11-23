@@ -106,6 +106,7 @@ import {
   bindLearnModalEvents,
   renderLearnModalHtml,
 } from './modals/LearnModal';
+import { EarlyLiteracyController } from './modals/EarlyLiteracyView';
 import {
   bindLoginScreenEvents,
   renderLoginScreenHtml,
@@ -202,6 +203,8 @@ export class MiauAppUI {
   private showInstallGuideModal = false;
   private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
   private learnPreviewLevel: SchoolingLevel | null = null;
+  private activeLearnTrack: 'none' | 'infantil_letras' = 'none';
+  private earlyLiteracyView: EarlyLiteracyController;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
 
@@ -254,11 +257,46 @@ export class MiauAppUI {
       onOpenLearn: () => {
         this.profileModal.disposeCameraStream();
         this.learnPreviewLevel = null;
+        this.activeLearnTrack = 'none';
+        this.earlyLiteracyView.resetToTrail();
         this.activeModal = 'learn';
         this.render();
       },
       onRequestRerender: () => {
         if (this.screen === 'game' && this.activeModal === 'profile') {
+          this.render();
+        }
+      },
+      onToast: (msg) => this.showToast(msg),
+    });
+    this.earlyLiteracyView = new EarlyLiteracyController({
+      getOwnerId: () =>
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
+      getHumanProfile: () => this.humanProfile,
+      getEquipped: () => this.profile.equipped,
+      isSoundEnabled: () => this.profile.soundEnabled,
+      onToggleSoundMute: () => this.toggleSoundMute(),
+      onGrantRewards: (coinsDelta, xpDelta) => {
+        this.ensureProfileDefaults();
+        this.addRewards(coinsDelta, xpDelta);
+        this.updateStatusBarsDOM();
+        void this.persistStats();
+      },
+      onExitToLearnHub: () => {
+        this.activeLearnTrack = 'none';
+        this.render();
+      },
+      onExitToMainMenu: () => {
+        this.activeLearnTrack = 'none';
+        this.activeModal = 'menu';
+        this.render();
+      },
+      onRequestRerender: () => {
+        if (
+          this.screen === 'game' &&
+          this.activeModal === 'learn' &&
+          this.activeLearnTrack === 'infantil_letras'
+        ) {
           this.render();
         }
       },
@@ -2422,7 +2460,10 @@ export class MiauAppUI {
     } else if (this.activeModal === 'profile') {
       body = this.profileModal.render();
     } else if (this.activeModal === 'learn') {
-      body = renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
+      body =
+        this.activeLearnTrack === 'infantil_letras'
+          ? this.earlyLiteracyView.render()
+          : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
     } else if (this.activeModal === 'settings') {
       body = renderSettingsModalHtml({
         screenPrefs: this.screenPrefs,
@@ -3065,6 +3106,8 @@ export class MiauAppUI {
       .querySelector('#btn-menu-learn')
       ?.addEventListener('click', () => {
         this.learnPreviewLevel = null;
+        this.activeLearnTrack = 'none';
+        this.earlyLiteracyView.resetToTrail();
         this.activeModal = 'learn';
         this.render();
       });
@@ -3074,21 +3117,32 @@ export class MiauAppUI {
     }
 
     if (this.activeModal === 'learn') {
-      bindLearnModalEvents(this.root, {
-        onBackToMenu: () => {
-          this.activeModal = 'menu';
-          this.render();
-        },
-        onGoToProfile: () => {
-          this.profileModal.open(this.humanProfile);
-          this.activeModal = 'profile';
-          this.render();
-        },
-        onSelectPreviewLevel: (level) => {
-          this.learnPreviewLevel = level;
-          this.render();
-        },
-      });
+      if (this.activeLearnTrack === 'infantil_letras') {
+        this.earlyLiteracyView.bind(this.root);
+      } else {
+        bindLearnModalEvents(this.root, {
+          onBackToMenu: () => {
+            this.activeModal = 'menu';
+            this.render();
+          },
+          onGoToProfile: () => {
+            this.profileModal.open(this.humanProfile);
+            this.activeModal = 'profile';
+            this.render();
+          },
+          onSelectPreviewLevel: (level) => {
+            this.learnPreviewLevel = level;
+            this.render();
+          },
+          onOpenTrack: (trackId) => {
+            if (trackId === 'infantil_letras') {
+              this.earlyLiteracyView.resetToTrail();
+              this.activeLearnTrack = 'infantil_letras';
+              this.render();
+            }
+          },
+        });
+      }
     }
 
     this.root
@@ -3292,6 +3346,8 @@ export class MiauAppUI {
       this.lastNeedAlertAt = 0;
       this.humanProfile = createEmptyHumanProfile('guest');
       this.learnPreviewLevel = null;
+      this.activeLearnTrack = 'none';
+      this.earlyLiteracyView.resetToTrail();
       if (this.firebaseUser) {
         await logoutUser();
       }
@@ -3354,6 +3410,8 @@ export class MiauAppUI {
 
   private closeActiveModal(): void {
     this.profileModal.disposeCameraStream();
+    this.earlyLiteracyView.resetToTrail();
+    this.activeLearnTrack = 'none';
     this.miniGameCleanup?.();
     this.miniGameCleanup = null;
     this.activeMiniGame = 'none';
