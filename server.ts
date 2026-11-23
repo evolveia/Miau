@@ -67,6 +67,20 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2): Promise<T> {
   throw lastError;
 }
 
+interface ChatTemporalInput {
+  weekdayName?: string;
+  isWeekend?: boolean;
+  periodOfDay?: string;
+  timeStr?: string;
+}
+
+interface ChatUserInput {
+  firstName?: string;
+  age?: number | null;
+  schooling?: string;
+  schoolingLabel?: string;
+}
+
 function buildMiauSystemInstruction(context?: {
   petName?: string;
   stats?: {
@@ -77,6 +91,8 @@ function buildMiauSystemInstruction(context?: {
     happiness?: number;
   };
   equipped?: { hat?: string; accessory?: string; background?: string };
+  temporalContext?: ChatTemporalInput;
+  userContext?: ChatUserInput;
 }): string {
   const name = context?.petName || 'Miau';
   const stats = context?.stats ?? {
@@ -86,14 +102,42 @@ function buildMiauSystemInstruction(context?: {
     sleep: 70,
     happiness: 75,
   };
-  return [
-    `Você é ${name}, um gatinho virtual calico fofo, carinhoso e falante na Sala de Estar.`,
-    `Responda em Português do Brasil em 1 a 2 frases curtas e afetuosas.`,
-    `Estado: Fome ${Math.round(stats.hunger)}%, Higiene ${Math.round(stats.hygiene)}%, Diversão ${Math.round(stats.fun)}%, Sono ${Math.round(stats.sleep)}%, Felicidade ${Math.round(stats.happiness ?? 75)}%.`,
+  const lines = [
+    `Você é ${name}, um gatinho virtual calico e melhor amigo carinhoso, empático, atencioso e bom ouvinte.`,
+    `Fale sempre em Português do Brasil em 1 a 3 frases curtas, naturais e acolhedoras, como um amigo verdadeiro que quer saber como o tutor está se sentindo, como foi o dia dele e o que ele está vivendo.`,
+    `Estado do pet: Fome ${Math.round(stats.hunger)}%, Higiene ${Math.round(stats.hygiene)}%, Diversão ${Math.round(stats.fun)}%, Sono ${Math.round(stats.sleep)}%, Felicidade ${Math.round(stats.happiness ?? 75)}%.`,
     `Visual: chapéu=${context?.equipped?.hat || 'nenhum'}, acessório=${context?.equipped?.accessory || 'nenhum'}.`,
-    `Se alguma métrica estiver < 30%, dê um lembrete fofo (peixinho, banho, brincadeira ou soneca).`,
-    `Retorne JSON: "meowPrefix" (ex: "Miau!", "Purrr~"), "text" (fala entre parênteses, ex: "(Oi, humano!)") e "mood" (happy|playful|hungry|sleepy|affectionate).`,
-  ].join('\n');
+  ];
+
+  const t = context?.temporalContext;
+  if (t?.weekdayName || t?.periodOfDay) {
+    lines.push(
+      `Contexto de momento: hoje é ${t.weekdayName || 'hoje'}${t.isWeekend ? ' (fim de semana)' : ''}, período: ${t.periodOfDay || 'dia'}${t.timeStr ? ` (${t.timeStr})` : ''}.`
+    );
+  }
+
+  const u = context?.userContext;
+  if (u && (u.firstName || u.age !== null || u.schoolingLabel)) {
+    const parts: string[] = [];
+    if (u.firstName) parts.push(`nome ${String(u.firstName).slice(0, 40)}`);
+    if (typeof u.age === 'number' && u.age >= 0 && u.age <= 120) {
+      parts.push(`${u.age} anos`);
+    }
+    if (u.schoolingLabel) {
+      parts.push(`escolaridade: ${String(u.schoolingLabel).slice(0, 60)}`);
+    }
+    if (parts.length > 0) {
+      lines.push(
+        `Tutor(a): ${parts.join(', ')}. Adapte o tom com carinho para essa idade/fase (ex.: perguntar como estão os estudos em dia de aula, ou desejar bom descanso/lazer no fim de semana).`
+      );
+    }
+  }
+
+  lines.push(
+    `Demonstre interesse genuíno pelo bem-estar do tutor, faça perguntas abertas e gentis quando fizer sentido, e NUNCA fique insistindo para jogar bolinha se o assunto for outro. Se alguma métrica do pet estiver < 25%, mencione com muita suavidade apenas se couber no assunto.`,
+    `Retorne JSON: "meowPrefix" (ex: "Miau!", "Purrr~"), "text" (fala entre parênteses, ex: "(Oi! Como você está se sentindo hoje?)") e "mood" (happy|playful|hungry|sleepy|affectionate).`
+  );
+  return lines.join('\n');
 }
 
 async function startServer() {
@@ -103,7 +147,15 @@ async function startServer() {
 
   app.post('/api/gemini/chat', async (req, res) => {
     try {
-      const { message, history = [], stats, equipped, petName } = req.body ?? {};
+      const {
+        message,
+        history = [],
+        stats,
+        equipped,
+        petName,
+        temporalContext,
+        userContext,
+      } = req.body ?? {};
       if (!message || typeof message !== 'string') {
         res.status(400).json({ error: 'Mensagem inválida.' });
         return;
@@ -129,9 +181,11 @@ async function startServer() {
               petName,
               stats,
               equipped,
+              temporalContext,
+              userContext,
             }),
             thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-            maxOutputTokens: 140,
+            maxOutputTokens: 180,
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -354,7 +408,7 @@ async function startServer() {
             },
           },
           systemInstruction:
-            'Você é o Miau, um gatinho virtual fofo, alegre e carinhoso que fala em Português do Brasil. Responda sempre de forma leve, curta e amigável, começando às vezes com um "Miau!" simpático.',
+            'Você é o Miau, um gatinho virtual e melhor amigo próximo do tutor, que fala em Português do Brasil. Demonstre interesse genuíno em saber como o tutor está se sentindo, pergunte sobre o dia dele com carinho e responda de forma leve, acolhedora e natural, começando às vezes com um "Miau!" ou "Purrr~" simpático.',
         },
         callbacks: {
           onopen: () => {

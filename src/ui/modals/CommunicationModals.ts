@@ -3,25 +3,60 @@ import { pwaService, type CameraPermissionState } from '../../services/pwaServic
 import type { ChatMessage, ScreenVisibilityPrefs } from '../../types';
 import { escapeHtml } from '../../utils/html';
 
-export function renderChatHistoryItemsHtml(messages: ChatMessage[]): string {
-  return messages
-    .map((m) => {
+export function renderChatHistoryItemsHtml(
+  messages: ChatMessage[],
+  isThinking = false
+): string {
+  const items = messages
+    .map((m, idx) => {
       const isUser = m.sender === 'user';
       return `
         <div class="flex ${isUser ? 'justify-end' : 'justify-start'}">
-          <div class="max-w-[82%] rounded-2xl px-3 py-2 text-xs leading-snug ${
+          <div class="max-w-[85%] rounded-2xl px-3.5 py-2.5 text-xs leading-snug shadow-sm ${
             isUser
               ? 'bg-[#6e45a5] text-white rounded-br-sm'
               : 'bg-white/95 text-[#3b1f6e] border border-purple-100 rounded-bl-sm'
           }">
-            ${m.meowPrefix ? `<strong class="block font-display">${escapeHtml(m.meowPrefix)}</strong>` : ''}
-            <span>${escapeHtml(m.text)}</span>
+            <div class="flex items-start justify-between gap-2">
+              <div class="min-w-0 flex-1">
+                ${m.meowPrefix ? `<strong class="block font-display text-[13px] mb-0.5">${escapeHtml(m.meowPrefix)}</strong>` : ''}
+                <span class="break-words">${escapeHtml(m.text)}</span>
+              </div>
+              ${
+                !isUser
+                  ? `<button
+                      type="button"
+                      data-speak-msg="${idx}"
+                      aria-label="Ouvir esta mensagem do Miau"
+                      class="w-7 h-7 rounded-full bg-purple-100 hover:bg-purple-200 text-[#4c2a85] flex items-center justify-center text-xs shrink-0 transition"
+                    >🔊</button>`
+                  : ''
+              }
+            </div>
           </div>
         </div>
       `;
     })
     .join('');
+
+  if (isThinking) {
+    return `${items}
+      <div class="flex justify-start">
+        <div class="rounded-2xl rounded-bl-sm px-3.5 py-2 text-xs font-semibold bg-white/85 text-[#6b4d9e] border border-purple-100 animate-pulse">
+          💭 Miau está ouvindo e preparando a resposta em áudio e texto...
+        </div>
+      </div>
+    `;
+  }
+  return items;
 }
+
+const FRIEND_QUICK_PROMPTS = [
+  { label: 'Estou bem! 😊', text: 'Estou bem hoje! E você, Miau?' },
+  { label: 'Dia corrido 😅', text: 'Meu dia foi bem corrido hoje, quero bater um papo!' },
+  { label: 'Tô cansado(a) 😴', text: 'Estou um pouco cansado hoje, preciso de uma companhia amiga.' },
+  { label: 'Novidades ✨', text: 'Quero te contar como estou me sentindo e algumas novidades!' },
+];
 
 export function renderChatModalHtml(params: {
   petName: string;
@@ -30,14 +65,16 @@ export function renderChatModalHtml(params: {
   liveTranscript: string;
   messages: ChatMessage[];
   soundEnabled: boolean;
+  isRecordingMic?: boolean;
+  isThinking?: boolean;
 }): string {
   return `
-    <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
+    <div class="flex items-center justify-between gap-2 mb-2.5 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
         <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
         <div class="min-w-0">
-          <h2 class="font-display text-lg font-bold text-[#3b1f6e] truncate">Conversar com ${escapeHtml(params.petName)} 💬</h2>
-          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Companhia acolhedora & Voz ao Vivo</p>
+          <h2 class="font-display text-lg font-bold text-[#3b1f6e] truncate">Papo Amigo com ${escapeHtml(params.petName)} 💬</h2>
+          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Seu amigo quer saber como você está • Áudio e Texto</p>
         </div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
@@ -58,10 +95,10 @@ export function renderChatModalHtml(params: {
       </div>
     </div>
 
-    <div class="mb-2.5 bg-white/85 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2 shrink-0">
+    <div class="mb-2 bg-white/85 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2 shrink-0">
       <div class="min-w-0">
-        <div class="text-xs font-extrabold text-[#4c2a85]">Voz ao Vivo (Gemini Live)</div>
-        <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${escapeHtml(params.liveStatus || 'Fale em tempo real com o Miau!')}</div>
+        <div class="text-xs font-extrabold text-[#4c2a85]">Conversa Direta por Voz (Ao Vivo)</div>
+        <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${escapeHtml(params.liveStatus || 'Ligue a voz ao vivo ou use o microfone abaixo!')}</div>
       </div>
       <button id="btn-live-toggle" class="px-3 py-1.5 rounded-full text-xs font-extrabold text-white shrink-0 ${params.hasLiveSession ? 'bg-rose-500 animate-pulse' : 'bg-[#6e45a5]'}">
         ${params.hasLiveSession ? '⏹️ Parar' : '🎙️ Ligar Voz'}
@@ -74,12 +111,29 @@ export function renderChatModalHtml(params: {
         : ''
     }
 
-    <div id="chat-history-list" class="flex-1 min-h-0 overflow-y-auto miau-scroll flex flex-col gap-2.5 pr-1 mb-3 bg-white/40 rounded-2xl p-3 border border-white/60">
-      ${renderChatHistoryItemsHtml(params.messages)}
+    <div id="chat-history-list" class="flex-1 min-h-0 overflow-y-auto miau-scroll flex flex-col gap-2.5 pr-1 mb-2 bg-white/45 rounded-2xl p-3 border border-white/60">
+      ${renderChatHistoryItemsHtml(params.messages, Boolean(params.isThinking))}
     </div>
 
-    <form id="modal-chat-form" class="flex items-center gap-2 bg-white rounded-full p-1.5 pl-4 border border-purple-200 shadow-sm shrink-0">
-      <input id="modal-chat-input" type="text" placeholder="Escreva para o Miau..." class="flex-1 text-sm font-semibold text-[#3b1f6e] bg-transparent focus:outline-none min-w-0" />
+    <div class="flex gap-1.5 overflow-x-auto pb-1.5 mb-1.5 shrink-0 miau-scroll">
+      ${FRIEND_QUICK_PROMPTS.map(
+        (p) =>
+          `<button type="button" data-chat-quick="${escapeHtml(p.text)}" class="px-2.5 py-1 rounded-full bg-white/85 hover:bg-white border border-purple-200 text-[#4c2a85] text-[11px] font-bold whitespace-nowrap shrink-0 transition">${p.label}</button>`
+      ).join('')}
+    </div>
+
+    <form id="modal-chat-form" class="flex items-center gap-1.5 bg-white rounded-full p-1.5 pl-3.5 border border-purple-200 shadow-sm shrink-0">
+      <input id="modal-chat-input" type="text" placeholder="Fale por áudio ou conte como você está..." class="flex-1 text-sm font-semibold text-[#3b1f6e] bg-transparent focus:outline-none min-w-0" />
+      <button
+        id="btn-modal-mic"
+        type="button"
+        aria-label="${params.isRecordingMic ? 'Parar e enviar áudio' : 'Gravar mensagem de áudio'}"
+        class="w-9 h-9 rounded-full ${params.isRecordingMic ? 'bg-rose-500 animate-pulse' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
+      >
+        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
+        </svg>
+      </button>
       <button type="submit" class="px-4 py-2 rounded-full bg-[#6e45a5] text-white text-xs font-extrabold shrink-0">Enviar</button>
     </form>
   `;

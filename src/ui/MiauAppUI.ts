@@ -48,6 +48,7 @@ import type {
   AppScreen,
   ChatMessage,
   GameId,
+  GameMatchHistoryItem,
   MiauMood,
   RankingEntry,
   RoutineCategory,
@@ -58,6 +59,8 @@ import type {
 import {
   buildContextualGreeting,
   buildConversationContextSnapshot,
+  buildFriendGreeting,
+  buildMainScreenCheckIn,
 } from '../data/chatContext';
 import {
   mountInteractiveBall,
@@ -115,6 +118,7 @@ import { UserProfileModalController } from './modals/UserProfileModal';
 const LOCAL_DEMO_KEY = 'miau_demo_profile_v1';
 const LOCAL_DEMO_MSGS_KEY = 'miau_demo_msgs_v1';
 const LOCAL_RANKING_KEY = 'miau_local_rankings_v1';
+const LOCAL_MATCH_HISTORY_PREFIX = 'miau_game_history_v1_';
 const SCREEN_PREFS_KEY = 'miau_screen_prefs_v1';
 const CAM_PROMPTED_SESSION_KEY = 'miau_cam_prompted_v1';
 
@@ -158,6 +162,7 @@ export class MiauAppUI {
   private miniGameCleanup: (() => void) | null = null;
   private leaderboard: RankingEntry[] = [];
   private rankingLoading = false;
+  private rankingTab: 'all' | GameId = 'all';
   private lastSleepRewardAtMs = 0;
 
   private currentSpeech = {
@@ -170,6 +175,8 @@ export class MiauAppUI {
   private liveSession: LiveVoiceSession | null = null;
   private liveStatus = '';
   private liveTranscript = '';
+  private liveInputBuffer = '';
+  private liveOutputBuffer = '';
 
   private authError = '';
   private authNotice = '';
@@ -178,6 +185,13 @@ export class MiauAppUI {
 
   private decayTimer: number | null = null;
   private sleepTimer: number | null = null;
+  private proactiveTimer: number | null = null;
+  private lastUserInteractionAt = Date.now();
+  private lastProactivePromptAt = 0;
+  private proactiveStepIndex = 0;
+  private hasGreetedMainScreen = false;
+  private hasUserGesture = false;
+  private lastFriendModalGreetAt = 0;
   private supportDraft = '';
   private arCamera: MiauARCamera | null = null;
   private screenPrefs: ScreenVisibilityPrefs = { ...DEFAULT_SCREEN_PREFS };
@@ -187,7 +201,6 @@ export class MiauAppUI {
   private learnPreviewLevel: SchoolingLevel | null = null;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
-  private lastGreetedPeriodKey = '';
 
   constructor(
     container: HTMLElement,
@@ -197,6 +210,13 @@ export class MiauAppUI {
     this.root.id = 'miau-2d-shell';
     this.root.className = 'fixed inset-0 z-20 flex items-center justify-center';
     container.appendChild(this.root);
+    const markInteraction = () => {
+      this.lastUserInteractionAt = Date.now();
+      this.hasUserGesture = true;
+    };
+    this.root.addEventListener('pointerdown', markInteraction, { passive: true });
+    this.root.addEventListener('keydown', markInteraction, { passive: true });
+    this.root.addEventListener('input', markInteraction, { passive: true });
     miauSpeechService.setSpeakingListener((speaking) => {
       this.isSpeaking = speaking;
       this.updateSpeakerButtonDOM();
@@ -410,6 +430,72 @@ export class MiauAppUI {
       this.updateStatusBarsDOM();
       void this.persistStats();
     }, 35000);
+
+    this.proactiveTimer = window.setInterval(() => {
+      this.evaluateProactiveInteraction();
+    }, 5000);
+  }
+
+  private evaluateProactiveInteraction(): void {
+    if (
+      this.screen !== 'game' ||
+      this.activeModal !== 'none' ||
+      this.isSleeping ||
+      this.isCleaningMode ||
+      this.isThinking ||
+      this.isSpeaking ||
+      this.isRecordingMic ||
+      this.liveSession
+    ) {
+      return;
+    }
+    const activeEl = document.activeElement as HTMLElement | null;
+    if (activeEl?.id === 'quick-chat-input') return;
+
+    const now = Date.now();
+    if (!this.hasGreetedMainScreen) {
+      if (now - this.lastUserInteractionAt >= 3500) {
+        this.hasGreetedMainScreen = true;
+        this.triggerProactiveCheckIn(true);
+      }
+      return;
+    }
+
+    if (
+      now - this.lastUserInteractionAt >= 24000 &&
+      now - this.lastProactivePromptAt >= 48000
+    ) {
+      this.triggerProactiveCheckIn(false);
+    }
+  }
+
+  private triggerProactiveCheckIn(isInitial: boolean): void {
+    this.ensureProfileDefaults();
+    this.lastProactivePromptAt = Date.now();
+    const snapshot = buildConversationContextSnapshot(this.humanProfile);
+    const checkIn = isInitial
+      ? buildContextualGreeting(snapshot, this.profile.petName)
+      : buildMainScreenCheckIn(
+          snapshot,
+          this.profile.stats,
+          this.profile.petName,
+          this.proactiveStepIndex++
+        );
+    this.currentSpeech = {
+      meowPrefix: checkIn.meowPrefix,
+      text: checkIn.text,
+    };
+    this.mood = checkIn.mood;
+    this.updateSpeechDOM();
+    this.updateCharacterSvgDOM();
+    this.triggerMiauReaction('bounce');
+    this.spawnFloatingParticle('💬');
+    if (this.hasUserGesture && this.profile.soundEnabled) {
+      void this.speakCurrentCaption({
+        withLeadingMeow: false,
+        pitchMultiplier: 1.05,
+      });
+    }
   }
 
   private syncXR(): void {
@@ -520,6 +606,50 @@ export class MiauAppUI {
     return raw.slice(0, 36);
   }
 
+  private getMatchHistoryStorageKey(): string {
+    const ownerId =
+      this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'local_player');
+    return `${LOCAL_MATCH_HISTORY_PREFIX}${ownerId}`;
+  }
+
+  private loadGameMatchHistory(): GameMatchHistoryItem[] {
+    try {
+      const raw = localStorage.getItem(this.getMatchHistoryStorageKey());
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as GameMatchHistoryItem[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private appendGameMatchHistory(
+    res: MiniGameResult,
+    coinsEarned: number
+  ): void {
+    try {
+      const prev = this.loadGameMatchHistory();
+      const item: GameMatchHistoryItem = {
+        id: `match_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        gameId: res.gameId,
+        gameName: res.gameName,
+        score: res.score,
+        stageReached: res.stageReached || 1,
+        durationSec: res.durationSec,
+        coinsEarned,
+        performanceTier: res.performanceTier,
+        playedAtMs: Date.now(),
+      };
+      const next = [item, ...prev].slice(0, 30);
+      localStorage.setItem(
+        this.getMatchHistoryStorageKey(),
+        JSON.stringify(next)
+      );
+    } catch {
+      // ignore storage quota errors
+    }
+  }
+
   private buildCurrentRankingEntry(): RankingEntry {
     this.ensureProfileDefaults();
     const recs = this.profile.gameRecords!;
@@ -536,6 +666,18 @@ export class MiauAppUI {
       (sum, id) => sum + (recs[id]?.totalCoins || 0),
       0
     );
+    const gameScores: Partial<Record<GameId, number>> = {
+      fish: recs.fish?.highScore || 0,
+      memory: recs.memory?.highScore || 0,
+      escape: recs.escape?.highScore || 0,
+      galaxy: recs.galaxy?.highScore || 0,
+    };
+    const gameStages: Partial<Record<GameId, number>> = {
+      fish: recs.fish?.maxStage || 1,
+      memory: recs.memory?.maxStage || 1,
+      escape: recs.escape?.maxStage || 1,
+      galaxy: recs.galaxy?.maxStage || 1,
+    };
     const id = this.firebaseUser?.uid || 'local_player';
     return {
       id,
@@ -544,6 +686,8 @@ export class MiauAppUI {
       totalScore,
       bestStage,
       coinsEarned,
+      gameScores,
+      gameStages,
       isCurrentUser: true,
       updatedAtMs: Date.now(),
     };
@@ -570,6 +714,8 @@ export class MiauAppUI {
         totalScore: entry.totalScore,
         bestStage: entry.bestStage,
         coinsEarned: entry.coinsEarned,
+        gameScores: entry.gameScores,
+        gameStages: entry.gameStages,
       });
     }
   }
@@ -582,7 +728,7 @@ export class MiauAppUI {
     const currentEntry = this.buildCurrentRankingEntry();
     let remote: RankingEntry[] = [];
     try {
-      remote = await loadTopRankings(20);
+      remote = await loadTopRankings(25);
     } catch {
       remote = [];
     }
@@ -609,7 +755,7 @@ export class MiauAppUI {
 
     this.leaderboard = [...byId.values()]
       .sort((a, b) => b.totalScore - a.totalScore)
-      .slice(0, 15);
+      .slice(0, 20);
     this.rankingLoading = false;
     if (this.activeModal === 'ranking') {
       this.render();
@@ -708,23 +854,18 @@ export class MiauAppUI {
     }
   }
 
-  private async persistMessage(msg: {
-    sender: 'user' | 'miau';
-    meowPrefix: string;
-    text: string;
-    mood: MiauMood;
-  }): Promise<void> {
-    if (this.firebaseUser) {
-      try {
-        const saved = await saveMessage(this.firebaseUser.uid, msg);
-        this.messages.push(saved);
-        return;
-      } catch (e) {
-        console.warn('Falha ao salvar mensagem no Firestore:', e);
-      }
-    }
+  private async persistMessage(
+    msg: {
+      sender: 'user' | 'miau';
+      meowPrefix: string;
+      text: string;
+      mood: MiauMood;
+    },
+    optimistic = false
+  ): Promise<void> {
+    const tempId = `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const localMsg: ChatMessage = {
-      id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: tempId,
       ownerId: this.profile.ownerId,
       sender: msg.sender,
       meowPrefix: msg.meowPrefix,
@@ -732,7 +873,32 @@ export class MiauAppUI {
       mood: msg.mood,
       createdAtMs: Date.now(),
     };
-    this.messages.push(localMsg);
+    if (optimistic) {
+      this.messages.push(localMsg);
+    }
+
+    if (this.firebaseUser) {
+      try {
+        const saved = await saveMessage(this.firebaseUser.uid, msg);
+        if (optimistic) {
+          const idx = this.messages.findIndex((m) => m.id === tempId);
+          if (idx >= 0) {
+            this.messages[idx] = saved;
+          } else {
+            this.messages.push(saved);
+          }
+        } else {
+          this.messages.push(saved);
+        }
+        return;
+      } catch (e) {
+        console.warn('Falha ao salvar mensagem no Firestore:', e);
+      }
+    }
+
+    if (!optimistic) {
+      this.messages.push(localMsg);
+    }
     if (this.isDemoSession) {
       localStorage.setItem(
         LOCAL_DEMO_MSGS_KEY,
@@ -1260,21 +1426,27 @@ export class MiauAppUI {
     if (!trimmed || this.isThinking) return;
 
     this.ensureProfileDefaults();
+    this.lastUserInteractionAt = Date.now();
+    this.hasUserGesture = true;
     this.isThinking = true;
     this.currentSpeech = {
       meowPrefix: 'Miau...',
-      text: '(Pensando na resposta...)',
+      text: '(Ouvindo você com carinho...)',
     };
     this.updateSpeechDOM();
 
     const recentHistory = this.messages.slice(-4);
     const contextSnapshot = buildConversationContextSnapshot(this.humanProfile);
-    const userPersistPromise = this.persistMessage({
-      sender: 'user',
-      meowPrefix: '',
-      text: trimmed,
-      mood: 'happy',
-    });
+    const userPersistPromise = this.persistMessage(
+      {
+        sender: 'user',
+        meowPrefix: '',
+        text: trimmed,
+        mood: 'happy',
+      },
+      true
+    );
+    this.refreshChatModalIfOpen();
 
     try {
       const reply = await askMiau({
@@ -1301,6 +1473,7 @@ export class MiauAppUI {
       this.addRewards(5, 8);
       this.evaluateAchievements();
 
+      this.isThinking = false;
       this.triggerMiauReaction('jump');
       hapticService.coin();
       this.updateSpeechDOM();
@@ -1308,18 +1481,24 @@ export class MiauAppUI {
       this.updateCharacterSvgDOM();
       void this.playCurrentMiauSpeech(true);
 
-      void (async () => {
+      const miauPersistPromise = (async () => {
         await userPersistPromise;
-        await this.persistMessage({
-          sender: 'miau',
-          meowPrefix: reply.meowPrefix,
-          text: reply.text,
-          mood: reply.mood,
-        });
+        await this.persistMessage(
+          {
+            sender: 'miau',
+            meowPrefix: reply.meowPrefix,
+            text: reply.text,
+            mood: reply.mood,
+          },
+          true
+        );
         this.refreshChatModalIfOpen();
         await this.persistStats();
       })();
+      this.refreshChatModalIfOpen();
+      await miauPersistPromise;
     } catch (error) {
+      this.isThinking = false;
       hapticService.warning();
       if (
         error instanceof GeminiApiError &&
@@ -1338,6 +1517,7 @@ export class MiauAppUI {
         };
       }
       this.updateSpeechDOM();
+      this.refreshChatModalIfOpen();
     } finally {
       this.isThinking = false;
     }
@@ -1371,6 +1551,7 @@ export class MiauAppUI {
       totalCoins: prevRec.totalCoins + totalCoinsGained,
       plays: prevRec.plays + 1,
     };
+    this.appendGameMatchHistory(res, totalCoinsGained);
 
     this.addRewards(totalCoinsGained, res.xpEarned);
     const unlockedNew = this.evaluateAchievements();
@@ -1543,8 +1724,74 @@ export class MiauAppUI {
     if (this.activeModal !== 'chat') return;
     const listEl = this.root.querySelector('#chat-history-list');
     if (!listEl) return;
-    listEl.innerHTML = renderChatHistoryItemsHtml(this.messages);
+    listEl.innerHTML = renderChatHistoryItemsHtml(
+      this.messages,
+      this.isThinking
+    );
     listEl.scrollTop = listEl.scrollHeight;
+    this.bindChatHistorySpeakButtons();
+  }
+
+  private bindChatHistorySpeakButtons(): void {
+    this.root.querySelectorAll('[data-speak-msg]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const rawIdx = btn.getAttribute('data-speak-msg');
+        const idx = rawIdx ? Number(rawIdx) : -1;
+        const msg = this.messages[idx];
+        if (!msg) return;
+        void miauSpeechService.speakPhrase(msg.meowPrefix, msg.text, {
+          withLeadingMeow: true,
+          pitchMultiplier: 1.05,
+        });
+      });
+    });
+  }
+
+  private updateMicButtonsDOM(): void {
+    const applyState = (btn: Element | null) => {
+      if (!btn) return;
+      btn.classList.toggle('bg-rose-500', this.isRecordingMic);
+      btn.classList.toggle('animate-pulse', this.isRecordingMic);
+      btn.classList.toggle('bg-[#7b52b8]', !this.isRecordingMic);
+      btn.setAttribute(
+        'aria-label',
+        this.isRecordingMic
+          ? 'Parar e enviar áudio'
+          : 'Gravar mensagem de áudio'
+      );
+    };
+    applyState(this.root.querySelector('#btn-mic'));
+    applyState(this.root.querySelector('#btn-modal-mic'));
+  }
+
+  private async handleMicToggle(): Promise<void> {
+    if (this.isRecordingMic) {
+      this.isRecordingMic = false;
+      this.updateMicButtonsDOM();
+      try {
+        const { audioBase64, mimeType } = await soundService.stopRecording();
+        this.showToast('Transcrevendo sua voz...');
+        const transcript = await transcribeUserAudio(audioBase64, mimeType);
+        if (transcript) {
+          await this.sendChatToMiau(transcript);
+        } else {
+          this.showToast('Não consegui ouvir direitinho. Tente de novo!');
+        }
+      } catch (err) {
+        this.showToast(
+          err instanceof Error ? err.message : 'Erro ao gravar áudio.'
+        );
+      }
+    } else {
+      try {
+        await soundService.startRecording();
+        this.isRecordingMic = true;
+        this.updateMicButtonsDOM();
+        this.showToast('Gravando... toque no microfone para enviar!');
+      } catch {
+        this.showToast('Permissão de microfone necessária para falar.');
+      }
+    }
   }
 
   public render(): void {
@@ -1875,7 +2122,7 @@ export class MiauAppUI {
             this.screenPrefs.showSpeechAndChat
               ? `<section class="relative z-20 px-3.5 pb-2 flex flex-col gap-2.5">
                   <!-- Speech Bubble -->
-                  <div class="relative glass-card rounded-[24px] p-3 flex items-center gap-3">
+                  <div id="speech-bubble-card" class="relative glass-card rounded-[24px] p-3 flex items-center gap-3 cursor-pointer hover:brightness-[1.02] transition">
                     <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-200 bg-purple-100 shrink-0 shadow-sm">
                       <img src="${MIAU_AVATAR_URL}" alt="Miau" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
                     </div>
@@ -2026,15 +2273,20 @@ export class MiauAppUI {
         liveTranscript: this.liveTranscript,
         messages: this.messages,
         soundEnabled: this.profile.soundEnabled,
+        isRecordingMic: this.isRecordingMic,
+        isThinking: this.isThinking,
       });
     } else if (this.activeModal === 'achievements') {
       body = renderAchievementsModalHtml(this.profile);
     } else if (this.activeModal === 'ranking') {
-      body = renderRankingModalHtml(
-        this.buildCurrentRankingEntry(),
-        this.leaderboard,
-        this.rankingLoading
-      );
+      body = renderRankingModalHtml({
+        currentEntry: this.buildCurrentRankingEntry(),
+        leaderboard: this.leaderboard,
+        rankingLoading: this.rankingLoading,
+        activeTab: this.rankingTab,
+        gameRecords: this.profile.gameRecords!,
+        matchHistory: this.loadGameMatchHistory(),
+      });
     } else if (this.activeModal === 'routine') {
       body = renderRoutineModalHtml(
         this.profile,
@@ -2089,27 +2341,44 @@ export class MiauAppUI {
 
   private openConversarModal(): void {
     this.activeModal = 'chat';
+    this.lastUserInteractionAt = Date.now();
+    this.hasUserGesture = true;
     const ctx = buildConversationContextSnapshot(this.humanProfile);
-    const periodKey = `${ctx.temporal.dateKey}_${ctx.temporal.periodOfDay}`;
-    const isNewPeriod = this.lastGreetedPeriodKey !== periodKey;
-    if (isNewPeriod) {
-      this.lastGreetedPeriodKey = periodKey;
-      const greeting = buildContextualGreeting(ctx, this.profile.petName);
+    const now = Date.now();
+    const lastMsg = this.messages[this.messages.length - 1];
+    const hasRecentMiauCheckIn =
+      lastMsg?.sender === 'miau' &&
+      now - lastMsg.createdAtMs < 90_000 &&
+      now - this.lastFriendModalGreetAt < 120_000;
+
+    if (!hasRecentMiauCheckIn) {
+      this.lastFriendModalGreetAt = now;
+      const greeting = buildFriendGreeting(ctx, this.profile.petName);
       this.currentSpeech = {
         meowPrefix: greeting.meowPrefix,
         text: greeting.text,
       };
       this.mood = greeting.mood;
       this.render();
-      this.speakCurrentCaption();
-      void this.persistMessage({
-        sender: 'miau',
-        meowPrefix: greeting.meowPrefix,
-        text: greeting.text,
-        mood: greeting.mood,
-      }).then(() => this.refreshChatModalIfOpen());
+      void this.playCurrentMiauSpeech(true);
+      void this.persistMessage(
+        {
+          sender: 'miau',
+          meowPrefix: greeting.meowPrefix,
+          text: greeting.text,
+          mood: greeting.mood,
+        },
+        true
+      ).then(() => this.refreshChatModalIfOpen());
     } else {
       this.render();
+      if (lastMsg) {
+        this.currentSpeech = {
+          meowPrefix: lastMsg.meowPrefix || 'Miau!',
+          text: lastMsg.text,
+        };
+        void this.playCurrentMiauSpeech(true);
+      }
     }
   }
 
@@ -2177,10 +2446,19 @@ export class MiauAppUI {
       .querySelector('#btn-top-sound')
       ?.addEventListener('click', () => void this.toggleSoundMute());
 
-    // Speaker button
-    this.root.querySelector('#btn-speaker')?.addEventListener('click', () => {
+    // Speaker button & speech bubble tap
+    this.root.querySelector('#btn-speaker')?.addEventListener('click', (e) => {
+      e.stopPropagation();
       void this.playCurrentMiauSpeech(true);
     });
+    this.root
+      .querySelector('#speech-bubble-card')
+      ?.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement | null;
+        if (target?.closest('#btn-speaker')) return;
+        hapticService.tap();
+        this.openConversarModal();
+      });
 
     // Quick chat form
     const chatForm = this.root.querySelector(
@@ -2197,35 +2475,12 @@ export class MiauAppUI {
       void this.sendChatToMiau(val);
     });
 
-    // Mic transcription button
-    this.root.querySelector('#btn-mic')?.addEventListener('click', async () => {
-      if (this.isRecordingMic) {
-        this.isRecordingMic = false;
-        this.render();
-        try {
-          const { audioBase64, mimeType } = await soundService.stopRecording();
-          this.showToast('Transcrevendo sua voz...');
-          const transcript = await transcribeUserAudio(audioBase64, mimeType);
-          if (transcript) {
-            await this.sendChatToMiau(transcript);
-          } else {
-            this.showToast('Não consegui ouvir direitinho. Tente de novo!');
-          }
-        } catch (err) {
-          this.showToast(
-            err instanceof Error ? err.message : 'Erro ao gravar áudio.'
-          );
-        }
-      } else {
-        try {
-          await soundService.startRecording();
-          this.isRecordingMic = true;
-          this.render();
-          this.showToast('Gravando... toque no microfone para enviar!');
-        } catch {
-          this.showToast('Permissão de microfone necessária para falar.');
-        }
-      }
+    // Mic transcription buttons (main screen + Conversar modal)
+    this.root.querySelector('#btn-mic')?.addEventListener('click', () => {
+      void this.handleMicToggle();
+    });
+    this.root.querySelector('#btn-modal-mic')?.addEventListener('click', () => {
+      void this.handleMicToggle();
     });
 
     // Sleep toggle & interactive status pills
@@ -2404,6 +2659,14 @@ export class MiauAppUI {
       this.activeModal = 'games';
       this.render();
     });
+    this.root.querySelectorAll('[data-ranking-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const tab = btn.getAttribute('data-ranking-tab') as 'all' | GameId | null;
+        if (!tab) return;
+        this.rankingTab = tab;
+        this.render();
+      });
+    });
 
     const launchGame = (
       id: 'fish' | 'memory' | 'escape' | 'galaxy'
@@ -2569,6 +2832,17 @@ export class MiauAppUI {
       void this.sendChatToMiau(txt);
     });
 
+    this.root.querySelectorAll('[data-chat-quick]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const prompt = btn.getAttribute('data-chat-quick') || '';
+        if (prompt.trim()) {
+          void this.sendChatToMiau(prompt);
+        }
+      });
+    });
+
+    this.bindChatHistorySpeakButtons();
+
     const listEl = this.root.querySelector('#chat-history-list');
     if (listEl) listEl.scrollTop = listEl.scrollHeight;
 
@@ -2587,6 +2861,8 @@ export class MiauAppUI {
         hapticService.tap();
         this.liveStatus = 'Conectando ao Gemini Live...';
         this.liveTranscript = '';
+        this.liveInputBuffer = '';
+        this.liveOutputBuffer = '';
         this.render();
         let hadLiveError = false;
         const session = new LiveVoiceSession({
@@ -2596,10 +2872,12 @@ export class MiauAppUI {
             if (el) el.textContent = status;
           },
           onInputTranscript: (txt) => {
+            this.liveInputBuffer += txt;
             this.liveTranscript += `Você: ${txt}\n`;
             this.render();
           },
           onOutputTranscript: (txt) => {
+            this.liveOutputBuffer += txt;
             this.liveTranscript += `Miau: ${txt}\n`;
             this.currentSpeech = { meowPrefix: 'Miau!', text: txt };
             this.updateSpeechDOM();
@@ -2607,6 +2885,37 @@ export class MiauAppUI {
           },
           onTurnComplete: () => {
             soundService.playPurr();
+            const userSay = this.liveInputBuffer.trim();
+            const miauSay = this.liveOutputBuffer.trim();
+            this.liveInputBuffer = '';
+            this.liveOutputBuffer = '';
+            if (userSay || miauSay) {
+              void (async () => {
+                if (userSay) {
+                  await this.persistMessage(
+                    {
+                      sender: 'user',
+                      meowPrefix: '',
+                      text: userSay,
+                      mood: 'happy',
+                    },
+                    true
+                  );
+                }
+                if (miauSay) {
+                  await this.persistMessage(
+                    {
+                      sender: 'miau',
+                      meowPrefix: 'Miau! 🎙️',
+                      text: miauSay,
+                      mood: 'affectionate',
+                    },
+                    true
+                  );
+                }
+                this.refreshChatModalIfOpen();
+              })();
+            }
           },
           onError: (err) => {
             hadLiveError = true;

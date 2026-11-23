@@ -697,8 +697,25 @@ async function updateUserDocWithLegacyRepair(
               fullProfileFallback,
               uid
             );
-            await setDoc(userRef, repaired);
-            return;
+            try {
+              await setDoc(userRef, repaired);
+              return;
+            } catch (setDocErr) {
+              const diffKeys = raw
+                ? Object.keys(repaired).filter(
+                    (k) =>
+                      k !== 'updatedAt' &&
+                      k !== 'createdAt' &&
+                      JSON.stringify(raw[k]) !== JSON.stringify(repaired[k])
+                  )
+                : Object.keys(repaired);
+              const meta = raw
+                ? `petLen=${typeof raw.petName === 'string' ? raw.petName.length : -1},owned0=${Array.isArray(raw.ownedItems) ? String(raw.ownedItems[0] ?? '').length : -1},ownedN=${Array.isArray(raw.ownedItems) ? raw.ownedItems.length : -1},coinsInt=${Number.isInteger(raw.coins)},lvlInt=${Number.isInteger(raw.level)},xpInt=${Number.isInteger(raw.xp)},diff=${diffKeys.join('+')}`
+                : 'noRaw';
+              const setErrMsg =
+                setDocErr instanceof Error ? setDocErr.message : String(setDocErr);
+              throw new Error(`${setErrMsg} [${meta}]`);
+            }
           }
         } catch (repairError) {
           const repairMsg =

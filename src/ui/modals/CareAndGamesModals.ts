@@ -7,6 +7,9 @@ import {
 } from '../../constants';
 import type {
   AchievementDef,
+  GameId,
+  GameMatchHistoryItem,
+  GameStatsRecord,
   RankingEntry,
   RoutineCategory,
   RoutineSlotDef,
@@ -269,52 +272,206 @@ export function renderAchievementsModalHtml(profile: UserPetProfile): string {
   `;
 }
 
-export function renderRankingModalHtml(
-  currentEntry: RankingEntry,
-  leaderboard: RankingEntry[],
-  rankingLoading: boolean
-): string {
+const RANKING_TABS: Array<{
+  id: 'all' | GameId;
+  label: string;
+  emoji: string;
+  shortName: string;
+}> = [
+  { id: 'all', label: 'Geral', emoji: '🏆', shortName: 'Todos os Jogos' },
+  { id: 'fish', label: 'Peixinhos', emoji: '🐟', shortName: 'Caça aos Peixinhos' },
+  { id: 'memory', label: 'Memória', emoji: '🐾', shortName: 'Memória dos Miados' },
+  { id: 'escape', label: 'Escape', emoji: '🚗', shortName: 'Miau Escape Run' },
+  { id: 'galaxy', label: 'Galáxia', emoji: '🚀', shortName: 'Miau Galáxia' },
+];
+
+function getEntryScoreForTab(
+  entry: RankingEntry,
+  tab: 'all' | GameId
+): { score: number; stage: number } {
+  if (tab === 'all') {
+    return { score: entry.totalScore, stage: entry.bestStage };
+  }
+  return {
+    score: entry.gameScores?.[tab] ?? 0,
+    stage: entry.gameStages?.[tab] ?? 1,
+  };
+}
+
+function formatHistoryDate(ms: number): string {
+  try {
+    const d = new Date(ms);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}/${mm} ${hh}:${min}`;
+  } catch {
+    return '';
+  }
+}
+
+export function renderRankingModalHtml(params: {
+  currentEntry: RankingEntry;
+  leaderboard: RankingEntry[];
+  rankingLoading: boolean;
+  activeTab: 'all' | GameId;
+  gameRecords: Record<GameId, GameStatsRecord>;
+  matchHistory: GameMatchHistoryItem[];
+}): string {
+  const { currentEntry, leaderboard, rankingLoading, activeTab, gameRecords, matchHistory } =
+    params;
+  const activeTabInfo =
+    RANKING_TABS.find((t) => t.id === activeTab) ?? RANKING_TABS[0];
+
+  const sortedBoard = [...leaderboard]
+    .map((entry) => ({
+      entry,
+      ...getEntryScoreForTab(entry, activeTab),
+    }))
+    .filter((row) => activeTab === 'all' || row.score > 0 || row.entry.isCurrentUser)
+    .sort((a, b) => b.score - a.score || b.stage - a.stage);
+
+  const myStats = getEntryScoreForTab(currentEntry, activeTab);
+  const filteredHistory =
+    activeTab === 'all'
+      ? matchHistory
+      : matchHistory.filter((item) => item.gameId === activeTab);
+
+  const perGameCards: Array<{ id: GameId; emoji: string; name: string }> = [
+    { id: 'fish', emoji: '🐟', name: 'Peixinhos' },
+    { id: 'memory', emoji: '🐾', name: 'Memória' },
+    { id: 'escape', emoji: '🚗', name: 'Escape Run' },
+    { id: 'galaxy', emoji: '🚀', name: 'Galáxia' },
+  ];
+
   return `
-    <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
+    <div class="flex items-center justify-between gap-2 mb-2.5 shrink-0">
       <div class="min-w-0">
-        <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Ranking Global 🏆</h2>
-        <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Sua pontuação combinada: ${currentEntry.totalScore} pts • Fase ${currentEntry.bestStage}</p>
+        <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Ranking & Histórico 🏆</h2>
+        <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">${escapeHtml(activeTabInfo.shortName)}: seu recorde ${myStats.score} pts • Fase ${myStats.stage}</p>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
         <button id="btn-ranking-back" type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold text-xs">← Jogos</button>
         <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold">✕</button>
       </div>
     </div>
+
+    <div class="flex gap-1.5 overflow-x-auto pb-1.5 mb-2 shrink-0 miau-scroll">
+      ${RANKING_TABS.map((tab) => {
+        const active = tab.id === activeTab;
+        return `<button data-ranking-tab="${tab.id}" type="button" class="px-3 py-1.5 rounded-full text-[11px] font-extrabold whitespace-nowrap transition shrink-0 ${
+          active
+            ? 'bg-[#6e45a5] text-white shadow-sm'
+            : 'bg-white/85 text-[#5e4294] border border-purple-100 hover:bg-white'
+        }">${tab.emoji} ${tab.label}</button>`;
+      }).join('')}
+    </div>
+
     ${
       rankingLoading
         ? `<div class="flex-1 flex items-center justify-center text-xs font-bold text-[#6b4d9e]">Carregando ranking...</div>`
-        : `<div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-1">
-            ${leaderboard
-              .map((entry, idx) => {
-                const rank = idx + 1;
-                const medal =
-                  rank === 1
-                    ? '🥇'
-                    : rank === 2
-                      ? '🥈'
-                      : rank === 3
-                        ? '🥉'
-                        : `#${rank}`;
-                return `
-                  <div class="rounded-2xl p-3 border flex items-center gap-2.5 ${entry.isCurrentUser ? 'bg-gradient-to-r from-amber-50 to-purple-50 border-purple-400 shadow-sm' : 'bg-white/85 border-purple-100'}">
-                    <div class="w-9 h-9 rounded-xl ${rank <= 3 ? 'bg-amber-100 text-base' : 'bg-purple-100 text-xs'} font-extrabold text-[#4c2a85] flex items-center justify-center shrink-0">${medal}</div>
-                    <div class="flex-1 min-w-0">
-                      <div class="font-display text-sm font-bold text-[#3b1f6e] truncate">${escapeHtml(entry.playerName)} ${entry.isCurrentUser ? '(Você)' : ''}</div>
-                      <div class="text-[10px] font-semibold text-[#6b4d9e]">Pet: ${escapeHtml(entry.petName)} • Fase Máx ${entry.bestStage}</div>
+        : `<div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+            <!-- Melhores Pontuações por Jogo -->
+            <div class="bg-white/80 rounded-2xl p-3 border border-purple-100 shrink-0">
+              <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e] mb-2">📊 Seus Melhores por Jogo</div>
+              <div class="grid grid-cols-2 gap-2">
+                ${perGameCards
+                  .map((g) => {
+                    const rec = gameRecords[g.id];
+                    const selected = activeTab === g.id;
+                    return `
+                      <button data-ranking-tab="${g.id}" type="button" class="rounded-xl p-2 text-left border transition ${
+                        selected
+                          ? 'bg-purple-100/90 border-purple-400 shadow-sm'
+                          : 'bg-white/90 border-purple-100 hover:bg-purple-50/70'
+                      }">
+                        <div class="flex items-center justify-between gap-1">
+                          <span class="text-xs font-extrabold text-[#3b1f6e] truncate">${g.emoji} ${g.name}</span>
+                          <span class="text-[10px] font-extrabold text-purple-700">F.${rec?.maxStage || 1}</span>
+                        </div>
+                        <div class="text-sm font-display font-bold text-[#4c2a85] mt-0.5">${rec?.highScore || 0} pts</div>
+                        <div class="text-[10px] font-semibold text-[#7a60a8]">${rec?.plays || 0} partida(s) • 🪙 ${rec?.totalCoins || 0}</div>
+                      </button>
+                    `;
+                  })
+                  .join('')}
+              </div>
+            </div>
+
+            <!-- Classificação -->
+            <div class="flex flex-col gap-2">
+              <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e] px-1">🏅 Classificação — ${escapeHtml(activeTabInfo.shortName)}</div>
+              ${sortedBoard
+                .map(({ entry, score, stage }, idx) => {
+                  const rank = idx + 1;
+                  const medal =
+                    rank === 1
+                      ? '🥇'
+                      : rank === 2
+                        ? '🥈'
+                        : rank === 3
+                          ? '🥉'
+                          : `#${rank}`;
+                  return `
+                    <div class="rounded-2xl p-3 border flex items-center gap-2.5 ${entry.isCurrentUser ? 'bg-gradient-to-r from-amber-50 to-purple-50 border-purple-400 shadow-sm' : 'bg-white/85 border-purple-100'}">
+                      <div class="w-9 h-9 rounded-xl ${rank <= 3 ? 'bg-amber-100 text-base' : 'bg-purple-100 text-xs'} font-extrabold text-[#4c2a85] flex items-center justify-center shrink-0">${medal}</div>
+                      <div class="flex-1 min-w-0">
+                        <div class="font-display text-sm font-bold text-[#3b1f6e] truncate">${escapeHtml(entry.playerName)} ${entry.isCurrentUser ? '(Você)' : ''}</div>
+                        <div class="text-[10px] font-semibold text-[#6b4d9e]">Pet: ${escapeHtml(entry.petName)} • Fase Máx ${stage}</div>
+                      </div>
+                      <div class="text-right shrink-0">
+                        <div class="text-xs font-extrabold text-[#3b1f6e]">${score} pts</div>
+                        <div class="text-[10px] font-bold text-amber-700">🪙 ${entry.coinsEarned}</div>
+                      </div>
                     </div>
-                    <div class="text-right shrink-0">
-                      <div class="text-xs font-extrabold text-[#3b1f6e]">${entry.totalScore} pts</div>
-                      <div class="text-[10px] font-bold text-amber-700">🪙 ${entry.coinsEarned}</div>
-                    </div>
-                  </div>
-                `;
-              })
-              .join('')}
+                  `;
+                })
+                .join('')}
+            </div>
+
+            <!-- Histórico Recente de Partidas -->
+            <div class="flex flex-col gap-1.5 pb-1">
+              <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e] px-1">🕒 Histórico Recente de Partidas</div>
+              ${
+                filteredHistory.length === 0
+                  ? `<div class="rounded-2xl p-3 bg-white/75 border border-purple-100 text-xs font-semibold text-[#7a60a8] text-center">Nenhuma partida registrada ainda nesta categoria. Jogue para marcar seu histórico!</div>`
+                  : filteredHistory
+                      .slice(0, 12)
+                      .map((item) => {
+                        const emoji =
+                          item.gameId === 'fish'
+                            ? '🐟'
+                            : item.gameId === 'memory'
+                              ? '🐾'
+                              : item.gameId === 'escape'
+                                ? '🚗'
+                                : '🚀';
+                        const tierMedal =
+                          item.performanceTier === 'gold'
+                            ? '🥇'
+                            : item.performanceTier === 'silver'
+                              ? '🥈'
+                              : '🥉';
+                        return `
+                          <div class="rounded-xl px-3 py-2 bg-white/85 border border-purple-100 flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                              <span class="text-base shrink-0">${emoji}</span>
+                              <div class="min-w-0">
+                                <div class="text-xs font-bold text-[#3b1f6e] truncate">${escapeHtml(item.gameName)} ${tierMedal}</div>
+                                <div class="text-[10px] font-semibold text-[#7a60a8]">Fase ${item.stageReached} • ${item.durationSec}s • ${formatHistoryDate(item.playedAtMs)}</div>
+                              </div>
+                            </div>
+                            <div class="text-right shrink-0">
+                              <div class="text-xs font-extrabold text-[#4c2a85]">${item.score} pts</div>
+                              <div class="text-[10px] font-bold text-amber-700">+🪙 ${item.coinsEarned}</div>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join('')
+              }
+            </div>
           </div>`
     }
   `;

@@ -196,10 +196,9 @@ service cloud.firestore {
     }
 
     function isValidUserUpdateKeys() {
-      let changed = incoming().diff(existing()).affectedKeys();
-      return changed.hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'gameRecords', 'dailyRoutine', 'updatedAt'])
-        || changed.hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
-        || changed.hasOnly(['petName', 'soundEnabled', 'updatedAt']);
+      return incoming().diff(existing()).affectedKeys().hasOnly(['stats', 'coins', 'level', 'xp', 'progress', 'unlockedAchievements', 'gameRecords', 'dailyRoutine', 'updatedAt'])
+        || incoming().diff(existing()).affectedKeys().hasOnly(['equipped', 'ownedItems', 'coins', 'progress', 'unlockedAchievements', 'updatedAt'])
+        || incoming().diff(existing()).affectedKeys().hasOnly(['petName', 'soundEnabled', 'updatedAt']);
     }
 
     function isLegacyUserDoc(data, userId) {

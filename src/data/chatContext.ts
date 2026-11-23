@@ -4,6 +4,7 @@ import type {
   ChatTemporalContext,
   ChatUserContext,
   MiauMood,
+  PetStats,
   UserHumanProfile,
 } from '../types';
 
@@ -161,4 +162,101 @@ export function buildContextualGreeting(
     text: `(Boa noite${nameSuffix}! Espero que sua ${temporal.weekdayName} tenha sido ótima! Como você está se sentindo agora à noite?)`,
     mood: 'affectionate',
   };
+}
+
+export function buildFriendGreeting(
+  snapshot: ConversationContextSnapshot,
+  petName = 'Miau'
+): { meowPrefix: string; text: string; mood: MiauMood } {
+  const { temporal, user } = snapshot;
+  const nameSuffix = user.firstName ? `, ${user.firstName}` : '';
+  const schoolAge = isSchoolAgeUser(user);
+
+  if (temporal.periodOfDay === 'manhã') {
+    return {
+      meowPrefix: 'Oi, amigo(a)! ☀️💛',
+      text: schoolAge
+        ? `(Oi${nameSuffix}! Que bom conversar com você! Como você está se sentindo nesta ${temporal.weekdayName}? Me conta por áudio ou na caixinha como estão as coisas e a escola!)`
+        : `(Oi${nameSuffix}! Estava esperando esse nosso papo! Como você acordou hoje? Pode falar por áudio ou escrever aqui na caixa — quero muito saber como você está!)`,
+      mood: 'affectionate',
+    };
+  }
+
+  if (temporal.periodOfDay === 'tarde') {
+    return {
+      meowPrefix: 'Miau, amigo(a)! 💬✨',
+      text: temporal.isWeekend
+        ? `(Oi${nameSuffix}! Que bom ter um tempinho nosso nesta tarde de ${temporal.weekdayName}! Como você está se sentindo hoje? Fala comigo por áudio ou texto!)`
+        : `(Oi${nameSuffix}! Como está sendo o seu dia até agora? Quero saber como você está de verdade — me manda um áudio ou escreve aqui para o ${petName}!)`,
+      mood: 'affectionate',
+    };
+  }
+
+  return {
+    meowPrefix: 'Purrr~ 🌙💜',
+    text: `(Oi${nameSuffix}! Que bom conversar com você agora à noite! Como foi o seu dia e como você está se sentindo? Pode desabafar por áudio ou escrever aqui!)`,
+    mood: 'affectionate',
+  };
+}
+
+export function buildMainScreenCheckIn(
+  snapshot: ConversationContextSnapshot,
+  stats: PetStats,
+  petName = 'Miau',
+  stepIndex = 0
+): { meowPrefix: string; text: string; mood: MiauMood } {
+  const { temporal, user } = snapshot;
+  const nameSuffix = user.firstName ? `, ${user.firstName}` : '';
+  const schoolAge = isSchoolAgeUser(user);
+
+  if (stats.hunger < 25) {
+    return {
+      meowPrefix: 'Miau... 🐟',
+      text: `(Oi${nameSuffix}! Minha barriguinha deu uma roncada leve... mas me conta, você já comeu alguma coisa gostosa hoje?)`,
+      mood: 'hungry',
+    };
+  }
+  if (stats.sleep < 25) {
+    return {
+      meowPrefix: 'Miau~ 😴',
+      text: `(Estou ficando com soninho${nameSuffix}... e você, conseguiu descansar bem hoje?)`,
+      mood: 'sleepy',
+    };
+  }
+  if (stats.hygiene < 25) {
+    return {
+      meowPrefix: 'Purrr~ 🫧',
+      text: `(Acho que já cabe um banho cheiroso depois, né${nameSuffix}? Como você está se sentindo agora?)`,
+      mood: 'happy',
+    };
+  }
+
+  const prompts: Array<{ meowPrefix: string; text: string; mood: MiauMood }> = [
+    {
+      meowPrefix: 'Miau! 👋💛',
+      text: `(Ei${nameSuffix}, tudo bem por aí? Como você está se sentindo nesta ${temporal.periodOfDay}? Clica em Conversar para batermos um papo!)`,
+      mood: 'affectionate',
+    },
+    {
+      meowPrefix: 'Purrr~ 💬',
+      text: schoolAge
+        ? `(Oi${nameSuffix}! Como foram suas aulas ou tarefas hoje? O ${petName} adora ouvir suas novidades!)`
+        : `(Oi${nameSuffix}! Que bom ter você aqui na Sala de Estar! Quer me contar como está sendo o seu dia?)`,
+      mood: 'happy',
+    },
+    {
+      meowPrefix: 'Miau~ 🌟',
+      text: `(Faz um carinho em mim ou toca no microfone para conversarmos por áudio! Quero saber como você está!)`,
+      mood: 'playful',
+    },
+    {
+      meowPrefix: 'Purrr~ 💕',
+      text: temporal.isWeekend
+        ? `(Bom fim de semana${nameSuffix}! O que você está aprontando de legal hoje para descansar e se divertir?)`
+        : `(Passando só para dar um abraço virtual${nameSuffix}! Se quiser desabafar ou rir um pouco, estou aqui!)`,
+      mood: 'affectionate',
+    },
+  ];
+
+  return prompts[Math.abs(stepIndex) % prompts.length];
 }
