@@ -236,6 +236,59 @@ export function isCapabilityTemporarilyExhausted(
   );
 }
 
+export async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label = 'AI request'
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`${label} timeout after ${timeoutMs}ms`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== null) clearTimeout(timer);
+  }
+}
+
+export function parseGeminiJsonSafely<T extends Record<string, unknown>>(
+  raw: string
+): T | null {
+  const cleaned = raw
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  if (!cleaned) return null;
+  try {
+    const parsed: unknown = JSON.parse(cleaned);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as T;
+    }
+  } catch {
+    const firstBrace = cleaned.indexOf('{');
+    const lastBrace = cleaned.lastIndexOf('}');
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+      try {
+        const sliced: unknown = JSON.parse(
+          cleaned.slice(firstBrace, lastBrace + 1)
+        );
+        if (sliced && typeof sliced === 'object' && !Array.isArray(sliced)) {
+          return sliced as T;
+        }
+      } catch {
+        // Fallback below
+      }
+    }
+  }
+  return null;
+}
+
 export async function runWithModelFallback<T>(
   capability: GeminiCapability,
   invokeForModel: (model: string, tierIndex: number) => Promise<T>
@@ -243,6 +296,8 @@ export async function runWithModelFallback<T>(
   const tiers = GEMINI_MODEL_TIERS[capability];
   const state = getCapabilityState(capability);
   const now = Date.now();
+  const perAttemptTimeoutMs =
+    capability === 'tts' ? 7000 : capability === 'live' ? 8000 : 9000;
 
   // If currently on an inferior model and cooldown elapsed, probe superior tier 0 first
   const shouldProbeSuperior =
@@ -264,7 +319,10 @@ export async function runWithModelFallback<T>(
   for (const idx of candidateIndices) {
     const model = tiers[idx];
     try {
-      const result = await withRetry(() => invokeForModel(model, idx), 2);
+      const result = await withRetry(
+        () => withTimeout(invokeForModel(model, idx), perAttemptTimeoutMs, model),
+        capability === 'tts' ? 0 : 1
+      );
 
       if (idx === 0 && (state.activeTierIndex > 0 || state.allTiersExhaustedUntilMs > 0)) {
         state.activeTierIndex = 0;
@@ -560,8 +618,8 @@ export async function withRetry<T>(
       if (!isTransient || attempt === retries) {
         throw err;
       }
-      const jitter = Math.round(Math.random() * 140);
-      await new Promise((r) => setTimeout(r, 380 * Math.pow(2, attempt) + jitter));
+      const jitter = Math.round(Math.random() * 80);
+      await new Promise((r) => setTimeout(r, 180 * (attempt + 1) + jitter));
     }
   }
   throw lastError;

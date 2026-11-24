@@ -26,6 +26,7 @@ import {
   isUnsafeTopicForMinor,
   markCapabilityDegraded,
   normalizeAudioMimeType,
+  parseGeminiJsonSafely,
   probeSuperiorModelRecovery,
   runWithModelFallback,
   sendGeminiRouteError,
@@ -199,7 +200,7 @@ async function startServer() {
               thinkingConfig: {
                 thinkingLevel: getRecommendedThinkingLevel(model),
               },
-              maxOutputTokens: 180,
+              maxOutputTokens: 480,
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -258,8 +259,15 @@ async function startServer() {
         return;
       }
 
-      const parsed = JSON.parse(raw);
-      const replyText = parsed.text || '(Oi, humano!)';
+      const parsed = parseGeminiJsonSafely<{
+        meowPrefix?: string;
+        text?: string;
+        mood?: string;
+      }>(raw);
+      const cleanedFallback = raw.replace(/[{}"`]/g, '').trim();
+      const replyText =
+        parsed?.text ||
+        (cleanedFallback ? `(${cleanedFallback.slice(0, 240)})` : '(Oi, humano!)');
       if (isMinor && isUnsafeTopicForMinor(replyText)) {
         res.json({
           meowPrefix: 'Miau!',
@@ -272,9 +280,9 @@ async function startServer() {
         return;
       }
       res.json({
-        meowPrefix: parsed.meowPrefix || 'Miau!',
+        meowPrefix: parsed?.meowPrefix || 'Miau!',
         text: replyText,
-        mood: parsed.mood || 'happy',
+        mood: parsed?.mood || 'happy',
         modelUsed,
         fallbackActive,
       });
@@ -399,20 +407,26 @@ async function startServer() {
         mode = 'conversation',
         expectedPhrase = '',
         hintKeywords,
+        userAge: rawUserAge,
       } = req.body ?? {};
       if (!rawAudio || typeof rawAudio !== 'string') {
         res.status(400).json({ error: 'Áudio inválido.' });
         return;
       }
 
+      const userAge =
+        typeof rawUserAge === 'number' && Number.isFinite(rawUserAge)
+          ? rawUserAge
+          : null;
       const mimeType = normalizeAudioMimeType(
         typeof rawMime === 'string' ? rawMime : 'audio/webm'
       );
       const audioBase64 = rawAudio.includes(',')
         ? rawAudio.split(',').slice(1).join(',')
         : rawAudio;
+      const resolvedMode = typeof mode === 'string' ? mode : 'conversation';
       const promptText = buildCalibratedTranscriptionPrompt({
-        mode: typeof mode === 'string' ? mode : 'conversation',
+        mode: resolvedMode,
         expectedPhrase: typeof expectedPhrase === 'string' ? expectedPhrase : '',
         hintKeywords,
       });
@@ -441,7 +455,7 @@ async function startServer() {
                     thinkingConfig: {
                       thinkingLevel: getRecommendedThinkingLevel(model),
                     },
-                    maxOutputTokens: 120,
+                    maxOutputTokens: 160,
                   },
                 }
               : {}),
@@ -453,10 +467,18 @@ async function startServer() {
         .replace(/^["'«»]+|["'«»]+$/g, '')
         .trim();
 
+      const safetyBlocked =
+        resolvedMode === 'conversation' &&
+        isMinorAge(userAge) &&
+        isUnsafeTopicForMinor(cleanedTranscript);
+
       res.json({
         transcript: cleanedTranscript,
         modelUsed,
         fallbackActive,
+        ...(safetyBlocked
+          ? { safetyBlocked: true, safeReply: MINOR_REFUSAL_TEXT }
+          : {}),
       });
     } catch (error) {
       sendGeminiRouteError(res, '/api/gemini/transcribe', error);
@@ -538,7 +560,7 @@ async function startServer() {
           );
 
         const raw = response.text?.trim();
-        const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+        const parsed = (raw ? parseGeminiJsonSafely<Record<string, string>>(raw) : null) ?? {};
         res.json({
           coachTip:
             parsed.coachTip ||
@@ -595,7 +617,7 @@ async function startServer() {
               thinkingConfig: {
                 thinkingLevel: getRecommendedThinkingLevel(model),
               },
-              maxOutputTokens: 220,
+              maxOutputTokens: 480,
               responseMimeType: 'application/json',
               responseSchema: {
                 type: Type.OBJECT,
@@ -612,14 +634,15 @@ async function startServer() {
         );
 
       const raw = response.text?.trim();
-      const parsed = raw
-        ? (JSON.parse(raw) as {
-            verdict?: string;
-            stars?: number;
-            feedbackText?: string;
-            audioScript?: string;
-          })
-        : {};
+      const parsed =
+        (raw
+          ? parseGeminiJsonSafely<{
+              verdict?: string;
+              stars?: number;
+              feedbackText?: string;
+              audioScript?: string;
+            }>(raw)
+          : null) ?? {};
 
       const verdict =
         parsed.verdict === 'positive' ||

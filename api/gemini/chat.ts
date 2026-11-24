@@ -8,6 +8,7 @@ import {
   handleCorsAndMethod,
   isMinorAge,
   isUnsafeTopicForMinor,
+  parseGeminiJsonSafely,
   readJsonBody,
   runWithModelFallback,
   sendGeminiRouteError,
@@ -174,7 +175,7 @@ export default async function handler(
             thinkingConfig: {
               thinkingLevel: getRecommendedThinkingLevel(model),
             },
-            maxOutputTokens: 180,
+            maxOutputTokens: 480,
             responseMimeType: 'application/json',
             responseSchema: {
               type: Type.OBJECT,
@@ -233,12 +234,15 @@ export default async function handler(
       return;
     }
 
-    const parsed = JSON.parse(raw) as {
+    const parsed = parseGeminiJsonSafely<{
       meowPrefix?: string;
       text?: string;
       mood?: string;
-    };
-    const replyText = parsed.text || '(Oi, humano!)';
+    }>(raw);
+    const cleanedFallback = raw.replace(/[{}"`]/g, '').trim();
+    const replyText =
+      parsed?.text ||
+      (cleanedFallback ? `(${cleanedFallback.slice(0, 240)})` : '(Oi, humano!)');
     if (isMinor && isUnsafeTopicForMinor(replyText)) {
       sendJson(res, 200, {
         meowPrefix: 'Miau!',
@@ -251,9 +255,9 @@ export default async function handler(
       return;
     }
     sendJson(res, 200, {
-      meowPrefix: parsed.meowPrefix || 'Miau!',
+      meowPrefix: parsed?.meowPrefix || 'Miau!',
       text: replyText,
-      mood: parsed.mood || 'happy',
+      mood: parsed?.mood || 'happy',
       modelUsed,
       fallbackActive,
     });

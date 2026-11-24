@@ -33,8 +33,13 @@ import {
 import {
   GeminiApiError,
   askMiau,
-  transcribeUserAudio,
+  transcribeUserAudioDetailed,
 } from '../services/geminiClient';
+import {
+  MINOR_REFUSAL_TEXT,
+  isMinorAgeClient,
+  isUnsafeTopicForMinorClient,
+} from '../data/minorSafety';
 import { hapticService } from '../services/hapticService';
 import { miauSpeechService } from '../services/miauSpeechService';
 import {
@@ -179,6 +184,9 @@ export class MiauAppUI {
   private isThinking = false;
   private isSpeaking = false;
   private isRecordingMic = false;
+  private isHoldPressed = false;
+  private activeHoldCleanup: (() => void) | null = null;
+  private activePlayingUserAudioBtn: HTMLElement | null = null;
   private liveSession: LiveVoiceSession | null = null;
   private liveStatus = '';
   private liveTranscript = '';
@@ -226,8 +234,12 @@ export class MiauAppUI {
     this.root.className = 'fixed inset-0 z-20 flex items-center justify-center';
     container.appendChild(this.root);
     const markInteraction = () => {
+      const wasFirstGesture = !this.hasUserGesture;
       this.lastUserInteractionAt = Date.now();
       this.hasUserGesture = true;
+      if (wasFirstGesture && this.profile.soundEnabled && soundService.enabled) {
+        soundService.unlockAudio();
+      }
     };
     this.root.addEventListener('pointerdown', markInteraction, { passive: true });
     this.root.addEventListener('keydown', markInteraction, { passive: true });
@@ -1067,12 +1079,36 @@ export class MiauAppUI {
     }
   }
 
+  private saveDemoMessagesTrimmed(): void {
+    if (!this.isDemoSession) return;
+    try {
+      const recent = this.messages.slice(-30);
+      const compact = recent.map((m, idx) =>
+        idx >= recent.length - 6 || !m.audioDataUrl
+          ? m
+          : { ...m, audioDataUrl: undefined }
+      );
+      localStorage.setItem(LOCAL_DEMO_MSGS_KEY, JSON.stringify(compact));
+    } catch {
+      try {
+        const noAudio = this.messages
+          .slice(-20)
+          .map((m) => ({ ...m, audioDataUrl: undefined }));
+        localStorage.setItem(LOCAL_DEMO_MSGS_KEY, JSON.stringify(noAudio));
+      } catch {
+        // Ignore storage quota exceeded
+      }
+    }
+  }
+
   private async persistMessage(
     msg: {
       sender: 'user' | 'miau';
       meowPrefix: string;
       text: string;
       mood: MiauMood;
+      audioDataUrl?: string;
+      audioDurationMs?: number;
     },
     optimistic = false
   ): Promise<void> {
@@ -1085,6 +1121,8 @@ export class MiauAppUI {
       text: msg.text,
       mood: msg.mood,
       createdAtMs: Date.now(),
+      audioDataUrl: msg.audioDataUrl,
+      audioDurationMs: msg.audioDurationMs,
     };
     if (optimistic) {
       this.messages.push(localMsg);
@@ -1092,16 +1130,26 @@ export class MiauAppUI {
 
     if (this.firebaseUser) {
       try {
-        const saved = await saveMessage(this.firebaseUser.uid, msg);
+        const saved = await saveMessage(this.firebaseUser.uid, {
+          sender: msg.sender,
+          meowPrefix: msg.meowPrefix,
+          text: msg.text,
+          mood: msg.mood,
+        });
+        const hydrated: ChatMessage = {
+          ...saved,
+          audioDataUrl: msg.audioDataUrl,
+          audioDurationMs: msg.audioDurationMs,
+        };
         if (optimistic) {
           const idx = this.messages.findIndex((m) => m.id === tempId);
           if (idx >= 0) {
-            this.messages[idx] = saved;
+            this.messages[idx] = hydrated;
           } else {
-            this.messages.push(saved);
+            this.messages.push(hydrated);
           }
         } else {
-          this.messages.push(saved);
+          this.messages.push(hydrated);
         }
         return;
       } catch (e) {
@@ -1112,12 +1160,7 @@ export class MiauAppUI {
     if (!optimistic) {
       this.messages.push(localMsg);
     }
-    if (this.isDemoSession) {
-      localStorage.setItem(
-        LOCAL_DEMO_MSGS_KEY,
-        JSON.stringify(this.messages.slice(-30))
-      );
-    }
+    this.saveDemoMessagesTrimmed();
   }
 
   private enterDemoMode(nameHint?: string): void {
@@ -1590,6 +1633,9 @@ export class MiauAppUI {
     hapticService.tap();
     this.profile.soundEnabled = !this.profile.soundEnabled;
     soundService.setEnabled(this.profile.soundEnabled);
+    if (this.profile.soundEnabled) {
+      soundService.unlockAudio();
+    }
     miauSpeechService.cancel();
     this.liveSession?.setMuted(!this.profile.soundEnabled);
     this.updateMuteButtonsDOM();
@@ -1623,24 +1669,35 @@ export class MiauAppUI {
     }
   }
 
-  private async playCurrentMiauSpeech(autoSpeakTTS = true): Promise<void> {
+  private async playCurrentMiauSpeech(
+    autoSpeakTTS = true,
+    notifyIfTextOnly = false
+  ): Promise<void> {
     if (!this.profile.soundEnabled) return;
+    soundService.unlockAudio();
     if (!autoSpeakTTS) {
       soundService.playMeow(1.05);
       return;
     }
+    if (notifyIfTextOnly && miauSpeechService.isTextOnlyFallbackActive()) {
+      this.showToast('Voz por IA pausada momentaneamente — mantendo texto e miados!');
+    }
     await miauSpeechService.speakPhrase(
       this.currentSpeech.meowPrefix,
       this.currentSpeech.text,
-      { withLeadingMeow: true, pitchMultiplier: 1.05 }
+      { withLeadingMeow: true, pitchMultiplier: 1.05, fallbackMeowOnError: true }
     );
   }
 
-  private async sendChatToMiau(userText: string): Promise<void> {
+  private async sendChatToMiau(
+    userText: string,
+    voiceClip?: { audioDataUrl?: string; audioDurationMs?: number }
+  ): Promise<void> {
     const trimmed = userText.trim();
     if (!trimmed || this.isThinking) return;
 
     this.ensureProfileDefaults();
+    soundService.unlockAudio();
     this.lastUserInteractionAt = Date.now();
     this.lastProactivePromptAt = Date.now();
     this.hasUserGesture = true;
@@ -1659,10 +1716,42 @@ export class MiauAppUI {
         meowPrefix: '',
         text: trimmed,
         mood: 'happy',
+        audioDataUrl: voiceClip?.audioDataUrl,
+        audioDurationMs: voiceClip?.audioDurationMs,
       },
       true
     );
     this.refreshChatModalIfOpen();
+
+    // Proteção instantânea (<1ms) para menores de 18 anos antes de chamar a rede
+    if (
+      isMinorAgeClient(contextSnapshot.user.age) &&
+      isUnsafeTopicForMinorClient(trimmed)
+    ) {
+      this.currentSpeech = {
+        meowPrefix: 'Miau!',
+        text: MINOR_REFUSAL_TEXT,
+      };
+      this.mood = 'happy';
+      this.isThinking = false;
+      this.lastUserInteractionAt = Date.now();
+      this.lastProactivePromptAt = Date.now();
+      this.updateSpeechDOM();
+      this.updateCharacterSvgDOM();
+      void this.playCurrentMiauSpeech(true);
+      await userPersistPromise;
+      await this.persistMessage(
+        {
+          sender: 'miau',
+          meowPrefix: 'Miau!',
+          text: MINOR_REFUSAL_TEXT,
+          mood: 'happy',
+        },
+        true
+      );
+      this.refreshChatModalIfOpen();
+      return;
+    }
 
     try {
       const reply = await askMiau({
@@ -1750,6 +1839,14 @@ export class MiauAppUI {
       this.refreshChatModalIfOpen();
     } finally {
       this.isThinking = false;
+      if (this.currentSpeech.text === '(Ouvindo você com carinho...)') {
+        this.currentSpeech = {
+          meowPrefix: 'Miau!',
+          text: '(Estou aqui com você! Pode mandar outra mensagem.)',
+        };
+        this.updateSpeechDOM();
+        this.refreshChatModalIfOpen();
+      }
     }
   }
 
@@ -1972,10 +2069,64 @@ export class MiauAppUI {
         const idx = rawIdx ? Number(rawIdx) : -1;
         const msg = this.messages[idx];
         if (!msg) return;
+        soundService.unlockAudio();
+        if (!this.profile.soundEnabled) {
+          this.showToast('Som silenciado! Ative o áudio para ouvir o Miau.');
+          return;
+        }
+        if (miauSpeechService.isTextOnlyFallbackActive()) {
+          this.showToast('Voz por IA pausada momentaneamente — mantendo texto e miados!');
+        }
         void miauSpeechService.speakPhrase(msg.meowPrefix, msg.text, {
           withLeadingMeow: true,
           pitchMultiplier: 1.05,
+          fallbackMeowOnError: true,
         });
+      });
+    });
+
+    this.root.querySelectorAll('[data-play-user-audio]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const rawIdx = btn.getAttribute('data-play-user-audio');
+        const idx = rawIdx ? Number(rawIdx) : -1;
+        const msg = this.messages[idx];
+        if (!msg?.audioDataUrl) return;
+        soundService.unlockAudio();
+        if (!this.profile.soundEnabled) {
+          this.showToast('Som silenciado! Ative o áudio para ouvir sua gravação.');
+          return;
+        }
+        miauSpeechService.cancel();
+        if (this.activePlayingUserAudioBtn && this.activePlayingUserAudioBtn !== btn) {
+          const prevDur = this.activePlayingUserAudioBtn.getAttribute('data-audio-label') || '🎙️ Ouvir áudio';
+          this.activePlayingUserAudioBtn.textContent = prevDur;
+        }
+        const buttonEl = btn as HTMLElement;
+        if (!buttonEl.getAttribute('data-audio-label')) {
+          buttonEl.setAttribute('data-audio-label', buttonEl.textContent?.trim() || '🎙️ Ouvir áudio');
+        }
+        const originalLabel = buttonEl.getAttribute('data-audio-label') || '🎙️ Ouvir áudio';
+        this.activePlayingUserAudioBtn = buttonEl;
+        void soundService
+          .playAudioDataUrl(
+            msg.audioDataUrl,
+            () => {
+              buttonEl.textContent = '🔊 Tocando...';
+            },
+            () => {
+              if (this.activePlayingUserAudioBtn === buttonEl) {
+                this.activePlayingUserAudioBtn = null;
+              }
+              buttonEl.textContent = originalLabel;
+            }
+          )
+          .catch(() => {
+            if (this.activePlayingUserAudioBtn === buttonEl) {
+              this.activePlayingUserAudioBtn = null;
+            }
+            buttonEl.textContent = originalLabel;
+            this.showToast('Não foi possível reproduzir este áudio no navegador.');
+          });
       });
     });
   }
@@ -1985,53 +2136,250 @@ export class MiauAppUI {
       if (!btn) return;
       btn.classList.toggle('bg-rose-500', this.isRecordingMic);
       btn.classList.toggle('animate-pulse', this.isRecordingMic);
+      btn.classList.toggle('scale-110', this.isRecordingMic);
       btn.classList.toggle('bg-[#7b52b8]', !this.isRecordingMic);
       btn.setAttribute(
         'aria-label',
         this.isRecordingMic
-          ? 'Parar e enviar áudio'
-          : 'Gravar mensagem de áudio'
+          ? 'Solte para enviar áudio'
+          : 'Segure para gravar mensagem de áudio'
       );
     };
     applyState(this.root.querySelector('#btn-mic'));
     applyState(this.root.querySelector('#btn-modal-mic'));
+
+    const quickInput = this.root.querySelector(
+      '#quick-chat-input'
+    ) as HTMLInputElement | null;
+    if (quickInput) {
+      quickInput.placeholder = this.isRecordingMic
+        ? '🔴 Gravando... solte para enviar!'
+        : 'Fale com o Miau...';
+    }
+    const modalInput = this.root.querySelector(
+      '#modal-chat-input'
+    ) as HTMLInputElement | null;
+    if (modalInput) {
+      modalInput.placeholder = this.isRecordingMic
+        ? '🔴 Gravando... solte para enviar!'
+        : 'Digite ou segure 🎙️ para falar...';
+    }
+    const banner = this.root.querySelector('#modal-mic-holding-banner');
+    if (banner) {
+      banner.classList.toggle('hidden', !this.isRecordingMic);
+    }
   }
 
-  private async handleMicToggle(): Promise<void> {
-    if (this.isRecordingMic) {
-      this.isRecordingMic = false;
-      this.updateMicButtonsDOM();
-      try {
-        const { audioBase64, mimeType, durationMs, peakRms } =
-          await soundService.stopRecording();
-        if (durationMs < 240 || peakRms < 0.0025 || !audioBase64) {
-          this.showToast('Fale um pouquinho mais perto do microfone para o Miau ouvir!');
-          return;
-        }
-        this.showToast('Ouvindo e entendendo sua voz...');
-        const transcript = await transcribeUserAudio(audioBase64, mimeType, {
-          mode: 'conversation',
-        });
-        if (transcript) {
-          await this.sendChatToMiau(transcript);
-        } else {
-          this.showToast('Não consegui ouvir direitinho. Tente falar novamente!');
-        }
-      } catch (err) {
-        this.showToast(
-          err instanceof Error ? err.message : 'Erro ao gravar áudio.'
-        );
-      }
-    } else {
-      try {
-        await soundService.startRecording();
+  private bindHoldMicButtons(): void {
+    this.activeHoldCleanup?.();
+    this.activeHoldCleanup = null;
+
+    const attachHoldHandlers = (btn: HTMLElement | null) => {
+      if (!btn) return;
+      btn.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+      });
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (this.isHoldPressed) return;
+        e.preventDefault();
+        soundService.unlockAudio();
+        this.hasUserGesture = true;
+        this.lastUserInteractionAt = Date.now();
+        this.isHoldPressed = true;
         this.isRecordingMic = true;
         this.updateMicButtonsDOM();
-        this.showToast('Gravando... toque no microfone para enviar!');
-      } catch {
-        this.showToast('Permissão de microfone necessária para falar.');
-      }
+        this.showToast('🎙️ Gravando... solte para enviar!');
+
+        let permissionError = false;
+        const startPromise = soundService.startRecording().catch((err) => {
+          const msg = err instanceof Error ? err.message : '';
+          if (!msg.includes('cancelada antes de iniciar')) {
+            permissionError = true;
+          }
+          throw err;
+        });
+
+        let released = false;
+        const finishHold = async () => {
+          if (released) return;
+          released = true;
+          window.removeEventListener('pointerup', onRelease);
+          window.removeEventListener('pointercancel', onRelease);
+          window.removeEventListener('blur', onRelease);
+          this.activeHoldCleanup = null;
+          this.isHoldPressed = false;
+          this.isRecordingMic = false;
+          this.updateMicButtonsDOM();
+
+          if (!soundService.isRecordingActive()) {
+            soundService.cancelRecording();
+            try {
+              await startPromise;
+            } catch {
+              // Handled via permissionError check below
+            }
+            if (permissionError) {
+              this.showToast('Permissão de microfone necessária para falar.');
+            } else {
+              this.showToast('Segure o botão do microfone enquanto fala e solte para enviar!');
+            }
+            return;
+          }
+
+          try {
+            const rec = await soundService.stopRecording();
+            if (rec.durationMs < 240 || !rec.audioBase64) {
+              this.showToast('Segure o microfone enquanto fala e solte para enviar!');
+              return;
+            }
+            if (rec.peakRms < 0.0012) {
+              this.showToast('Fale um pouquinho mais perto do microfone para o Miau ouvir!');
+              return;
+            }
+            await this.processRecordedVoiceClip(rec);
+          } catch (err) {
+            this.showToast(
+              err instanceof Error ? err.message : 'Erro ao enviar áudio.'
+            );
+          }
+        };
+
+        const onRelease = () => {
+          void finishHold();
+        };
+
+        this.activeHoldCleanup = () => {
+          window.removeEventListener('pointerup', onRelease);
+          window.removeEventListener('pointercancel', onRelease);
+          window.removeEventListener('blur', onRelease);
+          this.isHoldPressed = false;
+          this.isRecordingMic = false;
+          soundService.cancelRecording();
+        };
+
+        window.addEventListener('pointerup', onRelease, { once: true });
+        window.addEventListener('pointercancel', onRelease, { once: true });
+        window.addEventListener('blur', onRelease, { once: true });
+      });
+    };
+
+    attachHoldHandlers(this.root.querySelector('#btn-mic') as HTMLElement | null);
+    attachHoldHandlers(this.root.querySelector('#btn-modal-mic') as HTMLElement | null);
+  }
+
+  private async processRecordedVoiceClip(rec: {
+    audioBase64: string;
+    dataUrl: string;
+    mimeType: string;
+    durationMs: number;
+  }): Promise<void> {
+    this.showToast('Ouvindo e entendendo sua voz...');
+    this.currentSpeech = {
+      meowPrefix: 'Miau...',
+      text: '(Ouvindo seu áudio com carinho...)',
+    };
+    this.updateSpeechDOM();
+
+    const userAge = buildConversationContextSnapshot(this.humanProfile).user.age;
+    let res: { transcript: string; safetyBlocked?: boolean; safeReply?: string };
+    try {
+      res = await transcribeUserAudioDetailed(rec.audioBase64, rec.mimeType, {
+        mode: 'conversation',
+        userAge,
+      });
+    } catch (err) {
+      await this.persistMessage(
+        {
+          sender: 'user',
+          meowPrefix: '',
+          text: '🎙️ Mensagem de voz',
+          mood: 'happy',
+          audioDataUrl: rec.dataUrl,
+          audioDurationMs: rec.durationMs,
+        },
+        true
+      );
+      const fallbackMsg =
+        err instanceof Error && err.message
+          ? err.message
+          : 'Não consegui entender o áudio agora, mas você pode ouvir sua gravação ou enviar por texto!';
+      this.currentSpeech = { meowPrefix: 'Miau?', text: `(${fallbackMsg})` };
+      this.updateSpeechDOM();
+      this.refreshChatModalIfOpen();
+      this.showToast(fallbackMsg);
+      return;
     }
+
+    if (res.safetyBlocked) {
+      const safeText = res.safeReply || MINOR_REFUSAL_TEXT;
+      await this.persistMessage(
+        {
+          sender: 'user',
+          meowPrefix: '',
+          text: res.transcript || '🎙️ Mensagem de voz',
+          mood: 'happy',
+          audioDataUrl: rec.dataUrl,
+          audioDurationMs: rec.durationMs,
+        },
+        true
+      );
+      this.currentSpeech = { meowPrefix: 'Miau!', text: safeText };
+      this.mood = 'happy';
+      this.updateSpeechDOM();
+      this.updateCharacterSvgDOM();
+      void this.playCurrentMiauSpeech(true);
+      await this.persistMessage(
+        {
+          sender: 'miau',
+          meowPrefix: 'Miau!',
+          text: safeText,
+          mood: 'happy',
+        },
+        true
+      );
+      this.refreshChatModalIfOpen();
+      return;
+    }
+
+    if (res.transcript.trim()) {
+      await this.sendChatToMiau(res.transcript, {
+        audioDataUrl: rec.dataUrl,
+        audioDurationMs: rec.durationMs,
+      });
+      return;
+    }
+
+    // Caso o áudio tenha som mas as palavras tenham ficado muito baixinhas, ainda salva para ambos ouvirem
+    await this.persistMessage(
+      {
+        sender: 'user',
+        meowPrefix: '',
+        text: '🎙️ Mensagem de voz',
+        mood: 'happy',
+        audioDataUrl: rec.dataUrl,
+        audioDurationMs: rec.durationMs,
+      },
+      true
+    );
+    const gentleRetry =
+      'Ouvi seu áudio, mas ficou bem baixinho! Pode falar um pouquinho mais perto do microfone?';
+    this.currentSpeech = { meowPrefix: 'Miau?', text: `(${gentleRetry})` };
+    this.mood = 'playful';
+    this.updateSpeechDOM();
+    this.updateCharacterSvgDOM();
+    void this.playCurrentMiauSpeech(true);
+    await this.persistMessage(
+      {
+        sender: 'miau',
+        meowPrefix: 'Miau?',
+        text: gentleRetry,
+        mood: 'playful',
+      },
+      true
+    );
+    this.refreshChatModalIfOpen();
+    this.showToast('Áudio enviado! Fale pertinho do microfone na próxima.');
   }
 
   public render(): void {
@@ -2210,6 +2558,62 @@ export class MiauAppUI {
           showFloor: true,
           useWallpaper: true,
         };
+      case 'bg_jurassic':
+        return {
+          wall: 'from-[#bae6fd] via-[#d9f99d] to-[#bbf7d0]',
+          floor: 'from-[#86efac] to-[#4ade80]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_hogwarts':
+        return {
+          wall: 'from-[#1e103c] via-[#311761] to-[#4c1d95]',
+          floor: 'from-[#3b0764] to-[#1e1b4b]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_cyberpunk':
+        return {
+          wall: 'from-[#090d24] via-[#1b1042] to-[#3b0764]',
+          floor: 'from-[#1e1b4b] to-[#0f172a]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_city':
+        return {
+          wall: 'from-[#60a5fa] via-[#bae6fd] to-[#e0f2fe]',
+          floor: 'from-[#cbd5e1] to-[#94a3b8]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_marvel':
+        return {
+          wall: 'from-[#1e293b] via-[#7c2d12] to-[#ea580c]',
+          floor: 'from-[#1e3a8a] to-[#0f172a]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_dc':
+        return {
+          wall: 'from-[#020617] via-[#0f172a] to-[#1e293b]',
+          floor: 'from-[#0f172a] to-[#020617]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_halloween':
+        return {
+          wall: 'from-[#1e1b4b] via-[#3b0764] to-[#7c2d12]',
+          floor: 'from-[#3b0764] to-[#1e1b4b]',
+          showFloor: false,
+          useWallpaper: false,
+        };
+      case 'bg_natal':
+        return {
+          wall: 'from-[#0f172a] via-[#1e3a8a] to-[#38bdf8]',
+          floor: 'from-[#f8fafc] to-[#e2e8f0]',
+          showFloor: false,
+          useWallpaper: false,
+        };
       default:
         return {
           wall: 'from-[#ece3ff] via-[#e2d2fc] to-[#d9c4fa]',
@@ -2224,10 +2628,17 @@ export class MiauAppUI {
     this.ensureProfileDefaults();
     const s = this.profile.stats;
     const theme = this.getRoomThemeClasses();
+    const bgId = this.profile.equipped.background;
     const isNight =
       this.isSleeping ||
-      this.profile.equipped.background === 'bg_night' ||
-      this.profile.equipped.background === 'bg_space';
+      bgId === 'bg_night' ||
+      bgId === 'bg_space' ||
+      bgId === 'bg_hogwarts' ||
+      bgId === 'bg_cyberpunk' ||
+      bgId === 'bg_marvel' ||
+      bgId === 'bg_dc' ||
+      bgId === 'bg_halloween' ||
+      bgId === 'bg_natal';
     const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
     const activeRoutineCount = this.getActiveWindowSlots().length;
 
@@ -2387,16 +2798,18 @@ export class MiauAppUI {
                     <input
                       id="quick-chat-input"
                       type="text"
-                      placeholder="Fale com o Miau..."
+                      placeholder="${this.isRecordingMic ? '🔴 Gravando... solte para enviar!' : 'Fale com o Miau...'}"
                       class="flex-1 bg-transparent text-sm font-semibold text-[#3b1f6e] placeholder-[#8f79b5] focus:outline-none min-w-0"
                     />
                     <button
                       id="btn-mic"
                       type="button"
-                      aria-label="Gravar voz para o Miau"
-                      class="w-9 h-9 rounded-full ${this.isRecordingMic ? 'bg-rose-500 animate-pulse' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
+                      style="touch-action:none"
+                      title="Segure para gravar e solte para enviar"
+                      aria-label="${this.isRecordingMic ? 'Solte para enviar áudio' : 'Segure para gravar voz para o Miau'}"
+                      class="w-9 h-9 rounded-full select-none ${this.isRecordingMic ? 'bg-rose-500 animate-pulse scale-110' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
                     >
-                      <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
                         <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
                       </svg>
                     </button>
@@ -2699,13 +3112,15 @@ export class MiauAppUI {
     // Speaker button & speech bubble tap
     this.root.querySelector('#btn-speaker')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      void this.playCurrentMiauSpeech(true);
+      soundService.unlockAudio();
+      void this.playCurrentMiauSpeech(true, true);
     });
     this.root
       .querySelector('#speech-bubble-card')
       ?.addEventListener('click', (e) => {
         const target = e.target as HTMLElement | null;
         if (target?.closest('#btn-speaker')) return;
+        soundService.unlockAudio();
         hapticService.tap();
         this.openConversarModal();
       });
@@ -2719,19 +3134,15 @@ export class MiauAppUI {
     ) as HTMLInputElement | null;
     chatForm?.addEventListener('submit', (e) => {
       e.preventDefault();
+      soundService.unlockAudio();
       const val = chatInput?.value || '';
       if (!val.trim()) return;
       if (chatInput) chatInput.value = '';
       void this.sendChatToMiau(val);
     });
 
-    // Mic transcription buttons (main screen + Conversar modal)
-    this.root.querySelector('#btn-mic')?.addEventListener('click', () => {
-      void this.handleMicToggle();
-    });
-    this.root.querySelector('#btn-modal-mic')?.addEventListener('click', () => {
-      void this.handleMicToggle();
-    });
+    // Mic hold-to-record buttons (main screen + Conversar modal)
+    this.bindHoldMicButtons();
 
     // Sleep toggle & interactive status pills
     this.root
@@ -3085,6 +3496,7 @@ export class MiauAppUI {
     ) as HTMLInputElement | null;
     modalChatForm?.addEventListener('submit', (e) => {
       e.preventDefault();
+      soundService.unlockAudio();
       const txt = modalChatInput?.value || '';
       if (!txt.trim()) return;
       if (modalChatInput) modalChatInput.value = '';
@@ -3093,6 +3505,7 @@ export class MiauAppUI {
 
     this.root.querySelectorAll('[data-chat-quick]').forEach((btn) => {
       btn.addEventListener('click', () => {
+        soundService.unlockAudio();
         const prompt = btn.getAttribute('data-chat-quick') || '';
         if (prompt.trim()) {
           void this.sendChatToMiau(prompt);

@@ -131,12 +131,16 @@ function buildFriendlyHttpError(
 async function fetchWithTransientRetry(
   url: string,
   init: RequestInit,
-  retries = 1
+  retries = 1,
+  timeoutMs = 11_000
 ): Promise<Response> {
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const res = await fetch(url, init);
+      const res = await fetch(url, { ...init, signal: controller.signal });
+      window.clearTimeout(timer);
       const isRetryableHttp = res.status === 502 || res.status === 503 || res.status === 504;
       if (!isRetryableHttp || attempt === retries) {
         return res;
@@ -151,10 +155,11 @@ async function fetchWithTransientRetry(
         // Not JSON, proceed with retry
       }
     } catch (err) {
+      window.clearTimeout(timer);
       lastErr = err;
       if (attempt === retries) throw err;
     }
-    await new Promise((r) => setTimeout(r, 650 * (attempt + 1)));
+    await new Promise((r) => setTimeout(r, 320 * (attempt + 1)));
   }
   throw lastErr;
 }
@@ -232,11 +237,16 @@ export async function synthesizeMiauVoice(
 ): Promise<MiauVoiceResponse> {
   let res: Response;
   try {
-    res = await fetchWithTransientRetry('/api/gemini/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    });
+    res = await fetchWithTransientRetry(
+      '/api/gemini/tts',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      },
+      0,
+      8_500
+    );
   } catch {
     scheduleSuperiorModelRecoveryCheck(true);
     return {
@@ -298,27 +308,40 @@ export interface TranscribeCalibrationOptions {
   mode?: 'conversation' | 'study';
   expectedPhrase?: string;
   hintKeywords?: string[];
+  userAge?: number | null;
 }
 
-export async function transcribeUserAudio(
+export interface TranscribeDetailedResult {
+  transcript: string;
+  safetyBlocked?: boolean;
+  safeReply?: string;
+}
+
+export async function transcribeUserAudioDetailed(
   audioBase64: string,
   mimeType: string,
   calibration?: TranscribeCalibrationOptions
-): Promise<string> {
+): Promise<TranscribeDetailedResult> {
   const cleanMime = (mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
   let res: Response;
   try {
-    res = await fetchWithTransientRetry('/api/gemini/transcribe', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        audioBase64,
-        mimeType: cleanMime,
-        mode: calibration?.mode || 'conversation',
-        expectedPhrase: calibration?.expectedPhrase,
-        hintKeywords: calibration?.hintKeywords,
-      }),
-    });
+    res = await fetchWithTransientRetry(
+      '/api/gemini/transcribe',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audioBase64,
+          mimeType: cleanMime,
+          mode: calibration?.mode || 'conversation',
+          expectedPhrase: calibration?.expectedPhrase,
+          hintKeywords: calibration?.hintKeywords,
+          userAge: calibration?.userAge ?? null,
+        }),
+      },
+      1,
+      12_000
+    );
   } catch {
     throw new GeminiApiError(
       'Transcrição de voz indisponível sem conexão. Você pode continuar digitando por texto!',
@@ -329,6 +352,8 @@ export async function transcribeUserAudio(
 
   const parsed = await parseJsonSafely<{
     transcript?: string;
+    safetyBlocked?: boolean;
+    safeReply?: string;
     fallbackActive?: boolean;
     error?: string;
     code?: string;
@@ -348,7 +373,20 @@ export async function transcribeUserAudio(
 
   scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
 
-  return parsed.data.transcript || '';
+  return {
+    transcript: parsed.data.transcript || '',
+    safetyBlocked: Boolean(parsed.data.safetyBlocked),
+    safeReply: parsed.data.safeReply,
+  };
+}
+
+export async function transcribeUserAudio(
+  audioBase64: string,
+  mimeType: string,
+  calibration?: TranscribeCalibrationOptions
+): Promise<string> {
+  const res = await transcribeUserAudioDetailed(audioBase64, mimeType, calibration);
+  return res.transcript;
 }
 
 export interface WritingTeachResponse {

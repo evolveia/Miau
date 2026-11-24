@@ -21,6 +21,21 @@ export function renderChatHistoryItemsHtml(
               <div class="min-w-0 flex-1">
                 ${m.meowPrefix ? `<strong class="block font-display text-[13px] mb-0.5">${escapeHtml(m.meowPrefix)}</strong>` : ''}
                 <span class="break-words">${escapeHtml(m.text)}</span>
+                ${
+                  isUser && m.audioDataUrl
+                    ? `<div class="mt-1.5">
+                        <button
+                          type="button"
+                          data-play-user-audio="${idx}"
+                          aria-label="Ouvir seu áudio enviado"
+                          class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 hover:bg-white/30 text-white text-[11px] font-bold transition"
+                        >
+                          <span>🎙️ Ouvir áudio</span>
+                          ${m.audioDurationMs ? `<span class="opacity-85">(${Math.max(1, Math.round(m.audioDurationMs / 1000))}s)</span>` : ''}
+                        </button>
+                      </div>`
+                    : ''
+                }
               </div>
               ${
                 !isUser
@@ -98,7 +113,7 @@ export function renderChatModalHtml(params: {
     <div class="mb-2 bg-white/85 border border-purple-200 rounded-2xl p-2.5 flex items-center justify-between gap-2 shrink-0">
       <div class="min-w-0">
         <div class="text-xs font-extrabold text-[#4c2a85]">Conversa Direta por Voz (Ao Vivo)</div>
-        <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${escapeHtml(params.liveStatus || 'Ligue a voz ao vivo ou use o microfone abaixo!')}</div>
+        <div id="live-status-text" class="text-[11px] text-[#6b4d9e] truncate">${escapeHtml(params.liveStatus || 'Ligue a voz ao vivo ou segure o microfone abaixo!')}</div>
       </div>
       <button id="btn-live-toggle" class="px-3 py-1.5 rounded-full text-xs font-extrabold text-white shrink-0 ${params.hasLiveSession ? 'bg-rose-500 animate-pulse' : 'bg-[#6e45a5]'}">
         ${params.hasLiveSession ? '⏹️ Parar' : '🎙️ Ligar Voz'}
@@ -122,15 +137,21 @@ export function renderChatModalHtml(params: {
       ).join('')}
     </div>
 
+    <div id="modal-mic-holding-banner" class="${params.isRecordingMic ? '' : 'hidden '}mb-1.5 px-3 py-1 rounded-full bg-rose-500 text-white text-[11px] font-extrabold text-center shadow animate-pulse shrink-0">
+      🔴 Gravando áudio... solte o botão para enviar!
+    </div>
+
     <form id="modal-chat-form" class="flex items-center gap-1.5 bg-white rounded-full p-1.5 pl-3.5 border border-purple-200 shadow-sm shrink-0">
-      <input id="modal-chat-input" type="text" placeholder="Fale por áudio ou conte como você está..." class="flex-1 text-sm font-semibold text-[#3b1f6e] bg-transparent focus:outline-none min-w-0" />
+      <input id="modal-chat-input" type="text" placeholder="${params.isRecordingMic ? '🔴 Gravando... solte para enviar!' : 'Digite ou segure 🎙️ para falar...'}" class="flex-1 text-sm font-semibold text-[#3b1f6e] bg-transparent focus:outline-none min-w-0" />
       <button
         id="btn-modal-mic"
         type="button"
-        aria-label="${params.isRecordingMic ? 'Parar e enviar áudio' : 'Gravar mensagem de áudio'}"
-        class="w-9 h-9 rounded-full ${params.isRecordingMic ? 'bg-rose-500 animate-pulse' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
+        style="touch-action:none"
+        title="Segure para gravar e solte para enviar"
+        aria-label="${params.isRecordingMic ? 'Solte para enviar áudio' : 'Segure para gravar mensagem de áudio'}"
+        class="w-9 h-9 rounded-full select-none ${params.isRecordingMic ? 'bg-rose-500 animate-pulse scale-110' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
       >
-        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
           <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
         </svg>
       </button>

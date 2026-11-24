@@ -61,6 +61,15 @@ class MiauSpeechService {
       return;
     }
 
+    // Se todas as cotas TTS estão temporariamente em cooldown, evite atrasar a resposta
+    if (this.isTextOnlyFallbackActive()) {
+      this.setSpeaking(false);
+      if (!options?.withLeadingMeow && options?.fallbackMeowOnError && soundService.enabled) {
+        soundService.playMeow(options.pitchMultiplier ?? 1.08);
+      }
+      return;
+    }
+
     this.setSpeaking(true);
     try {
       const voiceRes = await synthesizeMiauVoice(cleanSpeech);
@@ -72,9 +81,9 @@ class MiauSpeechService {
       if (voiceRes.textOnlyFallback || !voiceRes.audioBase64) {
         // Audio tokens exhausted across all TTS tiers: stay smoothly in text-only mode
         // while backend recovery probe restores audio when tokens return.
-        this.textOnlyModeUntilMs = Date.now() + 45_000;
+        this.textOnlyModeUntilMs = Date.now() + 25_000;
         this.setSpeaking(false);
-        if (options?.fallbackMeowOnError && soundService.enabled) {
+        if (!options?.withLeadingMeow && options?.fallbackMeowOnError && soundService.enabled) {
           soundService.playMeow(options.pitchMultiplier ?? 1.08);
         }
         return;
@@ -98,7 +107,7 @@ class MiauSpeechService {
     } catch {
       if (reqId !== this.seq) return;
       this.setSpeaking(false);
-      if (options?.fallbackMeowOnError && soundService.enabled) {
+      if (!options?.withLeadingMeow && options?.fallbackMeowOnError && soundService.enabled) {
         soundService.playMeow(options.pitchMultiplier ?? 1.08);
       }
     }

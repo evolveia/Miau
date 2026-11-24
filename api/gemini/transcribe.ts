@@ -1,8 +1,11 @@
 import {
+  MINOR_REFUSAL_TEXT,
   buildCalibratedTranscriptionPrompt,
   getAIClient,
   getRecommendedThinkingLevel,
   handleCorsAndMethod,
+  isMinorAge,
+  isUnsafeTopicForMinor,
   normalizeAudioMimeType,
   readJsonBody,
   runWithModelFallback,
@@ -30,6 +33,11 @@ export default async function handler(
     const expectedPhrase =
       typeof body.expectedPhrase === 'string' ? body.expectedPhrase : '';
     const hintKeywords = body.hintKeywords;
+    const rawUserAge = body.userAge;
+    const userAge =
+      typeof rawUserAge === 'number' && Number.isFinite(rawUserAge)
+        ? rawUserAge
+        : null;
 
     if (!rawAudio || typeof rawAudio !== 'string') {
       sendJson(res, 400, { error: 'Áudio inválido.' });
@@ -70,7 +78,7 @@ export default async function handler(
                   thinkingConfig: {
                     thinkingLevel: getRecommendedThinkingLevel(model),
                   },
-                  maxOutputTokens: 120,
+                  maxOutputTokens: 160,
                 },
               }
             : {}),
@@ -82,10 +90,18 @@ export default async function handler(
       .replace(/^["'«»]+|["'«»]+$/g, '')
       .trim();
 
+    const safetyBlocked =
+      mode === 'conversation' &&
+      isMinorAge(userAge) &&
+      isUnsafeTopicForMinor(cleanedTranscript);
+
     sendJson(res, 200, {
       transcript: cleanedTranscript,
       modelUsed,
       fallbackActive,
+      ...(safetyBlocked
+        ? { safetyBlocked: true, safeReply: MINOR_REFUSAL_TEXT }
+        : {}),
     });
   } catch (error) {
     sendGeminiRouteError(res, '/api/gemini/transcribe', error);

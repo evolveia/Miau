@@ -155,6 +155,83 @@ export function renderMiauSvg(
         <circle cx="98" cy="108" r="4" fill="#ffffff" opacity="0.85"/>
       </g>
     `;
+  } else if (equipped.hat === 'hat_jurassic') {
+    hatSvg = `
+      <g transform="translate(170, 62)">
+        <ellipse cx="0" cy="14" rx="48" ry="11" fill="#a37a4c" stroke="#1b1024" stroke-width="4.8"/>
+        <path d="M-28,12 C-26,-18 26,-18 28,12 Z" fill="#c2955e" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+        <path d="M-27,5 Q0,11 27,5" fill="none" stroke="#65a30d" stroke-width="5.5"/>
+        <circle cx="0" cy="-2" r="7" fill="#facc15" stroke="#1b1024" stroke-width="2.8"/>
+        <path d="M-3,-2 L0,-6 L3,-2 L0,2 Z" fill="#dc2626"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_hogwarts') {
+    hatSvg = `
+      <g transform="translate(170, 56)">
+        <ellipse cx="0" cy="20" rx="48" ry="11" fill="#78350f" stroke="#1b1024" stroke-width="4.8"/>
+        <path d="M-30,18 C-24,-4 -12,-34 10,-44 C8,-26 22,-8 30,18 Z" fill="#92400e" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+        <path d="M-16,4 Q0,9 15,2" fill="none" stroke="#451a03" stroke-width="4" stroke-linecap="round"/>
+        <path d="M-10,-10 Q3,-4 12,-12" fill="none" stroke="#451a03" stroke-width="3.5" stroke-linecap="round"/>
+        <path d="M-24,14 Q0,20 24,14" fill="none" stroke="#b91c1c" stroke-width="4.5"/>
+        <rect x="-5" y="10" width="10" height="8" rx="2" fill="#facc15" stroke="#1b1024" stroke-width="2.4"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_cyberpunk') {
+    hatSvg = `
+      <g transform="translate(170, 66)">
+        <path d="M-48,16 C-44,-14 44,-14 48,16" fill="none" stroke="#0f172a" stroke-width="11" stroke-linecap="round"/>
+        <path d="M-48,16 C-44,-14 44,-14 48,16" fill="none" stroke="#22d3ee" stroke-width="4" stroke-linecap="round"/>
+        <rect x="-32" y="-12" width="64" height="16" rx="8" fill="#1e293b" stroke="#1b1024" stroke-width="4"/>
+        <line x1="-22" y1="-4" x2="22" y2="-4" stroke="#f472b6" stroke-width="4.5" stroke-linecap="round"/>
+        <circle cx="-46" cy="14" r="8" fill="#0f172a" stroke="#22d3ee" stroke-width="3"/>
+        <circle cx="46" cy="14" r="8" fill="#0f172a" stroke="#f472b6" stroke-width="3"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_city') {
+    hatSvg = `
+      <g transform="translate(170, 64)">
+        <path d="M-36,14 C-34,-18 34,-18 36,14 Z" fill="#2563eb" stroke="#1b1024" stroke-width="4.8"/>
+        <path d="M10,12 L52,18 C50,24 22,22 0,16 Z" fill="#1d4ed8" stroke="#1b1024" stroke-width="4.5" stroke-linejoin="round"/>
+        <circle cx="0" cy="-12" r="4.5" fill="#facc15" stroke="#1b1024" stroke-width="2.5"/>
+        <rect x="-12" y="-4" width="22" height="12" rx="4" fill="#facc15" stroke="#1b1024" stroke-width="2.5"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_marvel') {
+    hatSvg = `
+      <g transform="translate(170, 62)">
+        <path d="M-40,18 C-38,-20 38,-20 40,18 Q0,8 -40,18 Z" fill="#dc2626" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+        <path d="M-16,12 L-12,-14 L12,-14 L16,12 Z" fill="#facc15" stroke="#1b1024" stroke-width="3.5" stroke-linejoin="round"/>
+        <polygon points="0,-9 3,-2 10,-2 4,2 6,9 0,5 -6,9 -4,2 -10,-2 -3,-2" fill="#ffffff" stroke="#1b1024" stroke-width="2"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_dc') {
+    hatSvg = `
+      <g transform="translate(170, 66)">
+        <path d="M-42,18 L-48,-24 L-22,2 C-8,-4 8,-4 22,2 L48,-24 L42,18 Q0,8 -42,18 Z" fill="#1e293b" stroke="#0f172a" stroke-width="4.8" stroke-linejoin="round"/>
+        <path d="M-22,6 L-8,10 M22,6 L8,10" stroke="#94a3b8" stroke-width="3.5" stroke-linecap="round"/>
+        <ellipse cx="0" cy="0" rx="12" ry="7" fill="#facc15" stroke="#1b1024" stroke-width="2.5"/>
+        <path d="M-7,1 Q0,-4 7,1 Q2,3 0,0 Q-2,3 -7,1 Z" fill="#0f172a"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_halloween') {
+    hatSvg = `
+      <g transform="translate(170, 60)">
+        <path d="M-5,-20 Q0,-34 7,-26" fill="none" stroke="#15803d" stroke-width="6" stroke-linecap="round"/>
+        <ellipse cx="0" cy="4" rx="36" ry="22" fill="#f97316" stroke="#1b1024" stroke-width="4.8"/>
+        <ellipse cx="0" cy="4" rx="18" ry="22" fill="#fb923c" stroke="#1b1024" stroke-width="3"/>
+        <polygon points="-16,-2 -10,-9 -5,-2" fill="#fef08a"/>
+        <polygon points="16,-2 10,-9 5,-2" fill="#fef08a"/>
+        <path d="M-12,8 Q0,16 12,8" fill="none" stroke="#fef08a" stroke-width="4" stroke-linecap="round"/>
+      </g>
+    `;
+  } else if (equipped.hat === 'hat_natal') {
+    hatSvg = `
+      <g transform="translate(170, 60)">
+        <path d="M-34,14 C-28,-24 8,-34 32,-18 C38,-14 42,-2 44,4 C28,2 22,8 28,14 Z" fill="#dc2626" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+        <rect x="-38" y="8" width="76" height="16" rx="8" fill="#ffffff" stroke="#1b1024" stroke-width="4.5"/>
+        <circle cx="44" cy="4" r="10" fill="#ffffff" stroke="#1b1024" stroke-width="4"/>
+      </g>
+    `;
   }
 
   let backCapeSvg = '';
@@ -171,6 +248,40 @@ export function renderMiauSvg(
         <path d="M-46,-2 Q0,14 46,-2" fill="none" stroke="#1b1024" stroke-width="2.8" stroke-linecap="round"/>
         <circle cx="-18" cy="6" r="7" fill="#facc15" stroke="#1b1024" stroke-width="3"/>
         <circle cx="18" cy="6" r="7" fill="#facc15" stroke="#1b1024" stroke-width="3"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_marvel') {
+    backCapeSvg = `
+      <path d="M114 196 C78 214, 54 244, 62 270 C106 276, 234 276, 278 270 C286 244, 262 214, 226 196 Z" fill="#b91c1c" stroke="#1b1024" stroke-width="5.5" stroke-linejoin="round"/>
+    `;
+    frontClaspSvg = `
+      <g transform="translate(170, 214)">
+        <path d="M-48,-8 Q0,10 48,-8" fill="none" stroke="#facc15" stroke-width="6.5" stroke-linecap="round"/>
+        <circle cx="0" cy="8" r="14" fill="#38bdf8" stroke="#1b1024" stroke-width="4"/>
+        <circle cx="0" cy="8" r="7" fill="#e0f2fe"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_dc') {
+    backCapeSvg = `
+      <path d="M114 196 C78 214, 54 244, 60 270 Q95 256 125 270 Q170 256 215 270 Q245 256 280 270 C286 244, 262 214, 226 196 Z" fill="#0f172a" stroke="#1b1024" stroke-width="5" stroke-linejoin="round"/>
+    `;
+    frontClaspSvg = `
+      <g transform="translate(170, 208)">
+        <path d="M-50,-2 Q0,14 50,-2" fill="none" stroke="#facc15" stroke-width="8" stroke-linecap="round"/>
+        <path d="M-50,-2 Q0,14 50,-2" fill="none" stroke="#1b1024" stroke-width="2.5" stroke-linecap="round"/>
+        <ellipse cx="0" cy="8" rx="14" ry="8" fill="#facc15" stroke="#1b1024" stroke-width="3"/>
+        <path d="M-8,9 Q0,3 8,9 Q2,12 0,8 Q-2,12 -8,9 Z" fill="#0f172a"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_halloween') {
+    backCapeSvg = `
+      <path d="M110 184 L88 158 L124 194 M230 184 L252 158 L216 194" fill="#7c3aed" stroke="#1b1024" stroke-width="4.8" stroke-linejoin="round"/>
+      <path d="M112 194 C78 214, 58 244, 66 268 Q115 254 170 268 Q225 254 274 268 C282 244, 262 214, 228 194 Z" fill="#4c1d95" stroke="#1b1024" stroke-width="5.2" stroke-linejoin="round"/>
+    `;
+    frontClaspSvg = `
+      <g transform="translate(170, 210)">
+        <path d="M-4,0 L-26,-12 L-22,12 Z M4,0 L26,-12 L22,12 Z" fill="#1e1b4b" stroke="#1b1024" stroke-width="3.8" stroke-linejoin="round"/>
+        <circle cx="0" cy="0" r="6" fill="#dc2626" stroke="#1b1024" stroke-width="3"/>
       </g>
     `;
   }
@@ -209,6 +320,56 @@ export function renderMiauSvg(
         <path d="M-48,-4 Q0,14 48,-4" fill="none" stroke="#1b1024" stroke-width="3.5" stroke-linecap="round"/>
         <circle cx="0" cy="14" r="12" fill="#facc15" stroke="#1b1024" stroke-width="4"/>
         <circle cx="0" cy="17" r="3" fill="#1b1024"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_jurassic') {
+    accSvg = `
+      <g transform="translate(170, 206)">
+        <path d="M-48,-4 Q0,16 48,-4" fill="none" stroke="#78350f" stroke-width="6.5" stroke-linecap="round"/>
+        <polygon points="-12,4 -4,24 2,5" fill="#fef3c7" stroke="#1b1024" stroke-width="3.2" stroke-linejoin="round"/>
+        <polygon points="-2,6 6,26 12,4" fill="#fef3c7" stroke="#1b1024" stroke-width="3.2" stroke-linejoin="round"/>
+        <circle cx="0" cy="7" r="4" fill="#65a30d" stroke="#1b1024" stroke-width="2.5"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_hogwarts') {
+    accSvg = `
+      <g>
+        <g transform="translate(170, 144)">
+          <circle cx="-33" cy="0" r="16" fill="none" stroke="#1b1024" stroke-width="4"/>
+          <circle cx="33" cy="0" r="16" fill="none" stroke="#1b1024" stroke-width="4"/>
+          <line x1="-17" y1="-2" x2="17" y2="-2" stroke="#1b1024" stroke-width="4"/>
+        </g>
+        <g transform="translate(170, 206)">
+          <path d="M-54,-6 Q0,14 54,-6 Q58,12 46,16 Q0,28 -46,16 Q-58,12 -54,-6 Z" fill="#b91c1c" stroke="#1b1024" stroke-width="4.5" stroke-linejoin="round"/>
+          <rect x="14" y="10" width="22" height="32" rx="8" fill="#dc2626" stroke="#1b1024" stroke-width="4.5"/>
+          <line x1="17" y1="20" x2="33" y2="20" stroke="#facc15" stroke-width="4.5"/>
+          <line x1="17" y1="30" x2="33" y2="30" stroke="#facc15" stroke-width="4.5"/>
+        </g>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_cyberpunk') {
+    accSvg = `
+      <g transform="translate(170, 144)">
+        <path d="M-52,-12 L52,-12 L46,12 L10,12 L0,4 L-10,12 L-46,12 Z" fill="rgba(6, 182, 212, 0.72)" stroke="#1b1024" stroke-width="4" stroke-linejoin="round"/>
+        <line x1="-38" y1="-3" x2="-12" y2="-3" stroke="#f472b6" stroke-width="4" stroke-linecap="round"/>
+        <line x1="12" y1="-3" x2="38" y2="-3" stroke="#fef08a" stroke-width="4" stroke-linecap="round"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_city') {
+    accSvg = `
+      <g transform="translate(170, 206)">
+        <path d="M-54,-10 Q0,16 54,-10" fill="none" stroke="#4f46e5" stroke-width="7.5" stroke-linecap="round"/>
+        <rect x="-60" y="-22" width="16" height="24" rx="7" fill="#22d3ee" stroke="#1b1024" stroke-width="3.8"/>
+        <rect x="44" y="-22" width="16" height="24" rx="7" fill="#22d3ee" stroke="#1b1024" stroke-width="3.8"/>
+      </g>
+    `;
+  } else if (equipped.accessory === 'acc_natal') {
+    accSvg = `
+      <g transform="translate(170, 208)">
+        <path d="M-48,-4 Q0,14 48,-4" fill="none" stroke="#16a34a" stroke-width="10" stroke-linecap="round"/>
+        <path d="M-4,2 L-24,-10 L-20,10 Z M4,2 L24,-10 L20,10 Z" fill="#dc2626" stroke="#1b1024" stroke-width="3.5" stroke-linejoin="round"/>
+        <circle cx="0" cy="8" r="10" fill="#facc15" stroke="#1b1024" stroke-width="3.8"/>
+        <circle cx="0" cy="11" r="2.5" fill="#1b1024"/>
       </g>
     `;
   }

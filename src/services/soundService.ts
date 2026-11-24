@@ -1,7 +1,10 @@
 class SoundService {
   private ctx: AudioContext | null = null;
   private activeAudio: HTMLAudioElement | null = null;
+  private activeBufferSource: AudioBufferSourceNode | null = null;
   private mediaRecorder: MediaRecorder | null = null;
+  private activeRecStream: MediaStream | null = null;
+  private recordingStartSeq = 0;
   private recordedChunks: Blob[] = [];
   private recCtx: AudioContext | null = null;
   private recAnalyser: AnalyserNode | null = null;
@@ -22,12 +25,44 @@ class SoundService {
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      void this.ctx.resume();
+      void this.ctx.resume().catch(() => {});
     }
     return this.ctx;
   }
 
+  /**
+   * Deve ser chamado de forma síncrona dentro de eventos de clique/toque/submit
+   * para manter a permissão de áudio ativa no Android Chrome e iOS Safari após fetches.
+   */
+  public unlockAudio(): void {
+    if (!this.enabled || typeof window === 'undefined') return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      if (ctx.state === 'suspended') {
+        void ctx.resume().catch(() => {});
+      }
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.connect(ctx.destination);
+      src.start(0);
+    } catch {
+      // Ignore unlock failures
+    }
+  }
+
   public stopAllAudio(): void {
+    if (this.activeBufferSource) {
+      try {
+        this.activeBufferSource.onended = null;
+        this.activeBufferSource.stop();
+        this.activeBufferSource.disconnect();
+      } catch {
+        // Ignore buffer stop error
+      }
+      this.activeBufferSource = null;
+    }
     if (this.activeAudio) {
       try {
         this.activeAudio.onplay = null;
@@ -183,6 +218,52 @@ class SoundService {
     });
   }
 
+  private base64ToArrayBuffer(base64: string): ArrayBuffer {
+    const clean = base64.replace(/\s+/g, '');
+    const binary = window.atob(clean);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  private async playViaWebAudio(
+    arrayBuffer: ArrayBuffer,
+    onStart?: () => void,
+    onEnd?: () => void,
+    playbackRate = 1
+  ): Promise<boolean> {
+    const ctx = this.getContext();
+    if (!ctx) return false;
+    try {
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+      const decoded = await ctx.decodeAudioData(arrayBuffer.slice(0));
+      if (!this.enabled) return false;
+      const src = ctx.createBufferSource();
+      src.buffer = decoded;
+      src.playbackRate.value = Math.max(0.5, Math.min(1.5, playbackRate));
+      src.connect(ctx.destination);
+      this.activeBufferSource = src;
+      onStart?.();
+      await new Promise<void>((resolve) => {
+        src.onended = () => {
+          if (this.activeBufferSource === src) {
+            this.activeBufferSource = null;
+          }
+          onEnd?.();
+          resolve();
+        };
+        src.start(0);
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async playBase64Wav(
     base64Audio: string,
     mimeType = 'audio/wav',
@@ -195,6 +276,19 @@ class SoundService {
       return;
     }
     this.stopAllAudio();
+
+    try {
+      const ab = this.base64ToArrayBuffer(base64Audio);
+      const played = await this.playViaWebAudio(ab, onStart, onEnd, playbackRate);
+      if (played) return;
+    } catch {
+      // Fallback to HTMLAudioElement below
+    }
+
+    if (!this.enabled) {
+      onEnd?.();
+      return;
+    }
     const audio = new Audio(`data:${mimeType};base64,${base64Audio}`);
     if (playbackRate !== 1) {
       audio.preservesPitch = true;
@@ -225,6 +319,38 @@ class SoundService {
     await audio.play();
   }
 
+  async playAudioDataUrl(
+    dataUrl: string,
+    onStart?: () => void,
+    onEnd?: () => void
+  ): Promise<void> {
+    if (!this.enabled || !dataUrl) {
+      onEnd?.();
+      return;
+    }
+    this.stopAllAudio();
+    const commaIdx = dataUrl.indexOf(',');
+    if (commaIdx > 0) {
+      const header = dataUrl.slice(5, commaIdx);
+      const mimeType = header.split(';')[0] || 'audio/webm';
+      const base64 = dataUrl.slice(commaIdx + 1);
+      await this.playBase64Wav(base64, mimeType, onStart, onEnd, 1);
+      return;
+    }
+    const audio = new Audio(dataUrl);
+    this.activeAudio = audio;
+    audio.onplay = () => onStart?.();
+    audio.onended = () => {
+      if (this.activeAudio === audio) this.activeAudio = null;
+      onEnd?.();
+    };
+    audio.onerror = () => {
+      if (this.activeAudio === audio) this.activeAudio = null;
+      onEnd?.();
+    };
+    await audio.play();
+  }
+
   private pickRecordingMimeType(): string {
     const candidates = [
       'audio/webm;codecs=opus',
@@ -252,7 +378,34 @@ class SoundService {
     }
   }
 
+  public cancelRecording(): void {
+    this.recordingStartSeq += 1;
+    this.cleanupRecordingAnalyser();
+    if (this.mediaRecorder) {
+      try {
+        this.mediaRecorder.ondataavailable = null;
+        this.mediaRecorder.onstop = null;
+        if (this.mediaRecorder.state !== 'inactive') {
+          this.mediaRecorder.stop();
+        }
+      } catch {
+        // Ignore stop errors
+      }
+      this.mediaRecorder = null;
+    }
+    if (this.activeRecStream) {
+      this.activeRecStream.getTracks().forEach((t) => t.stop());
+      this.activeRecStream = null;
+    }
+    this.recordedChunks = [];
+  }
+
+  public isRecordingActive(): boolean {
+    return Boolean(this.mediaRecorder && this.mediaRecorder.state !== 'inactive');
+  }
+
   async startRecording(): Promise<void> {
+    const seq = ++this.recordingStartSeq;
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,
@@ -262,6 +415,12 @@ class SoundService {
         sampleRate: { ideal: 16000 },
       },
     });
+    if (seq !== this.recordingStartSeq) {
+      stream.getTracks().forEach((t) => t.stop());
+      throw new Error('Gravação cancelada antes de iniciar.');
+    }
+
+    this.activeRecStream = stream;
     this.recordedChunks = [];
     this.recPeakRms = 0;
     this.recStartedAt = Date.now();
@@ -313,11 +472,12 @@ class SoundService {
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.recordedChunks.push(e.data);
     };
-    recorder.start(120);
+    recorder.start(100);
   }
 
   async stopRecording(): Promise<{
     audioBase64: string;
+    dataUrl: string;
     mimeType: string;
     durationMs: number;
     peakRms: number;
@@ -326,8 +486,8 @@ class SoundService {
     if (!recorder) {
       throw new Error('Nenhuma gravação ativa.');
     }
-    // Brief tail buffer so tapping Stop doesn't clip the final syllable
-    await new Promise((r) => window.setTimeout(r, 140));
+    // Brief tail buffer so releasing doesn't clip the final syllable
+    await new Promise((r) => window.setTimeout(r, 120));
     const durationMs = Math.max(0, Date.now() - this.recStartedAt);
     const peakRms = this.recPeakRms;
     this.cleanupRecordingAnalyser();
@@ -338,6 +498,7 @@ class SoundService {
         const cleanMime = rawMime.split(';')[0].trim() || 'audio/webm';
         const blob = new Blob(this.recordedChunks, { type: rawMime });
         recorder.stream.getTracks().forEach((t) => t.stop());
+        this.activeRecStream = null;
         this.mediaRecorder = null;
         const reader = new FileReader();
         reader.onloadend = () => {
@@ -345,6 +506,7 @@ class SoundService {
           const base64 = dataUrl.split(',')[1] || '';
           resolve({
             audioBase64: base64,
+            dataUrl,
             mimeType: cleanMime,
             durationMs,
             peakRms,

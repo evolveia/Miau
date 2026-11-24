@@ -173,6 +173,9 @@ export interface ChatMessage {
   text: string;
   mood: MiauMood;
   createdAtMs: number;
+  /** Mantido apenas localmente para reproduzir áudios gravados sem enviar campos extras ao Firestore. */
+  audioDataUrl?: string;
+  audioDurationMs?: number;
 }
 
 export interface ChatTemporalContext {
