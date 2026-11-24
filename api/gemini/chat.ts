@@ -1,8 +1,13 @@
 import { Type } from '@google/genai';
 import {
+  MINOR_REFUSAL_TEXT,
+  buildMinorSafetyInstruction,
   getAIClient,
+  getMinorStrictSafetySettings,
   getRecommendedThinkingLevel,
   handleCorsAndMethod,
+  isMinorAge,
+  isUnsafeTopicForMinor,
   readJsonBody,
   runWithModelFallback,
   sendGeminiRouteError,
@@ -78,6 +83,11 @@ function buildMiauSystemInstruction(context?: {
     }
   }
 
+  const minorRule = buildMinorSafetyInstruction(u?.age);
+  if (minorRule) {
+    lines.push(minorRule);
+  }
+
   lines.push(
     `Responda sempre de forma direta, atenciosa e acolhedora ao que o tutor perguntou ou compartilhou, sem fugir do assunto e sem ser repetitivo. Demonstre interesse genuíno pelo bem-estar do tutor e NUNCA fique insistindo para jogar bolinha se o assunto for outro. Se alguma métrica do pet estiver < 30%, mencione com muita suavidade apenas se couber naturalmente no assunto.`,
     `Retorne JSON: "meowPrefix" (ex: "Miau!", "Purrr~"), "text" (fala entre parênteses, ex: "(Oi! Como você está se sentindo hoje?)") e "mood" (happy|playful|hungry|sleepy|affectionate).`
@@ -125,6 +135,17 @@ export default async function handler(
       return;
     }
 
+    const isMinor = isMinorAge(userContext?.age);
+    if (isMinor && isUnsafeTopicForMinor(message)) {
+      sendJson(res, 200, {
+        meowPrefix: 'Miau!',
+        text: MINOR_REFUSAL_TEXT,
+        mood: 'happy',
+        safetyFiltered: true,
+      });
+      return;
+    }
+
     const ai = getAIClient();
     const contents = [
       ...history
@@ -149,6 +170,7 @@ export default async function handler(
               temporalContext,
               userContext,
             }),
+            ...(isMinor ? { safetySettings: getMinorStrictSafetySettings() } : {}),
             thinkingConfig: {
               thinkingLevel: getRecommendedThinkingLevel(model),
             },
@@ -176,8 +198,37 @@ export default async function handler(
         })
       );
 
+    const finishReason = String(response.candidates?.[0]?.finishReason || '');
+    if (
+      isMinor &&
+      (finishReason === 'SAFETY' ||
+        finishReason === 'PROHIBITED_CONTENT' ||
+        finishReason === 'BLOCKLIST')
+    ) {
+      sendJson(res, 200, {
+        meowPrefix: 'Miau!',
+        text: MINOR_REFUSAL_TEXT,
+        mood: 'happy',
+        modelUsed,
+        fallbackActive,
+        safetyFiltered: true,
+      });
+      return;
+    }
+
     const raw = response.text?.trim();
     if (!raw) {
+      if (isMinor) {
+        sendJson(res, 200, {
+          meowPrefix: 'Miau!',
+          text: MINOR_REFUSAL_TEXT,
+          mood: 'happy',
+          modelUsed,
+          fallbackActive,
+          safetyFiltered: true,
+        });
+        return;
+      }
       sendJson(res, 502, { error: 'Gemini não retornou resposta.' });
       return;
     }
@@ -187,9 +238,21 @@ export default async function handler(
       text?: string;
       mood?: string;
     };
+    const replyText = parsed.text || '(Oi, humano!)';
+    if (isMinor && isUnsafeTopicForMinor(replyText)) {
+      sendJson(res, 200, {
+        meowPrefix: 'Miau!',
+        text: MINOR_REFUSAL_TEXT,
+        mood: 'happy',
+        modelUsed,
+        fallbackActive,
+        safetyFiltered: true,
+      });
+      return;
+    }
     sendJson(res, 200, {
       meowPrefix: parsed.meowPrefix || 'Miau!',
-      text: parsed.text || '(Oi, humano!)',
+      text: replyText,
       mood: parsed.mood || 'happy',
       modelUsed,
       fallbackActive,

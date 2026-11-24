@@ -11,6 +11,68 @@ import {
 
 const WRITING_STORAGE_PREFIX = 'miau_writing_v1_';
 
+export const WRITING_DAILY_GOAL = 3;
+export const WRITING_DAILY_BONUS = { coins: 50, xp: 40 };
+export const WRITING_FIRST_LETTER_BONUS = { coins: 15, xp: 15 };
+export const TRACKED_WRITING_WORDS: ReadonlyArray<string> = [
+  'EI',
+  'OI',
+  'OVO',
+  'UVA',
+  'AI',
+  'AU',
+  'UI',
+  'LUA',
+  'SOL',
+  'MIAU',
+];
+
+export interface WritingMedalDef {
+  id: string;
+  emoji: string;
+  title: string;
+  description: string;
+}
+
+export const WRITING_MEDALS: ReadonlyArray<WritingMedalDef> = [
+  {
+    id: 'medal_first_letter',
+    emoji: '🥉',
+    title: 'Primeira Letrinha',
+    description: 'Completou sua primeira letra escrita com o dedo!',
+  },
+  {
+    id: 'medal_daily_habit',
+    emoji: '🔥',
+    title: 'Hábito Diário',
+    description: 'Bateu a meta diária de 3 letras ou palavras hoje!',
+  },
+  {
+    id: 'medal_vowels_5',
+    emoji: '🥇',
+    title: 'Mestre das Vogais',
+    description: 'Completou todas as 5 vogais (A, E, I, O e U)!',
+  },
+  {
+    id: 'medal_gold_3stars',
+    emoji: '💎',
+    title: 'Traço de Ouro',
+    description: 'Conquistou 3 estrelas perfeitas em uma letra!',
+  },
+  {
+    id: 'medal_streak_3',
+    emoji: '🌟',
+    title: 'Estudante Fiel',
+    description: 'Manteve uma sequência de 3 dias seguidos!',
+  },
+  {
+    id: 'medal_words_hero',
+    emoji: '🏆',
+    title: 'Pequeno Escritor',
+    description: 'Escreveu pelo menos 3 palavras fáceis!',
+  },
+];
+
 export interface CanvasPoint {
   x: number;
   y: number;
@@ -51,28 +113,84 @@ export interface WritingProgress {
   unitBestStars: Record<string, number>;
   totalStars: number;
   streakDays: number;
+  bestStreakDays: number;
   lastStudyDateKey: string;
   masteredVowels: Array<'A' | 'E' | 'I' | 'O' | 'U'>;
   masteredTargets: string[];
+  letterBestStars: Record<string, number>;
+  dailyGoalTarget: number;
+  dailyDateKey: string;
+  dailyStepsCount: number;
+  dailyCompletedTargets: string[];
+  dailyBonusClaimedDateKey: string;
+  unlockedMedals: string[];
   freeExploreUnlocked: boolean;
   totalPracticesCompleted: number;
+}
+
+export interface WritingStepRewardOutcome {
+  progress: WritingProgress;
+  isNewLetterMastered: boolean;
+  dailyGoalJustCompleted: boolean;
+  newlyUnlockedMedals: WritingMedalDef[];
+  bonusCoins: number;
+  bonusXp: number;
 }
 
 export function createDefaultWritingProgress(
   ownerId = 'guest'
 ): WritingProgress {
+  const todayKey = getTodayDateKey();
   return {
     ownerId,
     completedUnits: [],
     unitBestStars: {},
     totalStars: 0,
     streakDays: 0,
+    bestStreakDays: 0,
     lastStudyDateKey: '',
     masteredVowels: [],
     masteredTargets: [],
+    letterBestStars: {},
+    dailyGoalTarget: WRITING_DAILY_GOAL,
+    dailyDateKey: todayKey,
+    dailyStepsCount: 0,
+    dailyCompletedTargets: [],
+    dailyBonusClaimedDateKey: '',
+    unlockedMedals: [],
     freeExploreUnlocked: false,
     totalPracticesCompleted: 0,
   };
+}
+
+function getPreviousDateKey(dateKey: string): string {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  if (!y || !m || !d) return '';
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() - 1);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+}
+
+function syncWritingDailyWindow(progress: WritingProgress): WritingProgress {
+  const todayKey = getTodayDateKey();
+  const prevDayKey = getPreviousDateKey(todayKey);
+  const next = { ...progress };
+
+  if (next.dailyDateKey !== todayKey) {
+    next.dailyDateKey = todayKey;
+    next.dailyStepsCount = 0;
+    next.dailyCompletedTargets = [];
+  }
+
+  // Keep streak alive only if practiced today or yesterday
+  if (
+    next.lastStudyDateKey &&
+    next.lastStudyDateKey !== todayKey &&
+    next.lastStudyDateKey !== prevDayKey
+  ) {
+    next.streakDays = 0;
+  }
+  return next;
 }
 
 export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
@@ -81,7 +199,7 @@ export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
     const raw = localStorage.getItem(`${WRITING_STORAGE_PREFIX}${safeId}`);
     if (!raw) return createDefaultWritingProgress(safeId);
     const parsed = JSON.parse(raw) as Partial<WritingProgress>;
-    return {
+    const hydrated: WritingProgress = {
       ...createDefaultWritingProgress(safeId),
       ...parsed,
       ownerId: safeId,
@@ -95,7 +213,26 @@ export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
       masteredTargets: Array.isArray(parsed.masteredTargets)
         ? parsed.masteredTargets
         : [],
+      letterBestStars: parsed.letterBestStars ?? {},
+      dailyGoalTarget: WRITING_DAILY_GOAL,
+      dailyCompletedTargets: Array.isArray(parsed.dailyCompletedTargets)
+        ? parsed.dailyCompletedTargets
+        : [],
+      unlockedMedals: Array.isArray(parsed.unlockedMedals)
+        ? parsed.unlockedMedals
+        : [],
+      bestStreakDays: Math.max(
+        parsed.bestStreakDays ?? 0,
+        parsed.streakDays ?? 0
+      ),
     };
+    // Backfill letterBestStars for legacy saved masteredTargets
+    for (const target of hydrated.masteredTargets) {
+      if (!hydrated.letterBestStars[target]) {
+        hydrated.letterBestStars[target] = 2;
+      }
+    }
+    return syncWritingDailyWindow(hydrated);
   } catch {
     return createDefaultWritingProgress(safeId);
   }
@@ -112,14 +249,6 @@ export function saveWritingProgress(progress: WritingProgress): void {
   }
 }
 
-function getPreviousDateKey(dateKey: string): string {
-  const [y, m, d] = dateKey.split('-').map(Number);
-  if (!y || !m || !d) return '';
-  const dt = new Date(y, m - 1, d);
-  dt.setDate(dt.getDate() - 1);
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-}
-
 export function isWritingUnitUnlocked(
   progress: WritingProgress,
   unitIndex: number
@@ -130,19 +259,76 @@ export function isWritingUnitUnlocked(
   return progress.completedUnits.includes(prev.id);
 }
 
+function evaluateWritingMedals(progress: WritingProgress): string[] {
+  const earned = new Set(progress.unlockedMedals);
+  if (
+    progress.masteredTargets.length >= 1 ||
+    progress.totalPracticesCompleted >= 1
+  ) {
+    earned.add('medal_first_letter');
+  }
+  if (progress.dailyBonusClaimedDateKey === getTodayDateKey() || progress.dailyStepsCount >= progress.dailyGoalTarget) {
+    earned.add('medal_daily_habit');
+  }
+  if (
+    TRACKED_WRITING_VOWELS.every((v) => progress.masteredVowels.includes(v))
+  ) {
+    earned.add('medal_vowels_5');
+  }
+  if (
+    Object.values(progress.letterBestStars).some((stars) => stars >= 3) ||
+    Object.values(progress.unitBestStars).some((stars) => stars >= 3)
+  ) {
+    earned.add('medal_gold_3stars');
+  }
+  if (progress.streakDays >= 3 || progress.bestStreakDays >= 3) {
+    earned.add('medal_streak_3');
+  }
+  const wordsCompleted = TRACKED_WRITING_WORDS.filter((w) =>
+    progress.masteredTargets.includes(w)
+  ).length;
+  if (wordsCompleted >= 3) {
+    earned.add('medal_words_hero');
+  }
+  return Array.from(earned);
+}
+
+export function getWritingLetterStarsTotal(progress: WritingProgress): number {
+  return Object.values(progress.letterBestStars).reduce((a, b) => a + b, 0);
+}
+
 export function recordWritingStepSolved(
   progress: WritingProgress,
-  challenge: WritingChallenge
-): WritingProgress {
+  challenge: WritingChallenge,
+  starsEarned = 2
+): WritingStepRewardOutcome {
+  const synced = syncWritingDailyWindow(progress);
+  const todayKey = getTodayDateKey();
+  const prevDayKey = getPreviousDateKey(todayKey);
+  const clampedStars = Math.max(1, Math.min(3, Math.round(starsEarned)));
+
   const next: WritingProgress = {
-    ...progress,
-    masteredVowels: [...progress.masteredVowels],
-    masteredTargets: [...progress.masteredTargets],
+    ...synced,
+    masteredVowels: [...synced.masteredVowels],
+    masteredTargets: [...synced.masteredTargets],
+    letterBestStars: { ...synced.letterBestStars },
+    dailyCompletedTargets: [...synced.dailyCompletedTargets],
+    unlockedMedals: [...synced.unlockedMedals],
   };
 
-  if (!next.masteredTargets.includes(challenge.targetText)) {
+  const isNewLetterMastered = !next.masteredTargets.includes(
+    challenge.targetText
+  );
+  if (isNewLetterMastered) {
     next.masteredTargets.push(challenge.targetText);
   }
+
+  const prevTargetStars = next.letterBestStars[challenge.targetText] ?? 0;
+  next.letterBestStars[challenge.targetText] = Math.max(
+    prevTargetStars,
+    clampedStars
+  );
+
   if (
     challenge.vowelTag &&
     TRACKED_WRITING_VOWELS.includes(challenge.vowelTag) &&
@@ -150,9 +336,58 @@ export function recordWritingStepSolved(
   ) {
     next.masteredVowels.push(challenge.vowelTag);
   }
+
+  // Update daily routine and study streak on every completed letter trace
+  if (next.lastStudyDateKey === todayKey) {
+    next.streakDays = Math.max(1, next.streakDays);
+  } else if (next.lastStudyDateKey === prevDayKey) {
+    next.streakDays = next.streakDays + 1;
+  } else {
+    next.streakDays = 1;
+  }
+  next.bestStreakDays = Math.max(next.bestStreakDays, next.streakDays);
+  next.lastStudyDateKey = todayKey;
+
+  next.dailyDateKey = todayKey;
+  next.dailyStepsCount += 1;
+  if (!next.dailyCompletedTargets.includes(challenge.targetText)) {
+    next.dailyCompletedTargets.push(challenge.targetText);
+  }
   next.totalPracticesCompleted += 1;
+
+  let bonusCoins = 0;
+  let bonusXp = 0;
+  if (isNewLetterMastered) {
+    bonusCoins += WRITING_FIRST_LETTER_BONUS.coins;
+    bonusXp += WRITING_FIRST_LETTER_BONUS.xp;
+  }
+
+  let dailyGoalJustCompleted = false;
+  if (
+    next.dailyStepsCount >= next.dailyGoalTarget &&
+    next.dailyBonusClaimedDateKey !== todayKey
+  ) {
+    next.dailyBonusClaimedDateKey = todayKey;
+    dailyGoalJustCompleted = true;
+    bonusCoins += WRITING_DAILY_BONUS.coins;
+    bonusXp += WRITING_DAILY_BONUS.xp;
+  }
+
+  const prevMedalSet = new Set(next.unlockedMedals);
+  next.unlockedMedals = evaluateWritingMedals(next);
+  const newlyUnlockedMedals = WRITING_MEDALS.filter(
+    (m) => next.unlockedMedals.includes(m.id) && !prevMedalSet.has(m.id)
+  );
+
   saveWritingProgress(next);
-  return next;
+  return {
+    progress: next,
+    isNewLetterMastered,
+    dailyGoalJustCompleted,
+    newlyUnlockedMedals,
+    bonusCoins,
+    bonusXp,
+  };
 }
 
 export function completeWritingUnit(
@@ -160,37 +395,40 @@ export function completeWritingUnit(
   unitId: string,
   starsEarned: number
 ): WritingProgress {
+  const synced = syncWritingDailyWindow(progress);
   const clampedStars = Math.max(1, Math.min(3, starsEarned));
   const todayKey = getTodayDateKey();
   const prevDayKey = getPreviousDateKey(todayKey);
 
-  let nextStreak = progress.streakDays;
-  if (progress.lastStudyDateKey === todayKey) {
-    nextStreak = Math.max(1, progress.streakDays);
-  } else if (progress.lastStudyDateKey === prevDayKey) {
-    nextStreak = progress.streakDays + 1;
+  let nextStreak = synced.streakDays;
+  if (synced.lastStudyDateKey === todayKey) {
+    nextStreak = Math.max(1, synced.streakDays);
+  } else if (synced.lastStudyDateKey === prevDayKey) {
+    nextStreak = synced.streakDays + 1;
   } else {
     nextStreak = 1;
   }
 
-  const completedUnits = progress.completedUnits.includes(unitId)
-    ? [...progress.completedUnits]
-    : [...progress.completedUnits, unitId];
-  const prevStars = progress.unitBestStars[unitId] ?? 0;
+  const completedUnits = synced.completedUnits.includes(unitId)
+    ? [...synced.completedUnits]
+    : [...synced.completedUnits, unitId];
+  const prevStars = synced.unitBestStars[unitId] ?? 0;
   const unitBestStars = {
-    ...progress.unitBestStars,
+    ...synced.unitBestStars,
     [unitId]: Math.max(prevStars, clampedStars),
   };
   const totalStars = Object.values(unitBestStars).reduce((a, b) => a + b, 0);
 
   const updated: WritingProgress = {
-    ...progress,
+    ...synced,
     completedUnits,
     unitBestStars,
     totalStars,
     streakDays: nextStreak,
+    bestStreakDays: Math.max(synced.bestStreakDays, nextStreak),
     lastStudyDateKey: todayKey,
   };
+  updated.unlockedMedals = evaluateWritingMedals(updated);
   saveWritingProgress(updated);
   return updated;
 }

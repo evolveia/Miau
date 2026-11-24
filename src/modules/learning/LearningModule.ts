@@ -1392,8 +1392,22 @@ export class LearningModuleController {
       lesson.voiceStatusText = 'Ouvindo e comparando sua pronúncia...';
       this.deps.onRequestRerender();
       try {
-        const { audioBase64, mimeType } = await soundService.stopRecording();
-        const transcript = await transcribeUserAudio(audioBase64, mimeType);
+        const { audioBase64, mimeType, durationMs, peakRms } =
+          await soundService.stopRecording();
+        const expectedPhrase =
+          ch.speakTargetText || ch.speakVisualLabel || ch.keywords[0] || ch.targetKey;
+        const transcript =
+          durationMs < 240 || peakRms < 0.0025
+            ? ''
+            : await transcribeUserAudio(audioBase64, mimeType, {
+                mode: 'study',
+                expectedPhrase,
+                hintKeywords: [
+                  expectedPhrase,
+                  ...(ch.speakAcceptedVariants || []),
+                  ...ch.keywords,
+                ],
+              });
         const comparison = evaluateReadingAttempt(transcript, ch);
 
         lesson.isComparingVoice = false;

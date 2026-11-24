@@ -69,6 +69,15 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
       statusLabel: 'Disponível agora • Toque para escrever',
     },
     {
+      id: 'infantil_consoantes',
+      title: 'As Consoantes',
+      description: 'Todas as 21 consoantes do B ao Z em ordem alfabética com método fônico, sílabas iniciais, rimas e voz do Miau.',
+      emoji: '🧩',
+      tags: ['Ordem Alfabética', 'B ao Z', '7 Unidades'],
+      accentBg: 'from-violet-100 to-fuchsia-100',
+      statusLabel: 'Disponível agora • Toque para aprender',
+    },
+    {
       id: 'infantil_cores_numeros',
       title: 'Cores, Formas & Contagem',
       description: 'Brincadeiras guiadas para contar até 20 com peixinhos e estrelinhas.',

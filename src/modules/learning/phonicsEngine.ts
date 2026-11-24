@@ -272,12 +272,28 @@ function collapseElongatedChars(text: string): string {
   return text.replace(/(.)\1{2,}/g, '$1$1').replace(/\b([aeiou])\1+\b/g, '$1');
 }
 
-function toPtPhoneticSkeleton(raw: string): string {
-  let s = collapseElongatedChars(normalizePt(raw));
-  s = s
-    .replace(/\b(eu falei|eu disse|e|eh|a palavra)\b/g, ' ')
+function stripSpokenWrapperPhrases(norm: string, targetNorm: string): string {
+  if (norm === targetNorm) return norm;
+  const stripped = norm
+    .replace(/\b(eu falei|eu disse|a palavra|a letra|e a letra|eh a letra|letra)\b/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+  return stripped || norm;
+}
+
+const PT_VOWEL_ALIASES: Record<string, string[]> = {
+  a: ['a', 'ah', 'aa', 'ha', 'an'],
+  e: ['e', 'eh', 'ee', 'he'],
+  i: ['i', 'ih', 'ii', 'hi', 'y'],
+  o: ['o', 'oh', 'oo', 'ho'],
+  u: ['u', 'uh', 'uu', 'hu'],
+};
+
+function toPtPhoneticSkeleton(raw: string, targetRaw = ''): string {
+  const norm = collapseElongatedChars(normalizePt(raw));
+  const targetNorm = collapseElongatedChars(normalizePt(targetRaw));
+  let s = stripSpokenWrapperPhrases(norm, targetNorm);
+
   // Common Brazilian Portuguese allophones and child speech variations
   s = s
     .replace(/qu([ei])/g, 'k$1')
@@ -287,20 +303,18 @@ function toPtPhoneticSkeleton(raw: string): string {
     .replace(/ç/g, 's')
     .replace(/ss/g, 's')
     .replace(/ch/g, 'x')
+    .replace(/rr/g, 'r')
     .replace(/lh/g, 'li')
     .replace(/nh/g, 'ni')
     .replace(/g([ei])/g, 'j$1')
+    .replace(/\bh([aeiou])\b/g, '$1')
+    .replace(/\b([aeiou])h+\b/g, '$1')
     .replace(/\bh/g, '')
     .replace(/y/g, 'i')
     .replace(/w/g, 'u')
     .replace(/([a-z])l\b/g, '$1u') // e.g., Sol ~ Sou
     .replace(/ou/g, 'o')
     .replace(/ei/g, 'e')
-    .replace(/\bah+\b/g, 'a')
-    .replace(/\beh+\b/g, 'e')
-    .replace(/\bih+\b/g, 'i')
-    .replace(/\boh+\b/g, 'o')
-    .replace(/\buh+\b/g, 'u')
     .replace(/\bmiau+\b/g, 'miau')
     .replace(/\s+/g, ' ')
     .trim();
@@ -340,15 +354,22 @@ function stringSimilarity(a: string, b: string): number {
 }
 
 function computeBestCandidateScore(spokenRaw: string, candidateRaw: string): number {
-  const spokenNorm = collapseElongatedChars(normalizePt(spokenRaw));
+  const rawSpokenNorm = collapseElongatedChars(normalizePt(spokenRaw));
   const targetNorm = collapseElongatedChars(normalizePt(candidateRaw));
+  const spokenNorm = stripSpokenWrapperPhrases(rawSpokenNorm, targetNorm);
   if (!spokenNorm || !targetNorm) return 0;
 
-  if (spokenNorm === targetNorm) return 1;
-  if (spokenNorm.includes(targetNorm)) return 0.96;
+  if (spokenNorm === targetNorm || rawSpokenNorm === targetNorm) return 1;
 
-  const spokenPhon = toPtPhoneticSkeleton(spokenRaw);
-  const targetPhon = toPtPhoneticSkeleton(candidateRaw);
+  const spokenTokensRaw = spokenNorm.split(' ').filter(Boolean);
+  if (targetNorm.length <= 2) {
+    if (spokenTokensRaw.includes(targetNorm)) return 0.96;
+  } else if (spokenNorm.includes(targetNorm)) {
+    return 0.96;
+  }
+
+  const spokenPhon = toPtPhoneticSkeleton(spokenRaw, candidateRaw);
+  const targetPhon = toPtPhoneticSkeleton(candidateRaw, candidateRaw);
   if (spokenPhon && targetPhon && spokenPhon === targetPhon) return 0.95;
 
   const directSim = stringSimilarity(spokenNorm, targetNorm);
@@ -401,10 +422,15 @@ export function evaluateReadingAttempt(
     };
   }
 
-  const candidates = [
-    expectedDisplay,
-    ...(challenge.speakAcceptedVariants || []),
-  ];
+  const baseNorm = normalizePt(expectedDisplay);
+  const vowelAliases = PT_VOWEL_ALIASES[baseNorm] || [];
+  const candidates = Array.from(
+    new Set([
+      expectedDisplay,
+      ...(challenge.speakAcceptedVariants || []),
+      ...vowelAliases,
+    ])
+  );
 
   let bestScore = 0;
   for (const cand of candidates) {
@@ -412,7 +438,7 @@ export function evaluateReadingAttempt(
   }
   const pct = Math.round(bestScore * 100);
 
-  if (pct >= 70) {
+  if (pct >= 68) {
     return {
       verdict: 'positive',
       score: pct,
@@ -527,6 +553,9 @@ class PhonicsAudioEngine {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const res = await synthesizeMiauVoice(cleanText);
+          if (res.textOnlyFallback || !res.audioBase64) {
+            return null;
+          }
           const clip: CachedAudioClip = {
             audioBase64: res.audioBase64,
             mimeType: res.mimeType || 'audio/wav',

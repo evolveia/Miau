@@ -6,6 +6,7 @@ export type SpeakingStateListener = (speaking: boolean) => void;
 class MiauSpeechService {
   private seq = 0;
   private speaking = false;
+  private textOnlyModeUntilMs = 0;
   private listener: SpeakingStateListener | null = null;
 
   public setSpeakingListener(listener: SpeakingStateListener | null): void {
@@ -14,6 +15,10 @@ class MiauSpeechService {
 
   public isSpeaking(): boolean {
     return this.speaking;
+  }
+
+  public isTextOnlyFallbackActive(): boolean {
+    return Date.now() < this.textOnlyModeUntilMs;
   }
 
   private setSpeaking(next: boolean): void {
@@ -58,14 +63,27 @@ class MiauSpeechService {
 
     this.setSpeaking(true);
     try {
-      const { audioBase64, mimeType } = await synthesizeMiauVoice(cleanSpeech);
+      const voiceRes = await synthesizeMiauVoice(cleanSpeech);
       if (reqId !== this.seq || !soundService.enabled) {
         this.setSpeaking(false);
         return;
       }
+
+      if (voiceRes.textOnlyFallback || !voiceRes.audioBase64) {
+        // Audio tokens exhausted across all TTS tiers: stay smoothly in text-only mode
+        // while backend recovery probe restores audio when tokens return.
+        this.textOnlyModeUntilMs = Date.now() + 45_000;
+        this.setSpeaking(false);
+        if (options?.fallbackMeowOnError && soundService.enabled) {
+          soundService.playMeow(options.pitchMultiplier ?? 1.08);
+        }
+        return;
+      }
+
+      this.textOnlyModeUntilMs = 0;
       await soundService.playBase64Wav(
-        audioBase64,
-        mimeType,
+        voiceRes.audioBase64,
+        voiceRes.mimeType || 'audio/wav',
         () => {
           if (reqId === this.seq && soundService.enabled) {
             this.setSpeaking(true);

@@ -3,6 +3,11 @@ class SoundService {
   private activeAudio: HTMLAudioElement | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private recordedChunks: Blob[] = [];
+  private recCtx: AudioContext | null = null;
+  private recAnalyser: AnalyserNode | null = null;
+  private recRafId: number | null = null;
+  private recPeakRms = 0;
+  private recStartedAt = 0;
   public enabled = true;
 
   private getContext(): AudioContext | null {
@@ -220,36 +225,130 @@ class SoundService {
     await audio.play();
   }
 
+  private pickRecordingMimeType(): string {
+    const candidates = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/ogg;codecs=opus',
+      'audio/mp4',
+    ];
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported) {
+      for (const mime of candidates) {
+        if (MediaRecorder.isTypeSupported(mime)) return mime;
+      }
+    }
+    return 'audio/webm';
+  }
+
+  private cleanupRecordingAnalyser(): void {
+    if (this.recRafId !== null) {
+      window.cancelAnimationFrame(this.recRafId);
+      this.recRafId = null;
+    }
+    this.recAnalyser = null;
+    if (this.recCtx) {
+      void this.recCtx.close().catch(() => {});
+      this.recCtx = null;
+    }
+  }
+
   async startRecording(): Promise<void> {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: { ideal: 1 },
+        sampleRate: { ideal: 16000 },
+      },
+    });
     this.recordedChunks = [];
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm')
-      ? 'audio/webm'
-      : 'audio/mp4';
-    const recorder = new MediaRecorder(stream, { mimeType });
+    this.recPeakRms = 0;
+    this.recStartedAt = Date.now();
+
+    // Monitor speech energy so accidental silent taps are detected accurately
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext })
+          .webkitAudioContext;
+      if (AudioCtx) {
+        this.cleanupRecordingAnalyser();
+        const recCtx = new AudioCtx();
+        const source = recCtx.createMediaStreamSource(stream);
+        const analyser = recCtx.createAnalyser();
+        analyser.fftSize = 512;
+        source.connect(analyser);
+        this.recCtx = recCtx;
+        this.recAnalyser = analyser;
+        const buf = new Float32Array(analyser.fftSize);
+        const measure = () => {
+          if (!this.recAnalyser) return;
+          this.recAnalyser.getFloatTimeDomainData(buf);
+          let sumSq = 0;
+          for (let i = 0; i < buf.length; i++) {
+            sumSq += buf[i] * buf[i];
+          }
+          const rms = Math.sqrt(sumSq / buf.length);
+          if (rms > this.recPeakRms) this.recPeakRms = rms;
+          this.recRafId = window.requestAnimationFrame(measure);
+        };
+        this.recRafId = window.requestAnimationFrame(measure);
+      }
+    } catch {
+      // Optional diagnostics only
+    }
+
+    const mimeType = this.pickRecordingMimeType();
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: 64_000,
+      });
+    } catch {
+      recorder = new MediaRecorder(stream, { mimeType });
+    }
     this.mediaRecorder = recorder;
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) this.recordedChunks.push(e.data);
     };
-    recorder.start();
+    recorder.start(120);
   }
 
-  async stopRecording(): Promise<{ audioBase64: string; mimeType: string }> {
+  async stopRecording(): Promise<{
+    audioBase64: string;
+    mimeType: string;
+    durationMs: number;
+    peakRms: number;
+  }> {
     const recorder = this.mediaRecorder;
     if (!recorder) {
       throw new Error('Nenhuma gravação ativa.');
     }
+    // Brief tail buffer so tapping Stop doesn't clip the final syllable
+    await new Promise((r) => window.setTimeout(r, 140));
+    const durationMs = Math.max(0, Date.now() - this.recStartedAt);
+    const peakRms = this.recPeakRms;
+    this.cleanupRecordingAnalyser();
+
     return new Promise((resolve, reject) => {
       recorder.onstop = () => {
-        const mimeType = recorder.mimeType || 'audio/webm';
-        const blob = new Blob(this.recordedChunks, { type: mimeType });
+        const rawMime = recorder.mimeType || 'audio/webm';
+        const cleanMime = rawMime.split(';')[0].trim() || 'audio/webm';
+        const blob = new Blob(this.recordedChunks, { type: rawMime });
         recorder.stream.getTracks().forEach((t) => t.stop());
         this.mediaRecorder = null;
         const reader = new FileReader();
         reader.onloadend = () => {
           const dataUrl = String(reader.result || '');
           const base64 = dataUrl.split(',')[1] || '';
-          resolve({ audioBase64: base64, mimeType });
+          resolve({
+            audioBase64: base64,
+            mimeType: cleanMime,
+            durationMs,
+            peakRms,
+          });
         };
         reader.onerror = () => reject(new Error('Falha ao ler áudio gravado.'));
         reader.readAsDataURL(blob);
@@ -290,11 +389,32 @@ export class LiveVoiceSession {
     }
   }
 
-  async start(): Promise<void> {
+  private resampleTo16kHz(input: Float32Array, sourceRate: number): Float32Array {
+    if (!sourceRate || Math.abs(sourceRate - 16000) < 100) {
+      return input;
+    }
+    const ratio = sourceRate / 16000;
+    const outputLength = Math.max(1, Math.round(input.length / ratio));
+    const output = new Float32Array(outputLength);
+    for (let i = 0; i < outputLength; i++) {
+      const srcPos = i * ratio;
+      const left = Math.floor(srcPos);
+      const right = Math.min(input.length - 1, left + 1);
+      const frac = srcPos - left;
+      output[i] = input[left] * (1 - frac) + input[right] * frac;
+    }
+    return output;
+  }
+
+  async start(userAge?: number | null): Promise<void> {
     this.hasErrored = false;
     this.manualStop = false;
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${proto}//${window.location.host}/live`);
+    const ageQuery =
+      typeof userAge === 'number' && Number.isFinite(userAge)
+        ? `?age=${Math.round(userAge)}`
+        : '';
+    const ws = new WebSocket(`${proto}//${window.location.host}/live${ageQuery}`);
     this.ws = ws;
 
     await new Promise<void>((resolve, reject) => {
@@ -352,7 +472,15 @@ export class LiveVoiceSession {
       this.outputCtx = new AudioContext({ sampleRate: 24000 });
       this.nextStartTime = this.outputCtx.currentTime;
 
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: { ideal: 1 },
+          sampleRate: { ideal: 16000 },
+        },
+      });
       const source = this.inputCtx.createMediaStreamSource(this.stream);
       this.processor = this.inputCtx.createScriptProcessor(4096, 1, 1);
       source.connect(this.processor);
@@ -367,9 +495,11 @@ export class LiveVoiceSession {
       throw err;
     }
 
+    const inputRate = this.inputCtx.sampleRate || 16000;
     this.processor.onaudioprocess = (event) => {
       if (this.ws?.readyState !== WebSocket.OPEN) return;
-      const floatData = event.inputBuffer.getChannelData(0);
+      const rawData = event.inputBuffer.getChannelData(0);
+      const floatData = this.resampleTo16kHz(rawData, inputRate);
       const pcm16 = new Int16Array(floatData.length);
       for (let i = 0; i < floatData.length; i++) {
         const s = Math.max(-1, Math.min(1, floatData[i]));

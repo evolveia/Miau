@@ -16,6 +16,11 @@ import type {
   UserPetProfile,
 } from '../../types';
 import { escapeHtml } from '../../utils/html';
+import {
+  WRITING_DAILY_BONUS,
+  WRITING_MEDALS,
+  type WritingProgress,
+} from '../../modules/writing/writingEngine';
 
 export function renderFeedModalHtml(): string {
   return `
@@ -480,11 +485,19 @@ export function renderRankingModalHtml(params: {
 export function renderRoutineModalHtml(
   profile: UserPetProfile,
   isSleeping: boolean,
-  isSlotInWindow: (slot: RoutineSlotDef, now: Date) => boolean
+  isSlotInWindow: (slot: RoutineSlotDef, now: Date) => boolean,
+  writingProgress?: WritingProgress
 ): string {
   const completed = profile.dailyRoutine?.completedSlots || [];
   const now = new Date();
   const nowTimeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const dailySteps = writingProgress?.dailyStepsCount ?? 0;
+  const dailyGoal = writingProgress?.dailyGoalTarget ?? 3;
+  const dailyPct = Math.min(100, Math.round((dailySteps / Math.max(1, dailyGoal)) * 100));
+  const dailyDone = dailySteps >= dailyGoal;
+  const streakDays = writingProgress?.streakDays ?? 0;
+  const medalsCount = writingProgress?.unlockedMedals.length ?? 0;
+  const vowelsCount = writingProgress?.masteredVowels.length ?? 0;
   const groups: Array<{
     cat: RoutineCategory;
     title: string;
@@ -516,12 +529,40 @@ export function renderRoutineModalHtml(
         <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
         <div class="min-w-0">
           <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Rotina Diária 📅</h2>
-          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Cuide do Miau nos horários (${nowTimeStr}) para ganhar moedas extras!</p>
+          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Cuide do Miau e pratique escrita (${nowTimeStr}) para ganhar recompensas!</p>
         </div>
       </div>
       <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
     </div>
     <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+      ${
+        writingProgress
+          ? `
+            <div class="bg-gradient-to-br from-purple-50 via-white to-pink-50 rounded-2xl p-3 border-2 border-[#a882e3] shadow-sm flex flex-col gap-2">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <div class="min-w-0">
+                  <span class="text-xs font-extrabold text-[#4c2a85]">✍️ Hábito Diário de Escrita & Estudo</span>
+                  <div class="text-[10px] font-semibold text-[#6b4d9e]">
+                    Meta de hoje: ${Math.min(dailySteps, dailyGoal)}/${dailyGoal} letras • 🔥 ${streakDays} dia(s) • 🏅 ${medalsCount}/${WRITING_MEDALS.length}
+                  </div>
+                </div>
+                <button id="btn-routine-open-writing" type="button" class="px-3 py-1.5 rounded-full bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] text-white text-[10px] font-extrabold shadow-sm hover:brightness-110 shrink-0">
+                  ${dailyDone ? '✓ Praticar Mais' : '✍️ Estudar Agora'}
+                </button>
+              </div>
+              <div class="w-full h-2 rounded-full bg-purple-100 overflow-hidden border border-purple-200/70">
+                <div class="h-full rounded-full ${dailyDone ? 'bg-gradient-to-r from-emerald-400 to-teal-500' : 'bg-gradient-to-r from-[#7b52b8] to-[#ec4899]'} transition-all duration-300" style="width: ${Math.max(8, dailyPct)}%"></div>
+              </div>
+              <div class="flex items-center justify-between gap-2 text-[10px] font-bold flex-wrap">
+                <span class="text-[#5a3696]">Vogais: ${vowelsCount}/5 • ★ ${writingProgress.totalStars}</span>
+                <span class="px-2 py-0.5 rounded-full ${dailyDone ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}">
+                  ${dailyDone ? '✅ Recompensa diária resgatada!' : `🎁 Bônus: +🪙${WRITING_DAILY_BONUS.coins} • +${WRITING_DAILY_BONUS.xp} XP`}
+                </span>
+              </div>
+            </div>
+          `
+          : ''
+      }
       ${groups
         .map((g) => {
           const slots = ROUTINE_SCHEDULE.filter((s) => s.category === g.cat);

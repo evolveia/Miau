@@ -4,6 +4,8 @@ import {
   getSchoolingLabel,
 } from '../../data/educationModules';
 import { EARLY_LITERACY_UNITS } from '../../data/earlyLiteracyData';
+import { CONSONANT_UNITS } from '../../modules/consonants/data';
+import { loadConsonantsProgress } from '../../modules/consonants/consonantsEngine';
 import { WRITING_UNITS } from '../../modules/writing/data';
 import { loadWritingProgress } from '../../modules/writing/writingEngine';
 import { loadEarlyLiteracyProgress } from '../../services/phonicsEngineService';
@@ -34,6 +36,9 @@ export function renderLearnModalHtml(
     humanProfile.ownerId || 'guest'
   );
   const writingProgress = loadWritingProgress(
+    humanProfile.ownerId || 'guest'
+  );
+  const consonantsProgress = loadConsonantsProgress(
     humanProfile.ownerId || 'guest'
   );
 
@@ -117,22 +122,29 @@ export function renderLearnModalHtml(
           .map((track) => {
             const isLiteracy = track.id === 'infantil_letras';
             const isWriting = track.id === 'infantil_escrita';
-            const isActiveTrack = isLiteracy || isWriting;
+            const isConsonants = track.id === 'infantil_consoantes';
+            const isActiveTrack = isLiteracy || isWriting || isConsonants;
             const completedUnits = isLiteracy
               ? literacyProgress.completedUnits.length
               : isWriting
                 ? writingProgress.completedUnits.length
-                : 0;
+                : isConsonants
+                  ? consonantsProgress.completedUnits.length
+                  : 0;
             const totalUnits = isLiteracy
               ? EARLY_LITERACY_UNITS.length
               : isWriting
                 ? WRITING_UNITS.length
-                : 0;
+                : isConsonants
+                  ? CONSONANT_UNITS.length
+                  : 0;
             const totalStars = isLiteracy
               ? literacyProgress.totalStars
               : isWriting
                 ? writingProgress.totalStars
-                : 0;
+                : isConsonants
+                  ? consonantsProgress.totalStars
+                  : 0;
 
             return `
               <div class="rounded-2xl p-3.5 ${

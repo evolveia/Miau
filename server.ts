@@ -11,13 +11,24 @@ import {
   Type,
 } from '@google/genai';
 import {
+  MINOR_REFUSAL_TEXT,
   MissingGeminiApiKeyError,
+  buildCalibratedTranscriptionPrompt,
+  buildMinorSafetyInstruction,
   getAIClient,
   getCachedTtsWav,
   getGeminiFallbackStatus,
+  getMinorStrictSafetySettings,
   getRecommendedThinkingLevel,
+  isCapabilityTemporarilyExhausted,
+  isMinorAge,
+  isQuotaOrRecoverableModelError,
+  isUnsafeTopicForMinor,
+  markCapabilityDegraded,
+  normalizeAudioMimeType,
   probeSuperiorModelRecovery,
   runWithModelFallback,
+  sendGeminiRouteError,
   setCachedTtsWav,
   startSuperiorModelRecoveryMonitor,
 } from './api/gemini/_shared.ts';
@@ -93,6 +104,11 @@ function buildMiauSystemInstruction(context?: {
     }
   }
 
+  const minorRule = buildMinorSafetyInstruction(u?.age);
+  if (minorRule) {
+    lines.push(minorRule);
+  }
+
   lines.push(
     `Responda sempre de forma direta, atenciosa e acolhedora ao que o tutor perguntou ou compartilhou, sem fugir do assunto e sem ser repetitivo. Demonstre interesse genuíno pelo bem-estar do tutor e NUNCA fique insistindo para jogar bolinha se o assunto for outro. Se alguma métrica do pet estiver < 30%, mencione com muita suavidade apenas se couber naturalmente no assunto.`,
     `Retorne JSON: "meowPrefix" (ex: "Miau!", "Purrr~"), "text" (fala entre parênteses, ex: "(Oi! Como você está se sentindo hoje?)") e "mood" (happy|playful|hungry|sleepy|affectionate).`
@@ -111,7 +127,7 @@ async function startServer() {
       try {
         const status = getGeminiFallbackStatus();
         const degraded = (['chat', 'tts', 'transcribe'] as const).filter(
-          (cap) => status[cap].fallbackActive
+          (cap) => status[cap].fallbackActive || status[cap].textOnlyFallback
         );
         if (degraded.length > 0) {
           const ai = getAIClient();
@@ -142,6 +158,17 @@ async function startServer() {
         return;
       }
 
+      const isMinor = isMinorAge(userContext?.age);
+      if (isMinor && isUnsafeTopicForMinor(message)) {
+        res.json({
+          meowPrefix: 'Miau!',
+          text: MINOR_REFUSAL_TEXT,
+          mood: 'happy',
+          safetyFiltered: true,
+        });
+        return;
+      }
+
       const ai = getAIClient();
       const contents = [
         ...history
@@ -166,6 +193,9 @@ async function startServer() {
                 temporalContext,
                 userContext,
               }),
+              ...(isMinor
+                ? { safetySettings: getMinorStrictSafetySettings() }
+                : {}),
               thinkingConfig: {
                 thinkingLevel: getRecommendedThinkingLevel(model),
               },
@@ -193,28 +223,63 @@ async function startServer() {
           })
         );
 
+      const finishReason = String(response.candidates?.[0]?.finishReason || '');
+      if (
+        isMinor &&
+        (finishReason === 'SAFETY' ||
+          finishReason === 'PROHIBITED_CONTENT' ||
+          finishReason === 'BLOCKLIST')
+      ) {
+        res.json({
+          meowPrefix: 'Miau!',
+          text: MINOR_REFUSAL_TEXT,
+          mood: 'happy',
+          modelUsed,
+          fallbackActive,
+          safetyFiltered: true,
+        });
+        return;
+      }
+
       const raw = response.text?.trim();
       if (!raw) {
+        if (isMinor) {
+          res.json({
+            meowPrefix: 'Miau!',
+            text: MINOR_REFUSAL_TEXT,
+            mood: 'happy',
+            modelUsed,
+            fallbackActive,
+            safetyFiltered: true,
+          });
+          return;
+        }
         res.status(502).json({ error: 'Gemini não retornou resposta.' });
         return;
       }
 
       const parsed = JSON.parse(raw);
+      const replyText = parsed.text || '(Oi, humano!)';
+      if (isMinor && isUnsafeTopicForMinor(replyText)) {
+        res.json({
+          meowPrefix: 'Miau!',
+          text: MINOR_REFUSAL_TEXT,
+          mood: 'happy',
+          modelUsed,
+          fallbackActive,
+          safetyFiltered: true,
+        });
+        return;
+      }
       res.json({
         meowPrefix: parsed.meowPrefix || 'Miau!',
-        text: parsed.text || '(Oi, humano!)',
+        text: replyText,
         mood: parsed.mood || 'happy',
         modelUsed,
         fallbackActive,
       });
     } catch (error) {
-      if (error instanceof MissingGeminiApiKeyError) {
-        res.status(error.statusCode).json({ code: error.code, error: error.message });
-        return;
-      }
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error('Erro em /api/gemini/chat:', msg);
-      res.status(500).json({ error: msg });
+      sendGeminiRouteError(res, '/api/gemini/chat', error);
     }
   });
 
@@ -234,77 +299,123 @@ async function startServer() {
           mimeType: cached.mimeType,
           modelUsed: cached.modelUsed,
           cached: true,
+          textOnlyFallback: false,
         });
         return;
       }
 
       const ai = getAIClient();
-      const { result: response, modelUsed, fallbackActive } =
-        await runWithModelFallback('tts', (model) =>
-          ai.models.generateContent({
-            model,
-            contents: [
-              {
-                role: 'user',
-                parts: [
-                  {
-                    text: cleanText,
-                    speechMetadata: {
-                      style:
-                        'Cute, cheerful, playful Brazilian Portuguese virtual cat companion voice',
+
+      if (isCapabilityTemporarilyExhausted('tts')) {
+        res.json({
+          audioBase64: null,
+          mimeType: null,
+          textOnlyFallback: true,
+          fallbackActive: true,
+          reason: 'TOKENS_TTS_TEMPORARILY_EXHAUSTED',
+        });
+        return;
+      }
+
+      try {
+        const { result: response, modelUsed, fallbackActive } =
+          await runWithModelFallback('tts', (model) =>
+            ai.models.generateContent({
+              model,
+              contents: [
+                {
+                  role: 'user',
+                  parts: [
+                    {
+                      text: cleanText,
+                      speechMetadata: {
+                        style:
+                          'Cute, cheerful, playful Brazilian Portuguese virtual cat companion voice',
+                      },
                     },
+                  ],
+                },
+              ],
+              config: {
+                responseModalities: ['AUDIO'],
+                speechConfig: {
+                  voiceConfig: {
+                    prebuiltVoiceConfig: { voiceName: 'Zephyr' },
                   },
-                ],
-              },
-            ],
-            config: {
-              responseModalities: ['AUDIO'],
-              speechConfig: {
-                voiceConfig: {
-                  prebuiltVoiceConfig: { voiceName: 'Zephyr' },
                 },
               },
-            },
-          })
-        );
+            })
+          );
 
-      const base64Audio =
-        response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-      if (!base64Audio) {
-        res.status(502).json({ error: 'Não foi possível gerar o áudio do Miau.' });
-        return;
+        const base64Audio =
+          response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (!base64Audio) {
+          res.json({
+            audioBase64: null,
+            mimeType: null,
+            textOnlyFallback: true,
+            fallbackActive: true,
+            reason: 'EMPTY_AUDIO_FALLBACK_TEXT',
+          });
+          return;
+        }
+
+        setCachedTtsWav(cleanText, {
+          audioBase64: base64Audio,
+          mimeType: 'audio/wav',
+          modelUsed,
+        });
+
+        res.json({
+          audioBase64: base64Audio,
+          mimeType: 'audio/wav',
+          modelUsed,
+          fallbackActive,
+          textOnlyFallback: false,
+        });
+      } catch (ttsErr) {
+        if (isQuotaOrRecoverableModelError(ttsErr)) {
+          res.json({
+            audioBase64: null,
+            mimeType: null,
+            textOnlyFallback: true,
+            fallbackActive: true,
+            reason: 'TTS_EXHAUSTED_TEXT_ONLY',
+          });
+          return;
+        }
+        throw ttsErr;
       }
-
-      setCachedTtsWav(cleanText, {
-        audioBase64: base64Audio,
-        mimeType: 'audio/wav',
-        modelUsed,
-      });
-
-      res.json({
-        audioBase64: base64Audio,
-        mimeType: 'audio/wav',
-        modelUsed,
-        fallbackActive,
-      });
     } catch (error) {
-      if (error instanceof MissingGeminiApiKeyError) {
-        res.status(error.statusCode).json({ code: error.code, error: error.message });
-        return;
-      }
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error('Erro em /api/gemini/tts:', msg);
-      res.status(500).json({ error: msg });
+      sendGeminiRouteError(res, '/api/gemini/tts', error);
     }
   });
 
   app.post('/api/gemini/transcribe', async (req, res) => {
     try {
-      const { audioBase64, mimeType = 'audio/webm' } = req.body ?? {};
-      if (!audioBase64 || typeof audioBase64 !== 'string') {
+      const {
+        audioBase64: rawAudio,
+        mimeType: rawMime = 'audio/webm',
+        mode = 'conversation',
+        expectedPhrase = '',
+        hintKeywords,
+      } = req.body ?? {};
+      if (!rawAudio || typeof rawAudio !== 'string') {
         res.status(400).json({ error: 'Áudio inválido.' });
         return;
       }
+
+      const mimeType = normalizeAudioMimeType(
+        typeof rawMime === 'string' ? rawMime : 'audio/webm'
+      );
+      const audioBase64 = rawAudio.includes(',')
+        ? rawAudio.split(',').slice(1).join(',')
+        : rawAudio;
+      const promptText = buildCalibratedTranscriptionPrompt({
+        mode: typeof mode === 'string' ? mode : 'conversation',
+        expectedPhrase: typeof expectedPhrase === 'string' ? expectedPhrase : '',
+        hintKeywords,
+      });
 
       const ai = getAIClient();
       const { result: response, modelUsed, fallbackActive } =
@@ -320,7 +431,7 @@ async function startServer() {
                   },
                 },
                 {
-                  text: 'Transcreva exatamente o que foi dito em português do Brasil. Retorne apenas a transcrição.',
+                  text: promptText,
                 },
               ],
             },
@@ -337,25 +448,222 @@ async function startServer() {
           })
         );
 
+      const cleanedTranscript = (response.text ?? '')
+        .trim()
+        .replace(/^["'«»]+|["'«»]+$/g, '')
+        .trim();
+
       res.json({
-        transcript: (response.text ?? '').trim(),
+        transcript: cleanedTranscript,
         modelUsed,
         fallbackActive,
       });
     } catch (error) {
-      if (error instanceof MissingGeminiApiKeyError) {
-        res.status(error.statusCode).json({ code: error.code, error: error.message });
-        return;
-      }
-      const msg = error instanceof Error ? error.message : String(error);
-      console.error('Erro em /api/gemini/transcribe:', msg);
-      res.status(500).json({ error: msg });
+      sendGeminiRouteError(res, '/api/gemini/transcribe', error);
     }
   });
 
   app.post('/api/gemini/writing-coach', async (req, res) => {
-    const { default: handler } = await import('./api/gemini/writing-coach.ts');
-    await handler(req, res);
+    try {
+      const body = (req.body ?? {}) as {
+        mode?: 'teach' | 'evaluate';
+        targetText?: string;
+        studentName?: string;
+        motorLevel?: 'largo' | 'medio' | 'fino';
+        strokeHints?: string[];
+        imageBase64?: string;
+        mimeType?: string;
+        coveragePct?: number;
+        precisionPct?: number;
+        strokeCount?: number;
+      };
+      const mode = body.mode === 'evaluate' ? 'evaluate' : 'teach';
+      const targetText = String(body.targetText || 'A')
+        .trim()
+        .toUpperCase()
+        .slice(0, 16);
+      const studentName = String(body.studentName || 'pequeno(a)')
+        .trim()
+        .slice(0, 40);
+      const motorLevel = body.motorLevel || 'largo';
+      const strokeHints = Array.isArray(body.strokeHints)
+        ? body.strokeHints.map((s) => String(s).slice(0, 140)).slice(0, 8)
+        : [];
+
+      const ai = getAIClient();
+
+      if (mode === 'teach') {
+        const motorLabel =
+          motorLevel === 'fino'
+            ? 'traço fino para treinar bastante firmeza nos dedinhos'
+            : motorLevel === 'medio'
+              ? 'traço médio com atenção nas curvas e linhas'
+              : 'traço largo e bem fácil para soltar o dedinho';
+
+        const prompt = [
+          `Você é o Miau, um gatinho professor muito carinhoso e divertido de Educação Infantil no Brasil.`,
+          `Ensine para a criança "${studentName}" como escrever "${targetText}" cobrindo com o dedinho na tela do celular (${motorLabel}).`,
+          strokeHints.length > 0
+            ? `Ordem real dos traços no exercício: ${strokeHints.join(' | ')}`
+            : '',
+          `Fale em Português do Brasil de forma lúdica, curtinha, acolhedora e muito clara para uma criança de 3 a 6 anos.`,
+          `Retorne JSON com:`,
+          `- coachTip: explicação amigável passo a passo para ler na tela (máximo 2 frases curtas).`,
+          `- audioScript: texto fofo e calmo para o Miau falar em voz alta guiando o movimento do dedinho (sem emojis, máximo 220 caracteres).`,
+        ]
+          .filter(Boolean)
+          .join('\n');
+
+        const { result: response, modelUsed, fallbackActive } =
+          await runWithModelFallback('chat', (model) =>
+            ai.models.generateContent({
+              model,
+              contents: prompt,
+              config: {
+                thinkingConfig: {
+                  thinkingLevel: getRecommendedThinkingLevel(model),
+                },
+                maxOutputTokens: 200,
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: Type.OBJECT,
+                  required: ['coachTip', 'audioScript'],
+                  properties: {
+                    coachTip: { type: Type.STRING },
+                    audioScript: { type: Type.STRING },
+                  },
+                },
+              },
+            })
+          );
+
+        const raw = response.text?.trim();
+        const parsed = raw ? (JSON.parse(raw) as Record<string, string>) : {};
+        res.json({
+          coachTip:
+            parsed.coachTip ||
+            `Vamos cobrir "${targetText}" seguindo os pontinhos a partir do número 1!`,
+          audioScript:
+            parsed.audioScript ||
+            `Miau! Vamos escrever ${targetText} juntos. Comece pelo número um e passe o dedinho devagar pelos pontinhos.`,
+          modelUsed,
+          fallbackActive,
+        });
+        return;
+      }
+
+      const coveragePct = Math.max(0, Math.min(100, Math.round(Number(body.coveragePct ?? 0))));
+      const precisionPct = Math.max(0, Math.min(100, Math.round(Number(body.precisionPct ?? 0))));
+      const strokeCount = Math.max(0, Math.min(50, Math.round(Number(body.strokeCount ?? 0))));
+      const rawImage = typeof body.imageBase64 === 'string' ? body.imageBase64 : '';
+      const strippedImage = rawImage.replace(/^data:[^;]+;base64,/i, '').trim();
+      const mimeType = typeof body.mimeType === 'string' ? body.mimeType : 'image/png';
+
+      const evalPrompt = [
+        `Você é o Miau, professor gatinho carinhoso de coordenação motora fina e escrita infantil.`,
+        `A criança "${studentName}" acabou de tentar cobrir com o dedo a escrita de "${targetText}".`,
+        `Métricas geométricas do traçado sobre o guia: cobertura=${coveragePct}%, precisão dentro do caminho=${precisionPct}%, quantidade de traços=${strokeCount}.`,
+        `Observe a imagem do traçado (onde o pontilhado claro é o guia e a linha roxa/rosa é o dedo da criança) junto com as métricas.`,
+        `Classifique em:`,
+        `- "positive" (3 ou 2 estrelas) se cobriu bem a forma da letra/palavra.`,
+        `- "medium" (1 estrela) se já dá para reconhecer parte do traço, mas faltou cobrir um pedaço ou saiu um pouco da linha.`,
+        `- "retry" (0 estrelas) se ainda quase não cobriu ou riscou fora da letra/palavra.`,
+        `Responda em Português do Brasil, sempre carinhoso, construtivo e específico no que melhorar (ou comemorar!).`,
+        `Retorne JSON com: verdict ("positive" | "medium" | "retry"), stars (0..3 inteiro), feedbackText (para mostrar na tela, até 2 frases curtas), audioScript (para o Miau falar com voz fofa, sem emojis, até 190 caracteres).`,
+      ].join('\n');
+
+      const parts: Array<
+        | { text: string }
+        | { inlineData: { mimeType: string; data: string } }
+      > = [{ text: evalPrompt }];
+
+      if (strippedImage.length > 32 && strippedImage.length < 2_500_000) {
+        parts.unshift({
+          inlineData: {
+            mimeType,
+            data: strippedImage,
+          },
+        });
+      }
+
+      const { result: response, modelUsed, fallbackActive } =
+        await runWithModelFallback('chat', (model) =>
+          ai.models.generateContent({
+            model,
+            contents: [{ role: 'user', parts }],
+            config: {
+              thinkingConfig: {
+                thinkingLevel: getRecommendedThinkingLevel(model),
+              },
+              maxOutputTokens: 220,
+              responseMimeType: 'application/json',
+              responseSchema: {
+                type: Type.OBJECT,
+                required: ['verdict', 'stars', 'feedbackText', 'audioScript'],
+                properties: {
+                  verdict: { type: Type.STRING },
+                  stars: { type: Type.INTEGER },
+                  feedbackText: { type: Type.STRING },
+                  audioScript: { type: Type.STRING },
+                },
+              },
+            },
+          })
+        );
+
+      const raw = response.text?.trim();
+      const parsed = raw
+        ? (JSON.parse(raw) as {
+            verdict?: string;
+            stars?: number;
+            feedbackText?: string;
+            audioScript?: string;
+          })
+        : {};
+
+      const verdict =
+        parsed.verdict === 'positive' ||
+        parsed.verdict === 'medium' ||
+        parsed.verdict === 'retry'
+          ? parsed.verdict
+          : coveragePct >= 62 && precisionPct >= 52
+            ? 'positive'
+            : coveragePct >= 35
+              ? 'medium'
+              : 'retry';
+      const stars = Math.max(
+        0,
+        Math.min(
+          3,
+          Math.round(
+            typeof parsed.stars === 'number'
+              ? parsed.stars
+              : verdict === 'positive'
+                ? coveragePct >= 82
+                  ? 3
+                  : 2
+                : verdict === 'medium'
+                  ? 1
+                  : 0
+          )
+        )
+      );
+
+      res.json({
+        verdict,
+        stars,
+        feedbackText:
+          parsed.feedbackText ||
+          `Você cobriu ${coveragePct}% de "${targetText}" com ${precisionPct}% de precisão!`,
+        audioScript:
+          parsed.audioScript ||
+          `Miau! Muito bem, continue praticando o dedinho na letra ${targetText}!`,
+        modelUsed,
+        fallbackActive,
+      });
+    } catch (error) {
+      sendGeminiRouteError(res, '/api/gemini/writing-coach', error);
+    }
   });
 
   if (!IS_PROD) {
@@ -422,9 +730,25 @@ async function startServer() {
     }
   });
 
-  wss.on('connection', async (clientWs: WebSocket) => {
+  wss.on('connection', async (clientWs: WebSocket, req: http.IncomingMessage) => {
     let session: Awaited<ReturnType<GoogleGenAI['live']['connect']>> | null =
       null;
+    const reqUrl = new URL(req.url || '/live', 'http://localhost');
+    const ageParam = reqUrl.searchParams.get('age');
+    const parsedAge =
+      ageParam !== null && ageParam !== '' && Number.isFinite(Number(ageParam))
+        ? Number(ageParam)
+        : null;
+    const isMinorLive = isMinorAge(parsedAge);
+    const liveSystemInstruction = [
+      'Você é o Miau, um gatinho virtual e melhor amigo próximo do tutor, que fala em Português do Brasil. Demonstre interesse genuíno em saber como o tutor está se sentindo, pergunte sobre o dia dele com carinho e responda de forma leve, acolhedora e natural, começando às vezes com um "Miau!" ou "Purrr~" simpático.',
+      buildMinorSafetyInstruction(parsedAge),
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    let minorTurnBlocked = false;
+
     try {
       const ai = getAIClient();
       const { result: connectedSession } = await runWithModelFallback(
@@ -441,8 +765,7 @@ async function startServer() {
                   prebuiltVoiceConfig: { voiceName: 'Zephyr' },
                 },
               },
-              systemInstruction:
-                'Você é o Miau, um gatinho virtual e melhor amigo próximo do tutor, que fala em Português do Brasil. Demonstre interesse genuíno em saber como o tutor está se sentindo, pergunte sobre o dia dele com carinho e responda de forma leve, acolhedora e natural, começando às vezes com um "Miau!" ou "Purrr~" simpático.',
+              systemInstruction: liveSystemInstruction,
             },
             callbacks: {
               onopen: () => {
@@ -454,21 +777,47 @@ async function startServer() {
                 if (clientWs.readyState !== WebSocket.OPEN) return;
                 const content = message.serverContent;
                 if (content?.inputTranscription?.text) {
-                  clientWs.send(
-                    JSON.stringify({
-                      inputTranscript: content.inputTranscription.text,
-                    })
-                  );
+                  const inText = content.inputTranscription.text;
+                  if (isMinorLive && isUnsafeTopicForMinor(inText)) {
+                    minorTurnBlocked = true;
+                    clientWs.send(JSON.stringify({ interrupted: true }));
+                    clientWs.send(
+                      JSON.stringify({
+                        outputTranscript: MINOR_REFUSAL_TEXT,
+                        safetyFiltered: true,
+                      })
+                    );
+                  } else {
+                    clientWs.send(
+                      JSON.stringify({
+                        inputTranscript: inText,
+                      })
+                    );
+                  }
                 }
                 if (content?.outputTranscription?.text) {
-                  clientWs.send(
-                    JSON.stringify({
-                      outputTranscript: content.outputTranscription.text,
-                    })
-                  );
+                  const outText = content.outputTranscription.text;
+                  if (isMinorLive && (minorTurnBlocked || isUnsafeTopicForMinor(outText))) {
+                    if (!minorTurnBlocked) {
+                      minorTurnBlocked = true;
+                      clientWs.send(JSON.stringify({ interrupted: true }));
+                      clientWs.send(
+                        JSON.stringify({
+                          outputTranscript: MINOR_REFUSAL_TEXT,
+                          safetyFiltered: true,
+                        })
+                      );
+                    }
+                  } else {
+                    clientWs.send(
+                      JSON.stringify({
+                        outputTranscript: outText,
+                      })
+                    );
+                  }
                 }
                 for (const part of content?.modelTurn?.parts ?? []) {
-                  if (part.inlineData?.data) {
+                  if (part.inlineData?.data && !minorTurnBlocked) {
                     clientWs.send(
                       JSON.stringify({ audio: part.inlineData.data })
                     );
@@ -478,14 +827,21 @@ async function startServer() {
                   clientWs.send(JSON.stringify({ interrupted: true }));
                 }
                 if (content?.turnComplete) {
+                  minorTurnBlocked = false;
                   clientWs.send(JSON.stringify({ turnComplete: true }));
                 }
               },
               onerror: (err) => {
+                const rawErr = err?.message || 'Erro na conexão Gemini Live.';
+                if (isQuotaOrRecoverableModelError(rawErr)) {
+                  markCapabilityDegraded('live', rawErr, true);
+                }
                 if (clientWs.readyState === WebSocket.OPEN) {
                   clientWs.send(
                     JSON.stringify({
-                      error: err?.message || 'Erro na conexão Gemini Live.',
+                      error:
+                        'A voz ao vivo está com alta demanda no momento. Você pode continuar conversando por texto ou 🎤!',
+                      fallbackToTextChat: true,
                     })
                   );
                 }
@@ -501,8 +857,17 @@ async function startServer() {
       session = connectedSession;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
+      if (isQuotaOrRecoverableModelError(error)) {
+        markCapabilityDegraded('live', msg, true);
+      }
       if (clientWs.readyState === WebSocket.OPEN) {
-        clientWs.send(JSON.stringify({ error: msg }));
+        const friendlyMsg =
+          error instanceof MissingGeminiApiKeyError
+            ? error.message
+            : 'Voz ao vivo temporariamente ocupada. Continue a conversa por texto ou áudio gravado (🎤)!';
+        clientWs.send(
+          JSON.stringify({ error: friendlyMsg, fallbackToTextChat: true })
+        );
         clientWs.close();
       }
       return;

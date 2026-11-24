@@ -1,5 +1,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { GoogleGenAI, ThinkingLevel } from '@google/genai';
+import {
+  GoogleGenAI,
+  HarmBlockThreshold,
+  HarmCategory,
+  ThinkingLevel,
+} from '@google/genai';
 
 export interface VercelRequest extends IncomingMessage {
   body?: unknown;
@@ -24,11 +29,12 @@ export const GEMINI_MODEL_TIERS: Record<GeminiCapability, readonly string[]> = {
 };
 
 const SUPERIOR_RECOVERY_CHECK_MS = 45_000;
-const MAX_SERVER_TTS_CACHE = 120;
+const MAX_SERVER_TTS_CACHE = 140;
 
 interface CapabilityTierState {
   activeTierIndex: number;
   cooldownUntilMs: number;
+  allTiersExhaustedUntilMs: number;
   lastFallbackReason: string | null;
   lastSwitchAtMs: number | null;
   lastRecoveredAtMs: number | null;
@@ -48,6 +54,7 @@ function getCapabilityState(cap: GeminiCapability): CapabilityTierState {
     state = {
       activeTierIndex: 0,
       cooldownUntilMs: 0,
+      allTiersExhaustedUntilMs: 0,
       lastFallbackReason: null,
       lastSwitchAtMs: null,
       lastRecoveredAtMs: null,
@@ -58,6 +65,99 @@ function getCapabilityState(cap: GeminiCapability): CapabilityTierState {
   return state;
 }
 
+function getErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const e = error as { status?: unknown; code?: unknown };
+  if (typeof e.status === 'number') return e.status;
+  if (typeof e.code === 'number') return e.code;
+  return undefined;
+}
+
+export function extractFriendlyGeminiError(error: unknown): {
+  statusCode: number;
+  code: string;
+  message: string;
+} {
+  if (error instanceof MissingGeminiApiKeyError) {
+    return {
+      statusCode: error.statusCode,
+      code: error.code,
+      message: error.message,
+    };
+  }
+  if (error instanceof InvalidJsonBodyError) {
+    return {
+      statusCode: error.statusCode,
+      code: error.code,
+      message: error.message,
+    };
+  }
+
+  const raw = error instanceof Error ? error.message : String(error);
+  const lower = raw.toLowerCase();
+  const explicitStatus = getErrorStatus(error);
+
+  if (
+    lower.includes('api_key_invalid') ||
+    lower.includes('api key not valid') ||
+    explicitStatus === 400
+  ) {
+    return {
+      statusCode: 400,
+      code: 'API_KEY_INVALID',
+      message:
+        'A chave GEMINI_API_KEY parece inválida. Verifique a chave nas configurações (Settings > Secrets).',
+    };
+  }
+
+  if (lower.includes('permission_denied') || explicitStatus === 403) {
+    return {
+      statusCode: 403,
+      code: 'PERMISSION_DENIED',
+      message:
+        'Permissão negada pela API do Gemini. Confira a chave GEMINI_API_KEY em Settings > Secrets.',
+    };
+  }
+
+  if (
+    explicitStatus === 429 ||
+    lower.includes('429') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('quota')
+  ) {
+    return {
+      statusCode: 503,
+      code: 'QUOTA_EXHAUSTED',
+      message:
+        'Os modelos de IA atingiram o limite temporário de uso. Já estamos alternando e monitorando a recuperação automática.',
+    };
+  }
+
+  if (
+    explicitStatus === 503 ||
+    lower.includes('503') ||
+    lower.includes('unavailable') ||
+    lower.includes('high demand') ||
+    lower.includes('overloaded') ||
+    lower.includes('timeout') ||
+    lower.includes('econnreset')
+  ) {
+    return {
+      statusCode: 503,
+      code: 'MODEL_UNAVAILABLE',
+      message:
+        'Os servidores de IA estão com alta demanda temporária no momento. Tente novamente em alguns segundos!',
+    };
+  }
+
+  return {
+    statusCode: 502,
+    code: 'GEMINI_UPSTREAM_ERROR',
+    message:
+      'Não foi possível completar a resposta da IA agora. Tente novamente em instantes!',
+  };
+}
+
 export function isQuotaOrRecoverableModelError(error: unknown): boolean {
   if (
     error instanceof MissingGeminiApiKeyError ||
@@ -66,28 +166,37 @@ export function isQuotaOrRecoverableModelError(error: unknown): boolean {
     return false;
   }
   const msg = (error instanceof Error ? error.message : String(error)).toLowerCase();
+  const status = getErrorStatus(error);
+
   if (
     msg.includes('api_key_invalid') ||
+    msg.includes('api key not valid') ||
     msg.includes('permission_denied') ||
-    msg.includes('"code":403')
+    status === 403
   ) {
     return false;
   }
+
+  if (status && [404, 429, 500, 502, 503, 504].includes(status)) {
+    return true;
+  }
+
   return (
-    msg.includes('429') ||
+    /\b(404|429|500|502|503|504)\b/.test(msg) ||
     msg.includes('resource_exhausted') ||
     msg.includes('quota') ||
     msg.includes('rate limit') ||
+    msg.includes('rate_limit') ||
     msg.includes('token') ||
-    msg.includes('503') ||
     msg.includes('unavailable') ||
+    msg.includes('high demand') ||
     msg.includes('overloaded') ||
-    msg.includes('500') ||
     msg.includes('internal') ||
-    msg.includes('404') ||
     msg.includes('not_found') ||
     msg.includes('timeout') ||
-    msg.includes('econnreset')
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('fetch failed')
   );
 }
 
@@ -95,6 +204,36 @@ export function getRecommendedThinkingLevel(model: string): ThinkingLevel {
   return model === 'gemini-3.1-flash-lite'
     ? ThinkingLevel.MINIMAL
     : ThinkingLevel.LOW;
+}
+
+export function markCapabilityDegraded(
+  capability: GeminiCapability,
+  reason: string,
+  allExhausted = false
+): void {
+  const tiers = GEMINI_MODEL_TIERS[capability];
+  const state = getCapabilityState(capability);
+  const now = Date.now();
+  state.activeTierIndex = Math.min(
+    tiers.length - 1,
+    Math.max(1, state.activeTierIndex + (allExhausted ? 1 : 0))
+  );
+  state.cooldownUntilMs = now + SUPERIOR_RECOVERY_CHECK_MS;
+  if (allExhausted) {
+    state.allTiersExhaustedUntilMs = now + SUPERIOR_RECOVERY_CHECK_MS;
+  }
+  state.lastSwitchAtMs = now;
+  state.lastFallbackReason = reason.slice(0, 200);
+}
+
+export function isCapabilityTemporarilyExhausted(
+  capability: GeminiCapability
+): boolean {
+  const state = getCapabilityState(capability);
+  return (
+    state.allTiersExhaustedUntilMs > 0 &&
+    Date.now() < state.allTiersExhaustedUntilMs
+  );
 }
 
 export async function runWithModelFallback<T>(
@@ -105,7 +244,7 @@ export async function runWithModelFallback<T>(
   const state = getCapabilityState(capability);
   const now = Date.now();
 
-  // If currently on an inferior model and cooldown elapsed, try superior tier 0 first
+  // If currently on an inferior model and cooldown elapsed, probe superior tier 0 first
   const shouldProbeSuperior =
     state.activeTierIndex > 0 && now >= state.cooldownUntilMs;
   const startIndex = shouldProbeSuperior ? 0 : state.activeTierIndex;
@@ -125,20 +264,24 @@ export async function runWithModelFallback<T>(
   for (const idx of candidateIndices) {
     const model = tiers[idx];
     try {
-      const result = await withRetry(() => invokeForModel(model, idx), 1);
+      const result = await withRetry(() => invokeForModel(model, idx), 2);
 
-      if (idx === 0 && state.activeTierIndex > 0) {
+      if (idx === 0 && (state.activeTierIndex > 0 || state.allTiersExhaustedUntilMs > 0)) {
         state.activeTierIndex = 0;
         state.cooldownUntilMs = 0;
+        state.allTiersExhaustedUntilMs = 0;
         state.lastFallbackReason = null;
         state.lastRecoveredAtMs = Date.now();
         console.info(
           `[GeminiFallback:${capability}] Modelo superior (${model}) recuperado! Retornando ao tier principal.`
         );
-      } else if (idx > 0 && state.activeTierIndex !== idx) {
-        state.activeTierIndex = idx;
-        state.cooldownUntilMs = Date.now() + SUPERIOR_RECOVERY_CHECK_MS;
-        state.lastSwitchAtMs = Date.now();
+      } else {
+        state.allTiersExhaustedUntilMs = 0;
+        if (idx > 0 && state.activeTierIndex !== idx) {
+          state.activeTierIndex = idx;
+          state.cooldownUntilMs = Date.now() + SUPERIOR_RECOVERY_CHECK_MS;
+          state.lastSwitchAtMs = Date.now();
+        }
       }
 
       return {
@@ -163,6 +306,7 @@ export async function runWithModelFallback<T>(
         );
       } else {
         state.cooldownUntilMs = Date.now() + SUPERIOR_RECOVERY_CHECK_MS;
+        state.allTiersExhaustedUntilMs = Date.now() + SUPERIOR_RECOVERY_CHECK_MS;
       }
     }
   }
@@ -196,7 +340,9 @@ export async function probeSuperiorModelRecovery(
   capability: Exclude<GeminiCapability, 'live'>
 ): Promise<boolean> {
   const state = getCapabilityState(capability);
-  if (state.activeTierIndex === 0 || state.probeInFlight) return false;
+  const needsProbe =
+    state.activeTierIndex > 0 || state.allTiersExhaustedUntilMs > 0;
+  if (!needsProbe || state.probeInFlight) return false;
   if (Date.now() < state.cooldownUntilMs) return false;
 
   const superiorModel = GEMINI_MODEL_TIERS[capability][0];
@@ -250,6 +396,7 @@ export async function probeSuperiorModelRecovery(
 
     state.activeTierIndex = 0;
     state.cooldownUntilMs = 0;
+    state.allTiersExhaustedUntilMs = 0;
     state.lastFallbackReason = null;
     state.lastRecoveredAtMs = Date.now();
     console.info(
@@ -272,7 +419,10 @@ export function startSuperiorModelRecoveryMonitor(
     const degraded: Array<Exclude<GeminiCapability, 'live'>> = [];
     (['chat', 'tts', 'transcribe'] as const).forEach((cap) => {
       const s = getCapabilityState(cap);
-      if (s.activeTierIndex > 0 && Date.now() >= s.cooldownUntilMs) {
+      if (
+        (s.activeTierIndex > 0 || s.allTiersExhaustedUntilMs > 0) &&
+        Date.now() >= s.cooldownUntilMs
+      ) {
         degraded.push(cap);
       }
     });
@@ -299,6 +449,7 @@ export function getGeminiFallbackStatus(): Record<
     activeModel: string;
     superiorModel: string;
     fallbackActive: boolean;
+    textOnlyFallback: boolean;
     nextProbeAtMs: number;
     lastRecoveredAtMs: number | null;
     lastFallbackReason: string | null;
@@ -311,6 +462,8 @@ export function getGeminiFallbackStatus(): Record<
       activeModel: tiers[s.activeTierIndex] ?? tiers[0],
       superiorModel: tiers[0],
       fallbackActive: s.activeTierIndex > 0,
+      textOnlyFallback:
+        s.allTiersExhaustedUntilMs > 0 && Date.now() < s.allTiersExhaustedUntilMs,
       nextProbeAtMs: s.cooldownUntilMs,
       lastRecoveredAtMs: s.lastRecoveredAtMs,
       lastFallbackReason: s.lastFallbackReason,
@@ -350,7 +503,7 @@ export class MissingGeminiApiKeyError extends Error {
 
   constructor() {
     super(
-      'GEMINI_API_KEY não configurada no ambiente do servidor. Adicione GEMINI_API_KEY nas Environment Variables e reinicie/reimplante o servidor.'
+      'GEMINI_API_KEY não configurada no ambiente do servidor. Adicione GEMINI_API_KEY nas Environment Variables e reinicie o servidor.'
     );
     this.name = 'MissingGeminiApiKeyError';
   }
@@ -392,16 +545,23 @@ export async function withRetry<T>(
       return await fn();
     } catch (err) {
       lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      const status = getErrorStatus(err);
       const isTransient =
-        msg.includes('"code":503') ||
-        msg.includes('UNAVAILABLE') ||
-        msg.includes('"code":429') ||
-        msg.includes('RESOURCE_EXHAUSTED');
+        (status !== undefined && [429, 500, 502, 503, 504].includes(status)) ||
+        /\b(429|500|502|503|504)\b/.test(msg) ||
+        msg.includes('unavailable') ||
+        msg.includes('high demand') ||
+        msg.includes('resource_exhausted') ||
+        msg.includes('overloaded') ||
+        msg.includes('econnreset') ||
+        msg.includes('etimedout') ||
+        msg.includes('fetch failed');
       if (!isTransient || attempt === retries) {
         throw err;
       }
-      await new Promise((r) => setTimeout(r, 450 * (attempt + 1)));
+      const jitter = Math.round(Math.random() * 140);
+      await new Promise((r) => setTimeout(r, 380 * Math.pow(2, attempt) + jitter));
     }
   }
   throw lastError;
@@ -473,22 +633,137 @@ export function sendGeminiRouteError(
   routeLabel: string,
   error: unknown
 ): void {
-  if (error instanceof MissingGeminiApiKeyError) {
-    console.warn(`Configuração pendente em ${routeLabel}:`, error.message);
-    sendJson(res, error.statusCode, {
-      code: error.code,
-      error: error.message,
-    });
-    return;
+  const friendly = extractFriendlyGeminiError(error);
+  const rawMsg = error instanceof Error ? error.message : String(error);
+  console.warn(`Erro em ${routeLabel} (${friendly.code}):`, rawMsg);
+  sendJson(res, friendly.statusCode, {
+    code: friendly.code,
+    error: friendly.message,
+  });
+}
+
+// ---------- Minor Protection (< 18 years old) ----------
+
+export const MINOR_REFUSAL_TEXT = 'Vamos falar de outros assuntos e coisas boas?';
+
+export function isMinorAge(age?: number | null): boolean {
+  return typeof age === 'number' && Number.isFinite(age) && age >= 0 && age < 18;
+}
+
+function normalizeSafetyText(raw: string): string {
+  return raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const MINOR_UNSAFE_PATTERNS: RegExp[] = [
+  // Sexual / adulto
+  /\b(sexo|sexual|sexuais|transar|transa|porn|porno|pornografia|erotic[oa]|nudez|nudes|pelad[oa]s?|orgasmo|masturb|prostit|fetiche|boquete|punheta|penis|vagina|bunda|peito[s]?\s+nu|hentai|nsfw|onlyfans|estupr[oa])\b/,
+  // Drogas / ilícitos
+  /\b(droga[s]?|cocaina|crack|maconha|heroina|lsd|ecstasy|metanfetamina|trafico|traficante|entorpecente|overdose|cheirar\s+po|fumar\s+beck|baseado|cigarro|vape|bebida\s+alcoolica|cachaca|vodka|cerveja|embebedar|ficar\s+bebado|roubar|furto|assalt[oa]|lavagem\s+de\s+dinheiro|crime|criminoso|ilicito|ilegal)\b/,
+  // Violência / perigoso / armas / automutilação
+  /\b(suicid|me\s+matar|se\s+matar|automutil|cortar\s+os\s+pulsos|enforcar|bomba|explosiv[oa]|arma\s+de\s+fogo|pistola|fuzil|revolver|esfaquear|matar\s+alguem|assassin[oa]|homicidio|sequestr[oa]|tortur[oa]|terroris|veneno\s+para\s+matar)\b/,
+  // Preconceito / racismo / discurso de ódio / pejorativo grave
+  /\b(racis[mt]|nazis[mt]|supremacia\s+branca|preconceit[oa]|homofob|transfob|xenofob|capacitismo|antissemit|macaco\s+sujo|preto\s+imundo|crioulo|viadinho|bichinha|sapat[ao]|aleijado|retardado|escoria|inferioridade\s+racial)\b/,
+  // Xingamentos pesados / conteúdo pejorativo
+  /\b(porra|caralho|puta|putaria|vagabunda|arrombad[oa]|cuzao|foda\s*se|vai\s+tomar\s+no\s+cu|filho\s+da\s+puta|merda\s+de|desgracad[oa])\b/,
+];
+
+export function isUnsafeTopicForMinor(text: string): boolean {
+  const norm = normalizeSafetyText(text);
+  if (!norm) return false;
+  return MINOR_UNSAFE_PATTERNS.some((rx) => rx.test(norm));
+}
+
+export function getMinorStrictSafetySettings() {
+  return [
+    {
+      category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+      threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+      threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+      threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+    },
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_LOW_AND_ABOVE,
+    },
+  ];
+}
+
+export function buildMinorSafetyInstruction(age?: number | null): string {
+  if (!isMinorAge(age)) return '';
+  return [
+    `PROTEÇÃO OBRIGATÓRIA DE MENOR DE IDADE (${age} anos):`,
+    `- JAMAIS trate, explique, exemplifique, brinque ou responda sobre assuntos perigosos, ilícitos, violência, armas, drogas, bebidas alcoólicas, automutilação, temas inapropriados, sexuais, linguagem pejorativa, preconceito, discriminação ou racismo.`,
+    `- Se o usuário mencionar, perguntar ou insinuar qualquer um desses assuntos, NÃO elabore nada e responda EXCLUSIVAMENTE com a frase exata: "${MINOR_REFUSAL_TEXT}"`,
+  ].join('\n');
+}
+
+// ---------- Audio MIME Normalization & Calibrated Transcription ----------
+
+export function normalizeAudioMimeType(rawMime?: string): string {
+  const base = String(rawMime || 'audio/webm')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
+  if (
+    base === 'audio/webm' ||
+    base === 'audio/mp4' ||
+    base === 'audio/mpeg' ||
+    base === 'audio/mp3' ||
+    base === 'audio/wav' ||
+    base === 'audio/ogg' ||
+    base === 'audio/flac' ||
+    base === 'audio/aac'
+  ) {
+    return base;
   }
-  if (error instanceof InvalidJsonBodyError) {
-    sendJson(res, error.statusCode, {
-      code: error.code,
-      error: error.message,
-    });
-    return;
+  return 'audio/webm';
+}
+
+export function buildCalibratedTranscriptionPrompt(params?: {
+  mode?: string;
+  expectedPhrase?: string;
+  hintKeywords?: unknown;
+}): string {
+  const mode = params?.mode === 'study' ? 'study' : 'conversation';
+  const expectedPhrase =
+    typeof params?.expectedPhrase === 'string'
+      ? params.expectedPhrase.trim().slice(0, 60)
+      : '';
+  const hintKeywords = Array.isArray(params?.hintKeywords)
+    ? params.hintKeywords
+        .map((k) => String(k || '').trim().slice(0, 40))
+        .filter(Boolean)
+        .slice(0, 10)
+    : [];
+
+  if (mode === 'study') {
+    const contextLine = expectedPhrase
+      ? `Contexto da aula: o aluno está praticando pronúncia infantil em Português do Brasil (alvo esperado da lição: "${expectedPhrase}"${hintKeywords.length > 0 ? `; vocabulário próximo: ${hintKeywords.join(', ')}` : ''}).`
+      : `Contexto da aula: o aluno está praticando letras, vogais, sílabas ou palavras curtas em Português do Brasil.`;
+    return [
+      contextLine,
+      `Ouça com muita atenção o áudio gravado (pode ser voz infantil, fala curta ou uma única vogal/letra como A, E, I, O, U, B, C, etc.).`,
+      `Transcreva FIELMENTE apenas o que o aluno realmente falou em Português do Brasil.`,
+      `IMPORTANTE: NÃO invente nem force a palavra esperada se o aluno disse outra coisa ou outra letra! Use o contexto apenas para entender melhor vogais isoladas, sílabas curtas e fala infantil.`,
+      `Retorne SOMENTE o texto transcrito, sem aspas, sem pontuação desnecessária e sem explicações. Se houver apenas ruído de fundo ou silêncio, retorne string vazia.`,
+    ].join('\n');
   }
-  const msg = error instanceof Error ? error.message : String(error);
-  console.error(`Erro em ${routeLabel}:`, msg);
-  sendJson(res, 500, { error: msg });
+
+  return [
+    `Transcreva com alta precisão a fala em Português do Brasil neste áudio (pode incluir fala infantil, gírias leves ou voz suave).`,
+    `Considere pausas naturais e corrija apenas erros óbvios de separação de palavras sem alterar o que foi dito.`,
+    `Retorne SOMENTE o texto transcrito, sem aspas, sem prefixos e sem comentários. Se houver apenas silêncio ou ruído sem fala inteligível, retorne string vazia.`,
+  ].join('\n');
 }

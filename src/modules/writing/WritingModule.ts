@@ -15,10 +15,14 @@ import {
   type WritingUnitDef,
 } from './data';
 import {
+  WRITING_DAILY_BONUS,
+  WRITING_MEDALS,
+  TRACKED_WRITING_WORDS,
   buildStrokeCueSummary,
   completeWritingUnit,
   evaluateHandwritingTrace,
   getMotorGuideWidths,
+  getWritingLetterStarsTotal,
   isWritingUnitUnlocked,
   layoutTargetStrokes,
   loadWritingProgress,
@@ -74,6 +78,10 @@ interface WritingCelebrationState {
   coinsEarned: number;
   xpEarned: number;
   nextUnitId: string | null;
+  streakDays: number;
+  dailyStepsCount: number;
+  dailyGoalTarget: number;
+  unlockedMedalsCount: number;
 }
 
 export class WritingModuleController {
@@ -190,6 +198,16 @@ export class WritingModuleController {
     const totalUnits = WRITING_UNITS.length;
     const pct = Math.round((completedCount / totalUnits) * 100);
     const activeUnit = this.getCurrentUnit(progress);
+    const dailySteps = progress.dailyStepsCount;
+    const dailyGoal = Math.max(1, progress.dailyGoalTarget);
+    const dailyPct = Math.min(100, Math.round((dailySteps / dailyGoal) * 100));
+    const dailyCompleted =
+      dailySteps >= dailyGoal ||
+      (Boolean(progress.dailyBonusClaimedDateKey) &&
+        progress.dailyBonusClaimedDateKey === progress.dailyDateKey);
+    const letterStarsTotal = getWritingLetterStarsTotal(progress);
+    const totalStarsDisplay = progress.totalStars + letterStarsTotal;
+    const unlockedMedalSet = new Set(progress.unlockedMedals);
 
     return `
       <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
@@ -238,6 +256,59 @@ export class WritingModuleController {
       </div>
 
       <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
+        <!-- Rotina Diária de Escrita -->
+        <div class="rounded-2xl p-2.5 sm:p-3 bg-gradient-to-br from-[#fff9eb] via-white to-[#f6efff] border border-amber-300/80 shadow-sm flex flex-col gap-2">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-lg shrink-0">
+                ${dailyCompleted ? '🏆' : '📅'}
+              </span>
+              <div class="min-w-0">
+                <div class="text-[10px] font-extrabold uppercase tracking-wide text-amber-800">
+                  Rotina Diária de Estudo
+                </div>
+                <div class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight">
+                  ${
+                    dailyCompleted
+                      ? 'Meta de hoje concluída! Parabéns!'
+                      : `Complete ${dailyGoal} letras ou palavras hoje (${Math.min(dailySteps, dailyGoal)}/${dailyGoal})`
+                  }
+                </div>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <span class="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-200 text-orange-800 text-[10px] font-extrabold">
+                🔥 ${progress.streakDays} dia(s)
+              </span>
+              <span class="px-2 py-0.5 rounded-full ${dailyCompleted ? 'bg-emerald-100 border border-emerald-200 text-emerald-800' : 'bg-amber-100 border border-amber-200 text-amber-800'} text-[10px] font-extrabold">
+                ${dailyCompleted ? '✅ Bônus ganho' : `🎁 +🪙${WRITING_DAILY_BONUS.coins}`}
+              </span>
+            </div>
+          </div>
+
+          <div class="w-full h-2.5 rounded-full bg-amber-100/80 border border-amber-200/70 overflow-hidden">
+            <div
+              class="h-full rounded-full transition-all duration-500 ${
+                dailyCompleted
+                  ? 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                  : 'bg-gradient-to-r from-amber-400 via-orange-400 to-pink-500'
+              }"
+              style="width: ${Math.max(8, dailyPct)}%"
+            ></div>
+          </div>
+
+          <div class="flex items-center justify-between gap-2 flex-wrap text-[10px] font-bold text-[#5e4294]">
+            <span>
+              ${
+                progress.dailyCompletedTargets.length > 0
+                  ? `Hoje: ${progress.dailyCompletedTargets.map((t) => `<span class="inline-block px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold mr-0.5">${escapeHtml(t)}</span>`).join('')}`
+                  : 'Comece uma letra agora para acender sua chama diária!'
+              }
+            </span>
+            <span class="text-[#6b4d9e]">Recorde: ${progress.bestStreakDays}d</span>
+          </div>
+        </div>
+
         <!-- Unidade em Destaque -->
         <div class="rounded-2xl p-2.5 sm:p-3 bg-gradient-to-br from-white via-[#f8f3ff] to-[#efe5ff] border border-[#9b72cf] shadow-sm flex items-center justify-between gap-2.5 flex-wrap">
           <div class="flex items-center gap-2.5 min-w-0 flex-1">
@@ -265,8 +336,8 @@ export class WritingModuleController {
           </button>
         </div>
 
-        <!-- Painel de Coordenação Motora & Vogais -->
-        <div class="rounded-2xl p-2.5 sm:p-3 bg-white/90 border border-purple-100 shadow-sm flex flex-col gap-2">
+        <!-- Painel de Letras, Estrelas & Medalhas -->
+        <div class="rounded-2xl p-2.5 sm:p-3 bg-white/90 border border-purple-100 shadow-sm flex flex-col gap-2.5">
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0">
               <div class="w-10 h-10 shrink-0">
@@ -275,7 +346,7 @@ export class WritingModuleController {
               <div class="min-w-0">
                 <div class="text-[9px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Caderno de ${escapeHtml(firstName)}</div>
                 <div class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight truncate">
-                  Cubra com o dedo do largo ao fino!
+                  Estrelas & Medalhas por Letra
                 </div>
               </div>
             </div>
@@ -298,32 +369,97 @@ export class WritingModuleController {
               <div class="text-[9px] font-extrabold text-[#6b4d9e] uppercase">Unid.</div>
             </div>
             <div class="rounded-xl py-1.5 px-1 bg-amber-50 border border-amber-200 text-center">
-              <div class="text-sm font-display font-bold text-amber-700 leading-tight">★ ${progress.totalStars}</div>
+              <div class="text-sm font-display font-bold text-amber-700 leading-tight">★ ${totalStarsDisplay}</div>
               <div class="text-[9px] font-extrabold text-amber-800 uppercase">Estrelas</div>
             </div>
-            <div class="rounded-xl py-1.5 px-1 bg-pink-50 border border-pink-200 text-center">
-              <div class="text-sm font-display font-bold text-pink-700 leading-tight">${progress.masteredVowels.length}/5</div>
-              <div class="text-[9px] font-extrabold text-pink-800 uppercase">Vogais</div>
+            <div class="rounded-xl py-1.5 px-1 bg-orange-50 border border-orange-200 text-center">
+              <div class="text-sm font-display font-bold text-orange-700 leading-tight">🔥 ${progress.streakDays}d</div>
+              <div class="text-[9px] font-extrabold text-orange-800 uppercase">Sequência</div>
             </div>
-            <div class="rounded-xl py-1.5 px-1 bg-sky-50 border border-sky-200 text-center">
-              <div class="text-sm font-display font-bold text-sky-700 leading-tight">${progress.totalPracticesCompleted}</div>
-              <div class="text-[9px] font-extrabold text-sky-800 uppercase">Traços</div>
+            <div class="rounded-xl py-1.5 px-1 bg-emerald-50 border border-emerald-200 text-center">
+              <div class="text-sm font-display font-bold text-emerald-700 leading-tight">🏅 ${progress.unlockedMedals.length}/${WRITING_MEDALS.length}</div>
+              <div class="text-[9px] font-extrabold text-emerald-800 uppercase">Medalhas</div>
             </div>
           </div>
 
-          <div class="flex items-center justify-between gap-2 pt-0.5">
-            <span class="text-[10px] font-extrabold text-[#5a3696]">Vogais escritas:</span>
-            <div class="flex items-center gap-1">
+          <!-- Vogais com Estrelas Individuais -->
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="text-[10px] font-extrabold text-[#5a3696]">Vogais (${progress.masteredVowels.length}/5):</span>
+              <span class="text-[9px] font-bold text-[#7a60a8]">3★ = Traço de Ouro</span>
+            </div>
+            <div class="grid grid-cols-5 gap-1.5">
               ${TRACKED_WRITING_VOWELS.map((v) => {
-                const done = progress.masteredVowels.includes(v);
+                const done = progress.masteredVowels.includes(v) || progress.masteredTargets.includes(v);
+                const stars = progress.letterBestStars[v] ?? (done ? 2 : 0);
+                const doneToday = progress.dailyCompletedTargets.includes(v);
                 return `
-                  <span class="w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center font-display text-xs font-bold border transition ${
-                    done
-                      ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white border-emerald-500 shadow-sm'
-                      : 'bg-purple-50 text-purple-300 border-purple-200'
+                  <div class="rounded-xl p-1.5 flex flex-col items-center justify-center border text-center transition ${
+                    stars >= 3
+                      ? 'bg-gradient-to-br from-amber-50 to-yellow-100 border-amber-300 shadow-sm'
+                      : done
+                        ? 'bg-gradient-to-br from-emerald-50 to-teal-50 border-emerald-300 shadow-sm'
+                        : 'bg-purple-50/70 border-purple-100 text-purple-300'
                   }">
-                    ${v}
+                    <div class="flex items-center gap-0.5 leading-none">
+                      <span class="font-display text-sm sm:text-base font-bold ${done ? 'text-[#3b1f6e]' : 'text-purple-300'}">${v}</span>
+                      ${stars >= 3 ? '<span class="text-[10px]">🥇</span>' : done ? '<span class="text-[9px] text-emerald-600">✓</span>' : ''}
+                    </div>
+                    <div class="text-[9px] leading-none mt-1 ${done ? 'text-amber-500' : 'text-purple-200'}">
+                      ${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}
+                    </div>
+                    ${doneToday ? '<span class="text-[8px] font-extrabold text-emerald-700 mt-0.5">Hoje</span>' : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Palavras Fáceis Praticadas -->
+          <div>
+            <div class="text-[10px] font-extrabold text-[#5a3696] mb-1">Palavras Fáceis:</div>
+            <div class="flex items-center gap-1 flex-wrap">
+              ${TRACKED_WRITING_WORDS.map((word) => {
+                const done = progress.masteredTargets.includes(word);
+                const stars = progress.letterBestStars[word] ?? 0;
+                return `
+                  <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold border ${
+                    done
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                      : 'bg-purple-50/60 border-purple-100 text-purple-400'
+                  }">
+                    ${escapeHtml(word)} ${stars > 0 ? `<span class="text-amber-500">${'★'.repeat(stars)}</span>` : ''}
                   </span>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <!-- Galeria de Medalhas -->
+          <div>
+            <div class="flex items-center justify-between gap-2 mb-1.5">
+              <span class="text-[10px] font-extrabold text-[#5a3696]">Medalhas de Escrita:</span>
+              <span class="text-[9px] font-bold text-[#7a60a8]">${progress.unlockedMedals.length} de ${WRITING_MEDALS.length} conquistadas</span>
+            </div>
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              ${WRITING_MEDALS.map((medal) => {
+                const unlocked = unlockedMedalSet.has(medal.id);
+                return `
+                  <div class="rounded-xl p-2 border flex items-start gap-1.5 transition ${
+                    unlocked
+                      ? 'bg-gradient-to-br from-amber-50 via-white to-yellow-50 border-amber-300 shadow-sm'
+                      : 'bg-slate-50/80 border-slate-200 opacity-65 grayscale'
+                  }">
+                    <span class="text-base leading-none shrink-0 mt-0.5">${medal.emoji}</span>
+                    <div class="min-w-0">
+                      <div class="text-[10px] font-extrabold leading-tight truncate ${unlocked ? 'text-[#3b1f6e]' : 'text-slate-500'}">
+                        ${escapeHtml(medal.title)}
+                      </div>
+                      <div class="text-[9px] leading-tight text-[#6b4d9e] line-clamp-2">
+                        ${escapeHtml(medal.description)}
+                      </div>
+                    </div>
+                  </div>
                 `;
               }).join('')}
             </div>
@@ -424,10 +560,15 @@ export class WritingModuleController {
           : 'Largo (Fácil)';
 
     const audioState = writingAudioEngine.getState();
+    const progress = this.getProgress();
+    const dailyGoal = Math.max(1, progress.dailyGoalTarget);
+    const dailySteps = Math.min(progress.dailyStepsCount, dailyGoal);
+    const dailyDone = progress.dailyStepsCount >= dailyGoal;
+    const bestLetterStars = progress.letterBestStars[ch.targetText] ?? 0;
 
     return `
       <!-- Cabeçalho de Aula Compacto -->
-      <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
+      <div class="flex items-center justify-between gap-1.5 mb-1.5 text-left shrink-0">
         <div class="flex items-center gap-1 shrink-0">
           <button id="btn-wr-exit-lesson" type="button" class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0">← Trilha</button>
           <button id="btn-wr-lesson-menu" type="button" class="px-2 py-1 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] hover:bg-purple-200/80 active:scale-95 transition shrink-0">🏠</button>
@@ -448,6 +589,18 @@ export class WritingModuleController {
           ${this.renderSoundToggleButton('btn-wr-lesson-sound')}
           <button id="modal-close" type="button" class="w-7 h-7 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold active:scale-95 transition shrink-0">✕</button>
         </div>
+      </div>
+
+      <div class="flex items-center justify-between gap-1.5 mb-2 text-[10px] font-extrabold shrink-0 flex-wrap">
+        <span class="px-2 py-0.5 rounded-full border ${dailyDone ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}">
+          📅 Meta hoje: ${dailySteps}/${dailyGoal} ${dailyDone ? '✓' : ''}
+        </span>
+        <span class="px-2 py-0.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85]">
+          ${escapeHtml(ch.targetText)}: <span class="text-amber-500">${bestLetterStars > 0 ? '★'.repeat(bestLetterStars) + '☆'.repeat(3 - bestLetterStars) : '☆☆☆'}</span>
+        </span>
+        <span class="px-2 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-800">
+          🔥 ${progress.streakDays}d • 🏅 ${progress.unlockedMedals.length}/${WRITING_MEDALS.length}
+        </span>
       </div>
 
       <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
@@ -654,12 +807,23 @@ export class WritingModuleController {
               Sua coordenação motora fina está ficando incrível!
             </p>
           </div>
-          <div class="flex items-center justify-center gap-2 w-full">
+          <div class="flex items-center justify-center gap-2 w-full flex-wrap">
             <span class="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-extrabold">
               🪙 +${celeb.coinsEarned} moedas
             </span>
             <span class="px-3 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-[#5a3696] text-xs font-extrabold">
               ✨ +${celeb.xpEarned} XP
+            </span>
+          </div>
+          <div class="flex items-center justify-center gap-1.5 w-full flex-wrap text-[11px] font-extrabold">
+            <span class="px-2.5 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-800">
+              🔥 ${celeb.streakDays} dia(s) seguido(s)
+            </span>
+            <span class="px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800">
+              📅 Hoje: ${Math.min(celeb.dailyStepsCount, celeb.dailyGoalTarget)}/${celeb.dailyGoalTarget}
+            </span>
+            <span class="px-2.5 py-1 rounded-full bg-yellow-50 border border-yellow-200 text-amber-800">
+              🏅 ${celeb.unlockedMedalsCount}/${WRITING_MEDALS.length}
             </span>
           </div>
           <div class="flex items-center gap-2 w-full pt-1">
@@ -890,7 +1054,7 @@ export class WritingModuleController {
     const stars = Math.max(1, Math.min(3, avgStars));
 
     const prev = this.getProgress();
-    completeWritingUnit(prev, unit.id, stars);
+    const updatedProgress = completeWritingUnit(prev, unit.id, stars);
 
     this.deps.onGrantRewards(unit.coinReward, unit.xpReward);
     soundService.playCoin();
@@ -907,6 +1071,10 @@ export class WritingModuleController {
       coinsEarned: unit.coinReward,
       xpEarned: unit.xpReward,
       nextUnitId: nextUnit?.id ?? null,
+      streakDays: updatedProgress.streakDays,
+      dailyStepsCount: updatedProgress.dailyStepsCount,
+      dailyGoalTarget: updatedProgress.dailyGoalTarget,
+      unlockedMedalsCount: updatedProgress.unlockedMedals.length,
     };
     this.lesson = null;
     this.deps.onRequestRerender();
@@ -1373,21 +1541,48 @@ export class WritingModuleController {
       feedbackText,
     };
 
-    if (verdict === 'positive') {
+    if (verdict === 'positive' || verdict === 'medium') {
+      const earnedStars = Math.max(1, stars);
       this.lesson.stepSolved = true;
-      this.lesson.stepStars[this.lesson.cursor] = Math.max(1, stars);
-      this.lesson.coachMood = 'affectionate';
-      recordWritingStepSolved(this.getProgress(), ch);
-      this.deps.onGrantRewards(8, 10);
-      soundService.playCoin();
-      hapticService.tap();
-    } else if (verdict === 'medium') {
-      this.lesson.stepSolved = true;
-      this.lesson.stepStars[this.lesson.cursor] = Math.max(1, stars);
-      this.lesson.coachMood = 'happy';
-      recordWritingStepSolved(this.getProgress(), ch);
-      this.deps.onGrantRewards(4, 6);
-      soundService.playBubble();
+      this.lesson.stepStars[this.lesson.cursor] = earnedStars;
+      this.lesson.coachMood = verdict === 'positive' ? 'affectionate' : 'happy';
+
+      const outcome = recordWritingStepSolved(
+        this.getProgress(),
+        ch,
+        earnedStars
+      );
+      const baseCoins = verdict === 'positive' ? 8 : 4;
+      const baseXp = verdict === 'positive' ? 10 : 6;
+      this.deps.onGrantRewards(
+        baseCoins + outcome.bonusCoins,
+        baseXp + outcome.bonusXp
+      );
+
+      if (verdict === 'positive') {
+        soundService.playCoin();
+        hapticService.tap();
+      } else {
+        soundService.playBubble();
+      }
+
+      if (outcome.dailyGoalJustCompleted) {
+        hapticService.levelUp();
+        this.deps.onToast(
+          `🔥 Meta diária de escrita concluída! +${WRITING_DAILY_BONUS.coins} moedas e +${WRITING_DAILY_BONUS.xp} XP!`
+        );
+        audioScript = `${audioScript} Parabéns, você completou sua meta diária de escrita!`;
+      } else if (outcome.newlyUnlockedMedals.length > 0) {
+        hapticService.levelUp();
+        const firstMedal = outcome.newlyUnlockedMedals[0];
+        this.deps.onToast(
+          `🏅 Nova medalha desbloqueada: ${firstMedal.emoji} ${firstMedal.title}!`
+        );
+      } else if (outcome.isNewLetterMastered) {
+        this.deps.onToast(
+          `⭐ Nova letra dominada: "${ch.targetText}"! (+${outcome.bonusCoins} moedas)`
+        );
+      }
     } else {
       this.lesson.coachMood = 'playful';
       soundService.playBubble();

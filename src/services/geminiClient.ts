@@ -11,11 +11,21 @@ export interface MiauChatResponse {
   meowPrefix: string;
   text: string;
   mood: MiauMood;
+  modelUsed?: string;
+  fallbackActive?: boolean;
+}
+
+export interface MiauVoiceResponse {
+  audioBase64: string | null;
+  mimeType: string | null;
+  modelUsed?: string;
+  fallbackActive?: boolean;
+  textOnlyFallback?: boolean;
 }
 
 let pendingRecoveryProbeTimer: number | null = null;
 
-function scheduleSuperiorModelRecoveryCheck(fallbackActive?: boolean): void {
+export function scheduleSuperiorModelRecoveryCheck(fallbackActive?: boolean): void {
   if (!fallbackActive || typeof window === 'undefined') return;
   if (pendingRecoveryProbeTimer !== null) return;
   pendingRecoveryProbeTimer = window.setTimeout(() => {
@@ -63,6 +73,30 @@ async function parseJsonSafely<T>(res: Response): Promise<ParsedApiResult<T>> {
   }
 }
 
+function sanitizeApiErrorMessage(rawMessage: string, status: number): string {
+  const lower = rawMessage.toLowerCase();
+  if (
+    lower.includes('"code":503') ||
+    lower.includes('"code": 503') ||
+    lower.includes('unavailable') ||
+    lower.includes('high demand') ||
+    lower.includes('overloaded') ||
+    status === 503
+  ) {
+    return 'Os servidores de IA estão com alta demanda temporária agora. Tente novamente em alguns segundos!';
+  }
+  if (
+    lower.includes('"code":429') ||
+    lower.includes('"code": 429') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('quota') ||
+    status === 429
+  ) {
+    return 'Limite temporário de requisições da IA atingido. Aguarde alguns instantes para o restabelecimento automático!';
+  }
+  return rawMessage;
+}
+
 function buildFriendlyHttpError(
   status: number,
   parsed: ParsedApiResult<{ error?: string; code?: string }>,
@@ -71,7 +105,18 @@ function buildFriendlyHttpError(
   const apiError = parsed.data?.error?.trim();
   const code = parsed.data?.code;
   if (apiError) {
-    return new GeminiApiError(apiError, status, code);
+    return new GeminiApiError(
+      sanitizeApiErrorMessage(apiError, status),
+      status,
+      code
+    );
+  }
+  if (status === 502 || status === 503 || status === 504) {
+    return new GeminiApiError(
+      'O servidor de IA está momentaneamente sobrecarregado. Tente novamente em alguns segundos!',
+      status,
+      'MODEL_UNAVAILABLE'
+    );
   }
   if (status === 404 || !parsed.isJson) {
     return new GeminiApiError(
@@ -81,6 +126,37 @@ function buildFriendlyHttpError(
     );
   }
   return new GeminiApiError(`${fallbackMessage} (HTTP ${status})`, status, code);
+}
+
+async function fetchWithTransientRetry(
+  url: string,
+  init: RequestInit,
+  retries = 1
+): Promise<Response> {
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(url, init);
+      const isRetryableHttp = res.status === 502 || res.status === 503 || res.status === 504;
+      if (!isRetryableHttp || attempt === retries) {
+        return res;
+      }
+      // Clone/check if MISSING_GEMINI_API_KEY so we don't pointlessly retry config errors
+      try {
+        const peek = await res.clone().json() as { code?: string };
+        if (peek?.code === 'MISSING_GEMINI_API_KEY') {
+          return res;
+        }
+      } catch {
+        // Not JSON, proceed with retry
+      }
+    } catch (err) {
+      lastErr = err;
+      if (attempt === retries) throw err;
+    }
+    await new Promise((r) => setTimeout(r, 650 * (attempt + 1)));
+  }
+  throw lastErr;
 }
 
 export async function askMiau(params: {
@@ -94,7 +170,7 @@ export async function askMiau(params: {
 }): Promise<MiauChatResponse> {
   let res: Response;
   try {
-    res = await fetch('/api/gemini/chat', {
+    res = await fetchWithTransientRetry('/api/gemini/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -122,17 +198,22 @@ export async function askMiau(params: {
     meowPrefix?: string;
     text?: string;
     mood?: MiauMood;
+    modelUsed?: string;
     fallbackActive?: boolean;
     error?: string;
     code?: string;
   }>(res);
 
   if (!res.ok || !parsed.data) {
-    throw buildFriendlyHttpError(
+    const err = buildFriendlyHttpError(
       res.status,
       parsed,
       'Erro ao conversar com o Miau.'
     );
+    if (res.status === 503 || err.code === 'MODEL_UNAVAILABLE' || err.code === 'QUOTA_EXHAUSTED') {
+      scheduleSuperiorModelRecoveryCheck(true);
+    }
+    throw err;
   }
 
   scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
@@ -141,65 +222,106 @@ export async function askMiau(params: {
     meowPrefix: parsed.data.meowPrefix || 'Miau!',
     text: parsed.data.text || '(Oi, humano!)',
     mood: (parsed.data.mood || 'happy') as MiauMood,
+    modelUsed: parsed.data.modelUsed,
+    fallbackActive: parsed.data.fallbackActive,
   };
 }
 
 export async function synthesizeMiauVoice(
   text: string
-): Promise<{ audioBase64: string; mimeType: string }> {
+): Promise<MiauVoiceResponse> {
   let res: Response;
   try {
-    res = await fetch('/api/gemini/tts', {
+    res = await fetchWithTransientRetry('/api/gemini/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     });
   } catch {
-    throw new GeminiApiError(
-      'Serviço de voz indisponível sem conexão.',
-      0,
-      'NETWORK_ERROR'
-    );
+    scheduleSuperiorModelRecoveryCheck(true);
+    return {
+      audioBase64: null,
+      mimeType: null,
+      textOnlyFallback: true,
+      fallbackActive: true,
+    };
   }
 
   const parsed = await parseJsonSafely<{
-    audioBase64?: string;
-    mimeType?: string;
+    audioBase64?: string | null;
+    mimeType?: string | null;
+    modelUsed?: string;
     fallbackActive?: boolean;
+    textOnlyFallback?: boolean;
     error?: string;
     code?: string;
   }>(res);
 
-  if (!res.ok || !parsed.data?.audioBase64) {
-    throw buildFriendlyHttpError(
+  if (!res.ok || !parsed.data) {
+    const err = buildFriendlyHttpError(
       res.status,
       parsed,
       'Erro ao gerar voz do Miau.'
     );
+    if (
+      err.code === 'MISSING_GEMINI_API_KEY' ||
+      err.code === 'API_KEY_INVALID' ||
+      err.code === 'PERMISSION_DENIED'
+    ) {
+      throw err;
+    }
+    scheduleSuperiorModelRecoveryCheck(true);
+    return {
+      audioBase64: null,
+      mimeType: null,
+      textOnlyFallback: true,
+      fallbackActive: true,
+    };
   }
 
-  scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
+  const isTextOnly =
+    Boolean(parsed.data.textOnlyFallback) || !parsed.data.audioBase64;
+  scheduleSuperiorModelRecoveryCheck(
+    Boolean(parsed.data.fallbackActive) || isTextOnly
+  );
 
   return {
-    audioBase64: parsed.data.audioBase64,
-    mimeType: parsed.data.mimeType || 'audio/wav',
+    audioBase64: parsed.data.audioBase64 ?? null,
+    mimeType: parsed.data.mimeType ?? null,
+    modelUsed: parsed.data.modelUsed,
+    fallbackActive: parsed.data.fallbackActive,
+    textOnlyFallback: isTextOnly,
   };
+}
+
+export interface TranscribeCalibrationOptions {
+  mode?: 'conversation' | 'study';
+  expectedPhrase?: string;
+  hintKeywords?: string[];
 }
 
 export async function transcribeUserAudio(
   audioBase64: string,
-  mimeType: string
+  mimeType: string,
+  calibration?: TranscribeCalibrationOptions
 ): Promise<string> {
+  const cleanMime = (mimeType || 'audio/webm').split(';')[0].trim() || 'audio/webm';
   let res: Response;
   try {
-    res = await fetch('/api/gemini/transcribe', {
+    res = await fetchWithTransientRetry('/api/gemini/transcribe', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ audioBase64, mimeType }),
+      body: JSON.stringify({
+        audioBase64,
+        mimeType: cleanMime,
+        mode: calibration?.mode || 'conversation',
+        expectedPhrase: calibration?.expectedPhrase,
+        hintKeywords: calibration?.hintKeywords,
+      }),
     });
   } catch {
     throw new GeminiApiError(
-      'Transcrição de voz indisponível sem conexão.',
+      'Transcrição de voz indisponível sem conexão. Você pode continuar digitando por texto!',
       0,
       'NETWORK_ERROR'
     );
@@ -213,11 +335,15 @@ export async function transcribeUserAudio(
   }>(res);
 
   if (!res.ok || !parsed.data) {
-    throw buildFriendlyHttpError(
+    const err = buildFriendlyHttpError(
       res.status,
       parsed,
       'Erro ao transcrever áudio.'
     );
+    if (res.status === 503 || err.code === 'MODEL_UNAVAILABLE' || err.code === 'QUOTA_EXHAUSTED') {
+      scheduleSuperiorModelRecoveryCheck(true);
+    }
+    throw err;
   }
 
   scheduleSuperiorModelRecoveryCheck(parsed.data.fallbackActive);
@@ -243,7 +369,7 @@ export async function requestWritingTeach(params: {
   motorLevel: 'largo' | 'medio' | 'fino';
   strokeHints: string[];
 }): Promise<WritingTeachResponse> {
-  const res = await fetch('/api/gemini/writing-coach', {
+  const res = await fetchWithTransientRetry('/api/gemini/writing-coach', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -282,7 +408,7 @@ export async function requestWritingEvaluation(params: {
   precisionPct: number;
   strokeCount: number;
 }): Promise<WritingEvaluateResponse> {
-  const res = await fetch('/api/gemini/writing-coach', {
+  const res = await fetchWithTransientRetry('/api/gemini/writing-coach', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -314,4 +440,3 @@ export async function requestWritingEvaluation(params: {
     audioScript: parsed.data.audioScript || '',
   };
 }
-

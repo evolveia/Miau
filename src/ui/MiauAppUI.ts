@@ -107,7 +107,9 @@ import {
   renderLearnModalHtml,
 } from './modals/LearnModal';
 import { EarlyLiteracyController } from './modals/EarlyLiteracyView';
+import { ConsonantsModuleController } from '../modules/consonants/ConsonantsModule';
 import { WritingModuleController } from '../modules/writing/WritingModule';
+import { loadWritingProgress } from '../modules/writing/writingEngine';
 import {
   bindLoginScreenEvents,
   renderLoginScreenHtml,
@@ -204,10 +206,14 @@ export class MiauAppUI {
   private showInstallGuideModal = false;
   private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
   private learnPreviewLevel: SchoolingLevel | null = null;
-  private activeLearnTrack: 'none' | 'infantil_letras' | 'infantil_escrita' =
-    'none';
+  private activeLearnTrack:
+    | 'none'
+    | 'infantil_letras'
+    | 'infantil_escrita'
+    | 'infantil_consoantes' = 'none';
   private earlyLiteracyView: EarlyLiteracyController;
   private writingView: WritingModuleController;
+  private consonantsView: ConsonantsModuleController;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
 
@@ -263,6 +269,7 @@ export class MiauAppUI {
         this.activeLearnTrack = 'none';
         this.earlyLiteracyView.resetToTrail();
         this.writingView.resetToTrail();
+        this.consonantsView.resetToTrail();
         this.activeModal = 'learn';
         this.render();
       },
@@ -333,6 +340,39 @@ export class MiauAppUI {
           this.screen === 'game' &&
           this.activeModal === 'learn' &&
           this.activeLearnTrack === 'infantil_escrita'
+        ) {
+          this.render();
+        }
+      },
+      onToast: (msg) => this.showToast(msg),
+    });
+    this.consonantsView = new ConsonantsModuleController({
+      getOwnerId: () =>
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
+      getHumanProfile: () => this.humanProfile,
+      getEquipped: () => this.profile.equipped,
+      isSoundEnabled: () => this.profile.soundEnabled,
+      onToggleSoundMute: () => this.toggleSoundMute(),
+      onGrantRewards: (coinsDelta, xpDelta) => {
+        this.ensureProfileDefaults();
+        this.addRewards(coinsDelta, xpDelta);
+        this.updateStatusBarsDOM();
+        void this.persistStats();
+      },
+      onExitToLearnHub: () => {
+        this.activeLearnTrack = 'none';
+        this.render();
+      },
+      onExitToMainMenu: () => {
+        this.activeLearnTrack = 'none';
+        this.activeModal = 'menu';
+        this.render();
+      },
+      onRequestRerender: () => {
+        if (
+          this.screen === 'game' &&
+          this.activeModal === 'learn' &&
+          this.activeLearnTrack === 'infantil_consoantes'
         ) {
           this.render();
         }
@@ -1684,11 +1724,23 @@ export class MiauAppUI {
       ) {
         this.currentSpeech = {
           meowPrefix: 'Miau!',
-          text: '(Falta configurar a GEMINI_API_KEY nas variáveis do servidor Vercel para ativar minha IA.)',
+          text: '(Falta configurar a chave GEMINI_API_KEY nas configurações do servidor para ativar minha IA.)',
         };
-        this.showToast('Configure GEMINI_API_KEY na Vercel e faça um Redeploy.');
+        this.showToast('Configure GEMINI_API_KEY nas Environment Variables.');
+      } else if (
+        error instanceof GeminiApiError &&
+        (error.code === 'MODEL_UNAVAILABLE' || error.code === 'QUOTA_EXHAUSTED')
+      ) {
+        this.currentSpeech = {
+          meowPrefix: 'Miau...',
+          text: '(Os servidores de IA estão bem cheios agora, tente enviar de novo em alguns segundinhos!)',
+        };
+        this.showToast('Alta demanda na IA no momento — tentando restabelecer...');
       } else {
-        const msg = error instanceof Error ? error.message : String(error);
+        const msg =
+          error instanceof Error
+            ? error.message
+            : 'Não consegui responder agora. Tente novamente!';
         this.currentSpeech = {
           meowPrefix: 'Miau?',
           text: `(${msg})`,
@@ -1950,13 +2002,20 @@ export class MiauAppUI {
       this.isRecordingMic = false;
       this.updateMicButtonsDOM();
       try {
-        const { audioBase64, mimeType } = await soundService.stopRecording();
-        this.showToast('Transcrevendo sua voz...');
-        const transcript = await transcribeUserAudio(audioBase64, mimeType);
+        const { audioBase64, mimeType, durationMs, peakRms } =
+          await soundService.stopRecording();
+        if (durationMs < 240 || peakRms < 0.0025 || !audioBase64) {
+          this.showToast('Fale um pouquinho mais perto do microfone para o Miau ouvir!');
+          return;
+        }
+        this.showToast('Ouvindo e entendendo sua voz...');
+        const transcript = await transcribeUserAudio(audioBase64, mimeType, {
+          mode: 'conversation',
+        });
         if (transcript) {
           await this.sendChatToMiau(transcript);
         } else {
-          this.showToast('Não consegui ouvir direitinho. Tente de novo!');
+          this.showToast('Não consegui ouvir direitinho. Tente falar novamente!');
         }
       } catch (err) {
         this.showToast(
@@ -2469,10 +2528,13 @@ export class MiauAppUI {
         matchHistory: this.loadGameMatchHistory(),
       });
     } else if (this.activeModal === 'routine') {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
       body = renderRoutineModalHtml(
         this.profile,
         this.isSleeping,
-        (slot, now) => this.isSlotInWindow(slot, now)
+        (slot, now) => this.isSlotInWindow(slot, now),
+        loadWritingProgress(ownerId)
       );
     } else if (this.activeModal === 'menu') {
       const unlockedCount = (this.profile.unlockedAchievements || []).length;
@@ -2502,7 +2564,9 @@ export class MiauAppUI {
           ? this.earlyLiteracyView.render()
           : this.activeLearnTrack === 'infantil_escrita'
             ? this.writingView.render()
-            : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
+            : this.activeLearnTrack === 'infantil_consoantes'
+              ? this.consonantsView.render()
+              : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
     } else if (this.activeModal === 'settings') {
       body = renderSettingsModalHtml({
         screenPrefs: this.screenPrefs,
@@ -2927,6 +2991,15 @@ export class MiauAppUI {
         this.render();
       }
     });
+    this.root
+      .querySelector('#btn-routine-open-writing')
+      ?.addEventListener('click', () => {
+        this.learnPreviewLevel = null;
+        this.writingView.resetToTrail();
+        this.activeLearnTrack = 'infantil_escrita';
+        this.activeModal = 'learn';
+        this.render();
+      });
 
     // Customize tabs & items
     this.root.querySelectorAll('[data-shoptab]').forEach((btn) => {
@@ -3105,15 +3178,18 @@ export class MiauAppUI {
           },
           onError: (err) => {
             hadLiveError = true;
-            this.liveStatus = err;
+            this.liveStatus =
+              err ||
+              'Voz ao vivo pausada temporariamente — continue conversando por texto ou 🎤!';
             this.liveSession = null;
             hapticService.warning();
+            this.showToast('Continuando a conversa por texto!');
             this.render();
           },
           onClosed: () => {
             this.liveSession = null;
             if (!hadLiveError) {
-              this.liveStatus = 'Sessão de voz encerrada.';
+              this.liveStatus = 'Sessão de voz encerrada. Continue por texto ou 🎤!';
             }
             this.render();
           },
@@ -3121,12 +3197,17 @@ export class MiauAppUI {
         this.liveSession = session;
         session.setMuted(!this.profile.soundEnabled);
         try {
-          await session.start();
+          const liveUserAge = buildConversationContextSnapshot(
+            this.humanProfile
+          ).user.age;
+          await session.start(liveUserAge);
         } catch (err) {
           hadLiveError = true;
           this.liveSession = null;
           this.liveStatus =
-            err instanceof Error ? err.message : 'Erro ao iniciar microfone.';
+            err instanceof Error
+              ? err.message
+              : 'Voz ao vivo indisponível agora — continue conversando por texto!';
           hapticService.warning();
           this.render();
         }
@@ -3148,6 +3229,7 @@ export class MiauAppUI {
         this.activeLearnTrack = 'none';
         this.earlyLiteracyView.resetToTrail();
         this.writingView.resetToTrail();
+        this.consonantsView.resetToTrail();
         this.activeModal = 'learn';
         this.render();
       });
@@ -3161,6 +3243,8 @@ export class MiauAppUI {
         this.earlyLiteracyView.bind(this.root);
       } else if (this.activeLearnTrack === 'infantil_escrita') {
         this.writingView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_consoantes') {
+        this.consonantsView.bind(this.root);
       } else {
         bindLearnModalEvents(this.root, {
           onBackToMenu: () => {
@@ -3184,6 +3268,10 @@ export class MiauAppUI {
             } else if (trackId === 'infantil_escrita') {
               this.writingView.resetToTrail();
               this.activeLearnTrack = 'infantil_escrita';
+              this.render();
+            } else if (trackId === 'infantil_consoantes') {
+              this.consonantsView.resetToTrail();
+              this.activeLearnTrack = 'infantil_consoantes';
               this.render();
             }
           },
@@ -3395,6 +3483,7 @@ export class MiauAppUI {
       this.activeLearnTrack = 'none';
       this.earlyLiteracyView.resetToTrail();
       this.writingView.resetToTrail();
+      this.consonantsView.resetToTrail();
       if (this.firebaseUser) {
         await logoutUser();
       }
@@ -3459,6 +3548,7 @@ export class MiauAppUI {
     this.profileModal.disposeCameraStream();
     this.earlyLiteracyView.resetToTrail();
     this.writingView.resetToTrail();
+    this.consonantsView.resetToTrail();
     this.activeLearnTrack = 'none';
     this.miniGameCleanup?.();
     this.miniGameCleanup = null;
