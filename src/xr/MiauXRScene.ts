@@ -4,6 +4,11 @@ import * as xb from 'xrblocks';
 import { hapticService } from '../services/hapticService';
 import { soundService } from '../services/soundService';
 import type { EquippedItems, PetStats } from '../types';
+import {
+  buildNewThemedEnvironments3D,
+  THEME_VISUAL_CONFIGS,
+  type ThemedEnvironmentsBuildResult,
+} from './ThemedEnvironments3D';
 
 export interface MiauXRCallbacks {
   onPet: () => void;
@@ -135,9 +140,15 @@ export class MiauXRScene extends xb.Script {
   private hatGroups: Record<string, THREE.Group> = {};
   private accGroups: Record<string, THREE.Group> = {};
 
-  // Environments
+  // Environments & Lighting
   private envGroups: Record<string, THREE.Group> = {};
+  private newEnvs?: ThemedEnvironmentsBuildResult;
   private activeBackgroundId = 'bg_lilac';
+  private hemiLight?: THREE.HemisphereLight;
+  private keyLight?: THREE.DirectionalLight;
+  private rimLight?: THREE.DirectionalLight;
+  private activeSkyColor = new THREE.Color(0xe2d2fc);
+  private activeFog = new THREE.Fog(0xe2d2fc, 5.5, 13);
   private rugMesh?: THREE.Mesh;
   private rugMat?: THREE.MeshStandardMaterial;
   private rugTrimMat?: THREE.MeshStandardMaterial;
@@ -281,13 +292,14 @@ export class MiauXRScene extends xb.Script {
       }
     }
 
-    this.add(new THREE.HemisphereLight(0xfef9ff, 0x6d4ea3, 2.5));
-    const keyLight = new THREE.DirectionalLight(0xfff7ed, 2.0);
-    keyLight.position.set(1.6, 3.4, 2.1);
-    this.add(keyLight);
-    const rimLight = new THREE.DirectionalLight(0xc4b5fd, 1.0);
-    rimLight.position.set(-1.8, 2.2, -2.4);
-    this.add(rimLight);
+    this.hemiLight = new THREE.HemisphereLight(0xfef9ff, 0x6d4ea3, 2.5);
+    this.add(this.hemiLight);
+    this.keyLight = new THREE.DirectionalLight(0xfff7ed, 2.0);
+    this.keyLight.position.set(1.6, 3.4, 2.1);
+    this.add(this.keyLight);
+    this.rimLight = new THREE.DirectionalLight(0xc4b5fd, 1.0);
+    this.rimLight.position.set(-1.8, 2.2, -2.4);
+    this.add(this.rimLight);
 
     this.stageRoot.position.copy(STAGE_POS);
     this.add(this.stageRoot);
@@ -677,6 +689,16 @@ export class MiauXRScene extends xb.Script {
     }
     this.envGroups['bg_space'] = spaceEnv;
     this.stageRoot.add(spaceEnv);
+
+    // 7–14. New Themed Worlds (Jurassic, Hogwarts, Cyberpunk, City, Marvel, DC, Halloween, Natal)
+    this.newEnvs = buildNewThemedEnvironments3D();
+    Object.entries(this.newEnvs.groups).forEach(([id, group]) => {
+      this.envGroups[id] = group;
+      this.stageRoot.add(group);
+    });
+    for (const floorMesh of this.newEnvs.floorMeshes) {
+      this.interactiveRoots.push(floorMesh);
+    }
   }
 
   private applyBackgroundTheme(bgId: string): void {
@@ -684,27 +706,36 @@ export class MiauXRScene extends xb.Script {
     Object.entries(this.envGroups).forEach(([id, group]) => {
       group.visible = id === bgId;
     });
+
+    const cfg =
+      THEME_VISUAL_CONFIGS[bgId] ?? THEME_VISUAL_CONFIGS['bg_lilac'];
+
     if (this.rugMat && this.rugTrimMat) {
-      if (bgId === 'bg_night') {
-        this.rugMat.color.setHex(0x4338ca);
-        this.rugTrimMat.color.setHex(0xfef08a);
-      } else if (bgId === 'bg_space') {
-        this.rugMat.color.setHex(0x312e81);
-        this.rugTrimMat.color.setHex(0x38bdf8);
-      } else if (bgId === 'bg_sunny') {
-        this.rugMat.color.setHex(0x4ade80);
-        this.rugTrimMat.color.setHex(0xfef9c3);
-      } else if (bgId === 'bg_pastel_garden') {
-        this.rugMat.color.setHex(0xbbf7d0);
-        this.rugTrimMat.color.setHex(0xf9a8d4);
-      } else if (bgId === 'bg_peach') {
-        this.rugMat.color.setHex(0xfdba74);
-        this.rugTrimMat.color.setHex(0xfbcfe8);
-      } else {
-        this.rugMat.color.setHex(0xd8b4fe);
-        this.rugTrimMat.color.setHex(0xfef9c3);
-      }
+      this.rugMat.color.setHex(cfg.rugColor);
+      this.rugTrimMat.color.setHex(cfg.rugTrimColor);
     }
+
+    this.lampGroup.visible = cfg.showIndoorLamp;
+
+    const sleepScale = this.isSleeping ? 0.62 : 1.0;
+    if (this.hemiLight) {
+      this.hemiLight.color.setHex(cfg.hemiSky);
+      this.hemiLight.groundColor.setHex(cfg.hemiGround);
+      this.hemiLight.intensity = cfg.hemiIntensity * sleepScale;
+    }
+    if (this.keyLight) {
+      this.keyLight.color.setHex(cfg.keyColor);
+      this.keyLight.intensity = cfg.keyIntensity * sleepScale;
+    }
+    if (this.rimLight) {
+      this.rimLight.color.setHex(cfg.rimColor);
+      this.rimLight.intensity = cfg.rimIntensity;
+    }
+
+    this.activeSkyColor.setHex(cfg.skyColor);
+    this.activeFog.color.setHex(cfg.fogColor);
+    this.activeFog.near = cfg.fogNear;
+    this.activeFog.far = cfg.fogFar;
   }
 
   private buildMiau3D(): void {
@@ -1576,8 +1607,11 @@ export class MiauXRScene extends xb.Script {
       group.visible = equipped.accessory === id;
     });
 
-    if (equipped.background && equipped.background !== this.activeBackgroundId) {
-      this.applyBackgroundTheme(equipped.background);
+    if (
+      (equipped.background && equipped.background !== this.activeBackgroundId) ||
+      isSleeping !== wasSleeping
+    ) {
+      this.applyBackgroundTheme(equipped.background || this.activeBackgroundId);
     }
 
     if (this.statsLabel) {
@@ -1756,9 +1790,16 @@ export class MiauXRScene extends xb.Script {
     }
 
     const hits = this.tapRaycaster.intersectObjects(this.interactiveRoots, true);
-    if (hits.length === 0) return;
+    const firstHit = hits.find((hit) => {
+      let node: THREE.Object3D | null = hit.object;
+      while (node) {
+        if (!node.visible) return false;
+        node = node.parent;
+      }
+      return true;
+    });
+    if (!firstHit) return;
 
-    const firstHit = hits[0];
     let action: string | undefined;
     let cursor: THREE.Object3D | null = firstHit.object;
     while (cursor) {
@@ -2217,6 +2258,7 @@ export class MiauXRScene extends xb.Script {
         star.rotation.y += dt * 0.7;
       }
     }
+    this.newEnvs?.update(this.activeBackgroundId, dt, t);
 
     // Floating particles (soap bubbles, hearts, stars)
     for (let i = this.activeParticles.length - 1; i >= 0; i--) {
@@ -2235,6 +2277,16 @@ export class MiauXRScene extends xb.Script {
     // Camera Touch Orbit + Momentum + Joystick Walk + Gyroscope
     const cam = xb.core.camera;
     const inNativeXR = Boolean(xb.core.webXRSessionManager?.currentSession);
+    const mainScene = xb.core.scene;
+    if (mainScene) {
+      if (inNativeXR) {
+        if (mainScene.background !== null) mainScene.background = null;
+        if (mainScene.fog !== null) mainScene.fog = null;
+      } else if (document.body.classList.contains('xr-mode-active')) {
+        mainScene.background = this.activeSkyColor;
+        mainScene.fog = this.activeFog;
+      }
+    }
     if (cam && !inNativeXR && document.body.classList.contains('xr-mode-active')) {
       // Inertial glide after touch swipe release
       if (this.activePointers.size === 0) {
@@ -2363,6 +2415,7 @@ export class MiauXRScene extends xb.Script {
     this.heartMat.dispose();
     this.starParticleGeo.dispose();
     this.starParticleMat.dispose();
+    this.newEnvs?.dispose();
     this.envTexture?.dispose();
   }
 }
