@@ -505,25 +505,25 @@ export class ConsonantsModuleController {
         ${this.renderSoundToggleButton('btn-cs-lesson-sound')}
       </div>
 
-      <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
+      <div class="flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-0.5 text-left">
         <!-- Companheiro Miau + Voz Fofinha -->
-        <div class="rounded-2xl p-2.5 sm:p-3 bg-white/95 border border-purple-100 shadow-sm flex flex-col gap-2 shrink-0">
-          <div class="flex items-center justify-between gap-1.5 flex-wrap">
-            <div class="flex items-center gap-1 flex-wrap">
-              <span class="text-[9px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+        <div class="rounded-2xl p-3 sm:p-4 bg-white/95 border border-purple-100 shadow-sm flex flex-col gap-2.5 shrink-0">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="text-[10px] font-extrabold uppercase tracking-wide px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
                 ${escapeHtml(ch.badgeLabel)}
               </span>
               ${
                 isRetry
-                  ? `<span class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">🔄 Relembrar</span>`
+                  ? `<span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-sky-100 text-sky-800">🔄 Relembrar</span>`
                   : ''
               }
               <span id="cs-miau-audio-badge" class="${
                 lesson.isLoadingAudio
-                  ? 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] animate-pulse'
+                  ? 'inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696] animate-pulse'
                   : lesson.isSpeakingPrompt
-                    ? 'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse'
-                    : 'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/85 text-[#6b4d9e] border border-purple-100'
+                    ? 'inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse'
+                    : 'inline-flex items-center gap-1 text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-white/85 text-[#6b4d9e] border border-purple-100'
               }">
                 ${
                   lesson.isLoadingAudio
@@ -534,30 +534,30 @@ export class ConsonantsModuleController {
                 }
               </span>
             </div>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-1.5">
               <button
                 id="btn-cs-listen-normal"
                 type="button"
-                class="px-2.5 py-1 rounded-full bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-[11px] shadow-sm transition flex items-center gap-1 ${lesson.isSpeakingPrompt ? 'ring-2 ring-purple-300' : ''}"
+                class="min-h-[40px] px-3.5 py-2 rounded-full bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-xs shadow-sm transition flex items-center gap-1.5 ${lesson.isSpeakingPrompt ? 'ring-2 ring-purple-300' : ''}"
               >
                 🔊 Ouvir
               </button>
               <button
                 id="btn-cs-listen-slow"
                 type="button"
-                class="px-2.5 py-1 rounded-full bg-sky-100 hover:bg-sky-200 active:scale-95 text-sky-900 border border-sky-200 font-extrabold text-[11px] shadow-sm transition flex items-center gap-1"
+                class="min-h-[40px] px-3.5 py-2 rounded-full bg-sky-100 hover:bg-sky-200 active:scale-95 text-sky-900 border border-sky-200 font-extrabold text-xs shadow-sm transition flex items-center gap-1.5"
               >
                 🐢 Devagar
               </button>
             </div>
           </div>
 
-          <div class="flex items-center gap-2.5">
-            <div class="w-12 h-12 sm:w-14 sm:h-14 shrink-0 transition-transform duration-300 ${lesson.isSpeakingPrompt ? 'scale-105' : ''}">
+          <div class="flex items-center gap-3">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 shrink-0 transition-transform duration-300 ${lesson.isSpeakingPrompt ? 'scale-105' : ''}">
               ${renderMiauSvg(lesson.miauMood, this.deps.getEquipped(), false)}
             </div>
-            <div class="flex-1 min-w-0 rounded-xl px-3 py-2 bg-gradient-to-br from-indigo-50 to-purple-50 border border-purple-100">
-              <p class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-snug">
+            <div class="flex-1 min-w-0 rounded-2xl px-3.5 py-2.5 bg-gradient-to-br from-indigo-50 to-purple-50 border border-purple-100">
+              <p class="font-display text-sm sm:text-base font-bold text-[#3b1f6e] leading-snug">
                 ${escapeHtml(ch.instruction)}
               </p>
             </div>
@@ -565,7 +565,7 @@ export class ConsonantsModuleController {
         </div>
 
         <!-- Área do Desafio -->
-        <div class="rounded-2xl p-3 bg-white/95 border border-purple-100 shadow-sm flex-1 flex flex-col justify-center gap-2.5">
+        <div class="rounded-3xl p-3.5 sm:p-5 bg-white/95 border border-purple-100 shadow-sm flex-1 flex flex-col justify-evenly sm:justify-center gap-3">
           ${this.renderExerciseBodyHtml(ch, lesson)}
         </div>
 
@@ -592,10 +592,10 @@ export class ConsonantsModuleController {
     }
 
     return `
-      <div class="rounded-2xl p-2.5 border shadow-sm flex items-center justify-between gap-2 flex-wrap shrink-0 ${wrapperStyle}">
-        <div class="flex items-center gap-2 flex-1 min-w-0">
-          <span class="text-lg shrink-0">${icon}</span>
-          <p class="text-xs font-bold leading-snug">${escapeHtml(lesson.lastFeedback.text)}</p>
+      <div class="rounded-2xl p-3 border shadow-sm flex items-center justify-between gap-2.5 flex-wrap shrink-0 ${wrapperStyle}">
+        <div class="flex items-center gap-2.5 flex-1 min-w-0">
+          <span class="text-xl shrink-0">${icon}</span>
+          <p class="text-xs sm:text-sm font-bold leading-snug">${escapeHtml(lesson.lastFeedback.text)}</p>
         </div>
         ${
           lesson.stepSolved
@@ -603,7 +603,7 @@ export class ConsonantsModuleController {
               <button
                 id="btn-cs-continue"
                 type="button"
-                class="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs shadow-sm transition shrink-0"
+                class="min-h-[42px] px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-sm transition shrink-0"
               >
                 ${lesson.cursor + 1 >= lesson.queue.length ? 'Recompensa 🏆' : 'Continuar →'}
               </button>
@@ -613,7 +613,7 @@ export class ConsonantsModuleController {
                 <button
                   id="btn-cs-replay-word"
                   type="button"
-                  class="px-3 py-1.5 rounded-xl bg-white border border-purple-300 text-[#4c2a85] font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
+                  class="min-h-[40px] px-3.5 py-2 rounded-xl bg-white border border-purple-300 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
                 >
                   🔊 Ouvir Palavra
                 </button>
@@ -622,7 +622,7 @@ export class ConsonantsModuleController {
                 <button
                   id="btn-cs-hint-audio"
                   type="button"
-                  class="px-3 py-1.5 rounded-xl bg-white border border-amber-300 text-amber-900 font-extrabold text-[11px] shadow-sm hover:bg-amber-100 active:scale-95 transition shrink-0"
+                  class="min-h-[40px] px-3.5 py-2 rounded-xl bg-white border border-amber-300 text-amber-900 font-extrabold text-xs shadow-sm hover:bg-amber-100 active:scale-95 transition shrink-0"
                 >
                   🐢 Dica
                 </button>
@@ -639,9 +639,9 @@ export class ConsonantsModuleController {
     if (ch.type === 'listen_pick' || ch.type === 'rhyme_fun') {
       const verseBlock = ch.anchorCard?.verseHtml
         ? `
-          <div class="rounded-xl p-2.5 bg-gradient-to-br from-amber-50 to-indigo-50 border border-amber-200 flex items-center gap-2.5">
-            <span class="text-2xl shrink-0">${ch.anchorCard.emoji}</span>
-            <div class="text-xs sm:text-sm font-bold text-[#3b1f6e] leading-snug">
+          <div class="rounded-2xl p-3 sm:p-4 bg-gradient-to-br from-amber-50 to-indigo-50 border border-amber-200 flex items-center gap-3">
+            <span class="text-3xl sm:text-4xl shrink-0">${ch.anchorCard.emoji}</span>
+            <div class="text-sm sm:text-base font-bold text-[#3b1f6e] leading-snug">
               ${ch.anchorCard.verseHtml}
             </div>
           </div>
@@ -649,9 +649,10 @@ export class ConsonantsModuleController {
         : '';
 
       const options = ch.options || [];
+      const isFour = options.length === 4;
       return `
         ${verseBlock}
-        <div class="grid ${options.length === 4 ? 'grid-cols-2' : 'grid-cols-3'} gap-2">
+        <div class="grid ${isFour ? 'grid-cols-2 gap-3' : 'grid-cols-1 sm:grid-cols-3 gap-3'} w-full">
           ${options
             .map((opt) => {
               const isCorrect =
@@ -665,14 +666,20 @@ export class ConsonantsModuleController {
                   type="button"
                   data-cs-option="${opt.id}"
                   ${lesson.stepSolved ? 'disabled' : ''}
-                  class="rounded-2xl p-2.5 sm:p-3 border-2 flex flex-col items-center justify-center gap-1 transition-all duration-200 active:scale-95 ${
+                  class="rounded-2xl border-2 flex ${
+                    isFour
+                      ? 'flex-col items-center justify-center p-3.5 sm:p-4 min-h-[144px] sm:min-h-[180px] gap-2 text-center'
+                      : 'flex-row sm:flex-col items-center justify-start sm:justify-center px-4 py-3.5 sm:p-5 min-h-[92px] sm:min-h-[190px] gap-4 sm:gap-3 text-left sm:text-center'
+                  } transition-all duration-200 active:scale-95 ${
                     isCorrect
-                      ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-200 shadow-sm'
-                      : `${opt.accentClass || 'bg-purple-50 border-purple-200'} hover:border-[#6e45a5] hover:-translate-y-0.5 hover:shadow-sm`
+                      ? 'bg-emerald-100 border-emerald-500 ring-2 ring-emerald-200 shadow-md'
+                      : `${opt.accentClass || 'bg-purple-50 border-purple-200'} hover:border-[#6e45a5] hover:-translate-y-0.5 hover:shadow-md`
                   }"
                 >
-                  <span class="text-3xl sm:text-4xl leading-none">${opt.emoji}</span>
-                  <span class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight">
+                  <div class="${isFour ? 'w-16 h-16 sm:w-20 sm:h-20' : 'w-16 h-16 sm:w-24 sm:h-24'} rounded-2xl bg-white/85 border border-white shadow-xs flex items-center justify-center shrink-0">
+                    <span class="${isFour ? 'text-4xl sm:text-5xl' : 'text-5xl sm:text-6xl'} leading-none">${opt.emoji}</span>
+                  </div>
+                  <span class="font-display ${isFour ? 'text-base sm:text-lg' : 'text-lg sm:text-xl'} font-bold text-[#3b1f6e] leading-tight">
                     ${
                       prefix
                         ? `<span class="text-[#4f46e5] underline decoration-2">${escapeHtml(prefix)}</span>${escapeHtml(restLabel)}`
@@ -690,15 +697,15 @@ export class ConsonantsModuleController {
     if (ch.type === 'sound_to_letter') {
       const choices = ch.letterChoices || [];
       return `
-        <div class="flex flex-col items-center gap-3">
+        <div class="flex flex-col items-center justify-center gap-4 w-full">
           ${
             ch.anchorCard
               ? `
-                <div class="rounded-2xl px-3.5 py-2.5 bg-gradient-to-br from-sky-50 to-purple-50 border border-purple-200 flex items-center gap-3">
-                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-12 h-12 rounded-xl shadow-sm bg-white shrink-0" />
-                  <div class="text-left">
-                    <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Palavra</div>
-                    <div class="font-display text-lg sm:text-xl font-bold text-[#3b1f6e] leading-tight">
+                <div class="w-full max-w-md rounded-2xl px-4 py-3.5 bg-gradient-to-br from-sky-50 to-purple-50 border border-purple-200 flex items-center justify-center gap-4 shadow-inner">
+                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl shadow-sm bg-white object-contain shrink-0" />
+                  <div class="text-left min-w-0">
+                    <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Palavra</div>
+                    <div class="font-display text-xl sm:text-2xl font-bold text-[#3b1f6e] leading-tight">
                       ${escapeHtml(ch.anchorCard.word)}
                     </div>
                   </div>
@@ -706,7 +713,7 @@ export class ConsonantsModuleController {
               `
               : ''
           }
-          <div class="flex flex-wrap items-center justify-center gap-2 w-full">
+          <div class="flex flex-wrap items-center justify-center gap-3 w-full">
             ${choices
               .map((letter) => {
                 const isRight = lesson.stepSolved && letter === ch.correctLetter;
@@ -715,7 +722,7 @@ export class ConsonantsModuleController {
                     type="button"
                     data-cs-letter="${escapeHtml(letter)}"
                     ${lesson.stepSolved ? 'disabled' : ''}
-                    class="min-w-[60px] sm:min-w-[70px] h-14 sm:h-16 px-4 rounded-2xl border-2 font-display text-xl sm:text-2xl font-bold transition-all duration-200 active:scale-95 hover:-translate-y-0.5 shadow-sm ${
+                    class="min-w-[78px] sm:min-w-[92px] h-16 sm:h-20 px-5 rounded-2xl border-2 font-display text-2xl sm:text-3xl font-bold transition-all duration-200 active:scale-95 hover:-translate-y-0.5 shadow-sm ${
                       isRight
                         ? 'bg-emerald-500 text-white border-emerald-600 ring-2 ring-emerald-200'
                         : 'bg-gradient-to-b from-white to-indigo-50 text-[#3b1f6e] border-purple-300 hover:border-[#6e45a5] hover:bg-purple-100'
@@ -737,25 +744,25 @@ export class ConsonantsModuleController {
       const filled = lesson.filledWordLetter;
 
       return `
-        <div class="flex flex-col items-center gap-3">
+        <div class="flex flex-col items-center justify-center gap-4 w-full">
           ${
             ch.anchorCard
               ? `
-                <div class="rounded-2xl px-3.5 py-2 bg-gradient-to-br from-amber-50 to-purple-50 border border-purple-200 flex items-center gap-2.5">
-                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-10 h-10 rounded-xl shadow-sm bg-white shrink-0" />
-                  <span class="font-display text-base font-bold text-[#4c2a85]">${escapeHtml(ch.anchorCard.word)}</span>
+                <div class="rounded-2xl px-4 py-3 bg-gradient-to-br from-amber-50 to-purple-50 border border-purple-200 flex items-center gap-3.5 shadow-inner">
+                  <img src="${ch.visualAssetUrl}" alt="${escapeHtml(ch.anchorCard.word)}" class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl shadow-sm bg-white object-contain shrink-0" />
+                  <span class="font-display text-lg sm:text-xl font-bold text-[#4c2a85]">${escapeHtml(ch.anchorCard.word)}</span>
                 </div>
               `
               : ''
           }
 
-          <div class="flex flex-wrap items-center justify-center gap-1.5">
+          <div class="flex flex-wrap items-center justify-center gap-2">
             ${segments
               .map((seg, idx) => {
                 const isMissing = seg === null && idx === ch.missingSlotIndex;
                 if (!isMissing) {
                   return `
-                    <div class="w-11 h-12 sm:w-12 sm:h-14 rounded-xl bg-purple-100 border border-purple-300 flex items-center justify-center font-display text-xl sm:text-2xl font-bold text-[#3b1f6e]">
+                    <div class="min-w-[46px] h-14 sm:min-w-[54px] sm:h-16 px-2 rounded-2xl bg-purple-100 border border-purple-300 flex items-center justify-center font-display text-2xl sm:text-3xl font-bold text-[#3b1f6e]">
                       ${escapeHtml(seg || '')}
                     </div>
                   `;
@@ -764,7 +771,7 @@ export class ConsonantsModuleController {
                 return `
                   <div
                     id="cs-word-dropzone"
-                    class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 flex items-center justify-center font-display text-xl sm:text-2xl font-bold transition ${
+                    class="min-w-[52px] h-14 sm:min-w-[60px] sm:h-16 px-2 rounded-2xl border-2 flex items-center justify-center font-display text-2xl sm:text-3xl font-bold transition ${
                       lesson.stepSolved
                         ? 'bg-emerald-500 border-emerald-600 text-white ring-2 ring-emerald-200'
                         : 'bg-amber-50 border-dashed border-[#6e45a5] text-[#6e45a5] animate-pulse'
@@ -777,11 +784,11 @@ export class ConsonantsModuleController {
               .join('')}
           </div>
 
-          <div class="text-[11px] font-bold text-[#6b4d9e]">
+          <div class="text-xs sm:text-sm font-bold text-[#6b4d9e]">
             Toque ou arraste a consoante certa para o espaço!
           </div>
 
-          <div class="flex flex-wrap items-center justify-center gap-2">
+          <div class="flex flex-wrap items-center justify-center gap-2.5">
             ${bank
               .map((letter) => {
                 const isRight = lesson.stepSolved && letter === ch.missingAnswer;
@@ -791,7 +798,7 @@ export class ConsonantsModuleController {
                     draggable="${!lesson.stepSolved}"
                     data-cs-bank-letter="${escapeHtml(letter)}"
                     ${lesson.stepSolved ? 'disabled' : ''}
-                    class="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border-2 font-display text-xl sm:text-2xl font-bold shadow-sm transition-all duration-150 active:scale-95 hover:-translate-y-0.5 cursor-grab ${
+                    class="min-w-[54px] h-14 sm:min-w-[60px] sm:h-16 px-3 rounded-2xl border-2 font-display text-2xl sm:text-3xl font-bold shadow-sm transition-all duration-150 active:scale-95 hover:-translate-y-0.5 cursor-grab ${
                       isRight
                         ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
                         : 'bg-white border-purple-300 text-[#3b1f6e] hover:bg-purple-50 hover:border-[#6e45a5]'
@@ -837,23 +844,23 @@ export class ConsonantsModuleController {
               };
 
       comparisonHtml = `
-        <div class="w-full max-w-sm rounded-xl p-2.5 border ${verdictMeta.box} text-left flex flex-col gap-1.5">
+        <div class="w-full max-w-md rounded-2xl p-3 border ${verdictMeta.box} text-left flex flex-col gap-2">
           <div class="flex items-center justify-between gap-2">
-            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full ${verdictMeta.badge}">
+            <span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full ${verdictMeta.badge}">
               ${verdictMeta.label}
             </span>
           </div>
-          <div class="grid grid-cols-2 gap-1.5 text-[11px]">
-            <div class="rounded-lg p-1.5 bg-white/85 border border-black/5">
-              <div class="text-[9px] font-extrabold uppercase opacity-70">Esperada</div>
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="rounded-xl p-2 bg-white/85 border border-black/5">
+              <div class="text-[10px] font-extrabold uppercase opacity-70">Esperada</div>
               <div class="font-bold truncate">${escapeHtml(cmp.expectedDisplay)}</div>
             </div>
-            <div class="rounded-lg p-1.5 bg-white/85 border border-black/5">
-              <div class="text-[9px] font-extrabold uppercase opacity-70">O Miau ouviu</div>
+            <div class="rounded-xl p-2 bg-white/85 border border-black/5">
+              <div class="text-[10px] font-extrabold uppercase opacity-70">O Miau ouviu</div>
               <div class="font-bold truncate">${escapeHtml(cmp.spokenDisplay)}</div>
             </div>
           </div>
-          <div class="w-full h-1.5 rounded-full bg-white/90 overflow-hidden">
+          <div class="w-full h-2 rounded-full bg-white/90 overflow-hidden">
             <div class="h-full rounded-full ${verdictMeta.bar} transition-all duration-300" style="width:${Math.max(8, cmp.score)}%"></div>
           </div>
         </div>
@@ -861,26 +868,26 @@ export class ConsonantsModuleController {
     }
 
     return `
-      <div class="flex flex-col items-center gap-2.5 text-center">
-        <div class="rounded-2xl px-4 py-3 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 border border-purple-200 flex flex-col items-center gap-2 max-w-sm w-full shadow-inner">
+      <div class="flex flex-col items-center justify-center gap-3.5 text-center w-full">
+        <div class="rounded-3xl px-5 py-4 bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 border border-purple-200 flex flex-col items-center gap-2.5 max-w-md w-full shadow-inner">
           <img
             src="${ch.visualAssetUrl}"
             alt="${escapeHtml(ch.speakVisualLabel || ch.speakTargetText || '')}"
-            class="w-14 h-14 rounded-xl shadow-sm bg-white"
+            class="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl shadow-sm bg-white object-contain"
           />
-          <div class="font-display text-lg sm:text-xl font-bold text-[#3b1f6e] leading-tight">
+          <div class="font-display text-xl sm:text-2xl font-bold text-[#3b1f6e] leading-tight">
             ${escapeHtml(ch.speakVisualLabel || ch.speakTargetText || '')}
           </div>
           <button
             id="btn-cs-target-word-audio"
             type="button"
-            class="px-3 py-1 rounded-full bg-white hover:bg-purple-100 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] shadow-sm active:scale-95 transition"
+            class="min-h-[40px] px-4 py-2 rounded-full bg-white hover:bg-purple-100 border border-purple-200 text-[#5a3696] font-extrabold text-xs shadow-sm active:scale-95 transition"
           >
             🔊 Ouvir palavra do Miau
           </button>
           ${
             lesson.voiceStatusText
-              ? `<div class="text-[11px] font-bold text-[#5a3696] bg-white/90 px-2.5 py-0.5 rounded-full border border-purple-200">${escapeHtml(lesson.voiceStatusText)}</div>`
+              ? `<div class="text-xs font-bold text-[#5a3696] bg-white/90 px-3 py-1 rounded-full border border-purple-200">${escapeHtml(lesson.voiceStatusText)}</div>`
               : ''
           }
         </div>
@@ -890,12 +897,12 @@ export class ConsonantsModuleController {
         ${
           !lesson.stepSolved
             ? `
-              <div class="flex flex-col items-center gap-2 w-full">
+              <div class="flex flex-col items-center gap-2.5 w-full">
                 <button
                   id="btn-cs-voice-record"
                   type="button"
                   ${lesson.isComparingVoice ? 'disabled' : ''}
-                  class="px-4 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition flex items-center gap-1.5 ${
+                  class="min-h-[48px] px-6 py-3 rounded-2xl font-extrabold text-sm sm:text-base shadow-sm active:scale-95 transition flex items-center gap-2 ${
                     lesson.isComparingVoice
                       ? 'bg-purple-300 text-white cursor-wait'
                       : lesson.isRecordingVoice
@@ -918,7 +925,7 @@ export class ConsonantsModuleController {
                 <button
                   id="btn-cs-voice-skip"
                   type="button"
-                  class="px-3 py-1 rounded-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-[#6b4d9e] font-bold text-[10px] transition"
+                  class="min-h-[36px] px-3.5 py-1.5 rounded-full bg-purple-50 hover:bg-purple-100 border border-purple-200 text-[#6b4d9e] font-bold text-xs transition"
                 >
                   Pular microfone agora
                 </button>
@@ -1302,11 +1309,16 @@ export class ConsonantsModuleController {
         firstTryClean || (lesson.isRetryItemFlags[lesson.cursor] ?? false)
       );
 
+      const isRetryStep = lesson.isRetryItemFlags[lesson.cursor] ?? false;
+      if (!isRetryStep) {
+        this.deps.onGrantRewards(5, 4);
+      }
+
       lesson.stepSolved = true;
       lesson.miauMood = 'affectionate';
       lesson.lastFeedback = {
         kind: 'praise',
-        text: ch.praiseText,
+        text: isRetryStep ? ch.praiseText : `${ch.praiseText} (+🪙 5)`,
       };
       this.deps.onRequestRerender();
       void consonantsAudioEngine.speak(ch.praiseText, { slow: false });
@@ -1382,11 +1394,18 @@ export class ConsonantsModuleController {
             firstTryClean || (lesson.isRetryItemFlags[lesson.cursor] ?? false)
           );
 
+          const isRetryStep = lesson.isRetryItemFlags[lesson.cursor] ?? false;
+          if (!isRetryStep) {
+            this.deps.onGrantRewards(5, 4);
+          }
+
           lesson.stepSolved = true;
           lesson.miauMood = 'affectionate';
           lesson.lastFeedback = {
             kind: 'praise',
-            text: comparison.feedbackText,
+            text: isRetryStep
+              ? comparison.feedbackText
+              : `${comparison.feedbackText} (+🪙 5)`,
           };
           this.deps.onRequestRerender();
           void consonantsAudioEngine.speak(comparison.feedbackAudioText, {

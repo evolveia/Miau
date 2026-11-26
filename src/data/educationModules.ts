@@ -52,10 +52,10 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
   educacao_infantil: [
     {
       id: 'infantil_letras',
-      title: 'Vogais & Primeiras Palavras',
+      title: 'Vogais e Primeiras Palavras',
       description: 'Método fônico com o Miau: sons das vogais, rimas, encontros vocálicos e primeiras palavras em 6 unidades.',
       emoji: '🔤',
-      tags: ['Método Fônico', '6 Unidades', 'Áudio & Voz'],
+      tags: ['Método Fônico', '6 Unidades', 'Áudio e Voz'],
       accentBg: 'from-pink-100 to-rose-100',
       statusLabel: 'Disponível agora • Toque para aprender',
     },
@@ -64,8 +64,17 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
       title: 'Vamos Escrever',
       description: 'A IA do Miau ensina o traçado de cada vogal e palavras fáceis para você cobrir com o dedo e treinar a coordenação motora fina.',
       emoji: '✍️',
-      tags: ['Escrita Guiada', 'IA + Dedo', '7 Unidades'],
+      tags: ['Escrita Guiada', 'IA e Dedo', '7 Unidades'],
       accentBg: 'from-purple-100 to-indigo-100',
+      statusLabel: 'Disponível agora • Toque para escrever',
+    },
+    {
+      id: 'infantil_escrita_consoantes',
+      title: 'Escrevendo as Consoantes',
+      description: 'Cubra com o dedo todas as 21 consoantes do B ao Z em ordem alfabética com guia de traçado, avaliação da IA e estrelas por letra.',
+      emoji: '🖍️',
+      tags: ['Escrita B ao Z', 'IA e Dedo', '7 Unidades'],
+      accentBg: 'from-fuchsia-100 to-purple-100',
       statusLabel: 'Disponível agora • Toque para escrever',
     },
     {
@@ -79,27 +88,54 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'infantil_cores_numeros',
-      title: 'Cores, Formas & Contagem',
-      description: 'Brincadeiras guiadas para contar até 20 com peixinhos e estrelinhas.',
+      title: 'Cores, Formas e Contagem',
+      description: 'Brincadeiras guiadas com o Miau para explorar cores, formas geométricas e contar até 20 com peixinhos e estrelinhas.',
       emoji: '🎨',
-      tags: ['Matemática Lúdica', 'Cores'],
+      tags: ['Matemática Lúdica', 'Cores e Formas', '6 Unidades'],
       accentBg: 'from-amber-100 to-yellow-100',
-      statusLabel: 'Em breve • Módulo configurável por escolaridade',
+      statusLabel: 'Disponível agora • Toque para aprender',
+    },
+    {
+      id: 'infantil_soma_subtracao',
+      title: 'Somar e Subtrair com o Miau',
+      description: 'Aprenda operações básicas de adição e subtração até 10 com frutinhas, balões, o mágico número zero e desafio dos sinais.',
+      emoji: '➕',
+      tags: ['Adição e Subtração', 'Continhas', '6 Unidades'],
+      accentBg: 'from-emerald-100 to-sky-100',
+      statusLabel: 'Disponível agora • Toque para calcular',
+    },
+    {
+      id: 'infantil_matematica_desafios',
+      title: 'Comparação, Dobro e Probleminhas',
+      description: 'Compare quem tem mais ou menos, descubra vizinhos antes e depois, o dobro, a metade e resolva historinhas do dia a dia.',
+      emoji: '🧮',
+      tags: ['Dobro e Metade', 'Lógica', '6 Unidades'],
+      accentBg: 'from-indigo-100 to-rose-100',
+      statusLabel: 'Disponível agora • Toque para explorar',
     },
     {
       id: 'infantil_natureza',
-      title: 'Animais & Natureza',
-      description: 'Descubra hábitos dos bichinhos e cuidados com o meio ambiente.',
+      title: 'Animais e Natureza',
+      description: 'Descubra sons, habitats, hábitos dos bichinhos e cuidados com a água, as plantas e o meio ambiente em 6 unidades.',
       emoji: '🦋',
-      tags: ['Descobertas', 'Natureza'],
+      tags: ['Descobertas', 'Natureza e Voz', '6 Unidades'],
       accentBg: 'from-emerald-100 to-teal-100',
-      statusLabel: 'Em breve • Módulo configurável por escolaridade',
+      statusLabel: 'Disponível agora • Toque para explorar',
+    },
+    {
+      id: 'infantil_comidas_bebidas',
+      title: 'Comidas e Bebidas',
+      description: 'Aprenda frutas, legumes, refeições do dia, bebidas refrescantes e escolhas saudáveis com o Miau em 6 unidades.',
+      emoji: '🍓',
+      tags: ['Alimentação', 'Vocabulário e Voz', '6 Unidades'],
+      accentBg: 'from-rose-100 to-orange-100',
+      statusLabel: 'Disponível agora • Toque para aprender',
     },
   ],
   fundamental_1: [
     {
       id: 'fund1_leitura',
-      title: 'Leitura Mágica & Interpretação',
+      title: 'Leitura Mágica e Interpretação',
       description: 'Pequenas histórias interativas do Miau com desafios de compreensão.',
       emoji: '📖',
       tags: ['Português', 'Leitura'],
@@ -108,7 +144,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'fund1_matematica',
-      title: 'Tabuada & Desafios de Soma',
+      title: 'Tabuada e Desafios de Soma',
       description: 'Resolva enigmas numéricos para ganhar moedas bônus na Sala de Estar.',
       emoji: '🧮',
       tags: ['Matemática', 'Raciocínio'],
@@ -117,7 +153,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'fund1_ciencias',
-      title: 'Planeta Terra & Regiões do Brasil',
+      title: 'Planeta Terra e Regiões do Brasil',
       description: 'Explore os biomas, a Amazônia e os estados brasileiros em quizzes visuais.',
       emoji: '🌎',
       tags: ['Geografia', 'Ciências'],
@@ -128,7 +164,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
   fundamental_2: [
     {
       id: 'fund2_logica',
-      title: 'Lógica, Frações & Equações',
+      title: 'Lógica, Frações e Equações',
       description: 'Missões rápidas de álgebra e geometria guiadas com dicas do Miau.',
       emoji: '📐',
       tags: ['Matemática', 'Lógica'],
@@ -137,7 +173,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'fund2_ciencias',
-      title: 'Corpo Humano, Energia & Universo',
+      title: 'Corpo Humano, Energia e Universo',
       description: 'Experimentos virtuais e curiosidades científicas explicadas passo a passo.',
       emoji: '🔬',
       tags: ['Ciências', 'Astronomia'],
@@ -146,7 +182,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'fund2_historia',
-      title: 'História, Cultura & Cidadania',
+      title: 'História, Cultura e Cidadania',
       description: 'Viagens no tempo com perguntas rápidas sobre história do Brasil e do mundo.',
       emoji: '🏛️',
       tags: ['História', 'Cultura'],
@@ -157,7 +193,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
   medio: [
     {
       id: 'medio_redacao',
-      title: 'Laboratório de Redação & Gramática',
+      title: 'Laboratório de Redação e Gramática',
       description: 'Estruturas argumentativas, repertório sociocultural e revisões com apoio de IA.',
       emoji: '✍️',
       tags: ['Linguagens', 'ENEM'],
@@ -166,7 +202,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'medio_exatas',
-      title: 'Física, Química & Matemática Aplicada',
+      title: 'Física, Química e Matemática Aplicada',
       description: 'Simulados temáticos com resolução comentada e cronômetro de treino.',
       emoji: '⚛️',
       tags: ['Exatas', 'Simulados'],
@@ -175,7 +211,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'medio_biologia',
-      title: 'Biologia, Ecologia & Atualidades',
+      title: 'Biologia, Ecologia e Atualidades',
       description: 'Biomas amazônicos, genética e temas contemporâneos para vestibulares.',
       emoji: '🧬',
       tags: ['Biologia', 'Atualidades'],
@@ -186,7 +222,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
   superior_outro: [
     {
       id: 'sup_tech',
-      title: 'Tecnologia, Lógica & IA Prática',
+      title: 'Tecnologia, Lógica e IA Prática',
       description: 'Trilhas modulares sobre programação, pensamento computacional e produtividade.',
       emoji: '💻',
       tags: ['Tecnologia', 'IA'],
@@ -204,7 +240,7 @@ export const EDUCATION_MODULES_BY_SCHOOLING: Record<
     },
     {
       id: 'sup_curiosidades',
-      title: 'Ciência, História & Cultura Geral',
+      title: 'Ciência, História e Cultura Geral',
       description: 'Desafios diários de conhecimentos gerais para manter a mente afiada.',
       emoji: '🧠',
       tags: ['Conhecimentos Gerais', 'Quiz'],

@@ -17,3 +17,5 @@ export { mountEscapeRunGame } from './EscapeRunGame';
 export { mountGalaxyRatGame } from './GalaxyRatGame';
 export { mountFishCatchGame } from './games/FishCatchGame';
 export { mountMemoryGame } from './games/MemoryMeowGame';
+export { mountMilkMazeGame } from './games/MilkMazeGame';
+export { mountPacMiauGame } from './games/PacMiauGame';

@@ -33,11 +33,50 @@ import {
   setCachedTtsWav,
   startSuperiorModelRecoveryMonitor,
 } from './api/gemini/_shared.ts';
+import {
+  getVapidPublicKey,
+  removePushSubscription,
+  sendTestPush,
+  startPushMonitor,
+  syncPushSubscriptionState,
+  upsertPushSubscription,
+} from './api/push/pushManager.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PORT = Number(process.env.PORT || 3000);
 const IS_PROD = process.env.NODE_ENV === 'production';
+
+function parseCliArg(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  for (let i = 2; i < process.argv.length; i += 1) {
+    const arg = process.argv[i];
+    if (arg.startsWith(prefix)) return arg.slice(prefix.length).trim();
+    if (arg === `--${name}` && i + 1 < process.argv.length) {
+      return process.argv[i + 1].trim();
+    }
+  }
+  return undefined;
+}
+
+function resolveServerPort(): number {
+  const cliPort = Number(parseCliArg('port'));
+  if (Number.isInteger(cliPort) && cliPort > 0 && cliPort <= 65535) {
+    return cliPort;
+  }
+  const envPortRaw = process.env.PORT?.trim();
+  const envPort = Number(envPortRaw);
+  // In dev containers, PORT=8080 is often used by the reverse proxy (nginx -> 3000).
+  if (!IS_PROD && envPort === 8080) {
+    return 3000;
+  }
+  if (Number.isInteger(envPort) && envPort > 0 && envPort <= 65535) {
+    return envPort;
+  }
+  return 3000;
+}
+
+const PORT = resolveServerPort();
+const HOST = parseCliArg('host') || process.env.HOST || '0.0.0.0';
 
 interface ChatTemporalInput {
   weekdayName?: string;
@@ -122,6 +161,7 @@ async function startServer() {
   const server = http.createServer(app);
   app.use(express.json({ limit: '15mb' }));
   startSuperiorModelRecoveryMonitor(getAIClient);
+  startPushMonitor();
 
   app.get('/api/gemini/status', async (req, res) => {
     if (req.query?.probe === '1') {
@@ -689,17 +729,91 @@ async function startServer() {
     }
   });
 
-  if (!IS_PROD) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: {
-        middlewareMode: true,
-        allowedHosts: true,
-        hmr: false,
-      },
-      appType: 'spa',
+  app.get('/api/push/vapid-public-key', (_req, res) => {
+    try {
+      res.json({ publicKey: getVapidPublicKey(), supported: true });
+    } catch (error) {
+      res.status(500).json({
+        supported: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post('/api/push/subscribe', (req, res) => {
+    const { subscription, ownerId, petName, prefs, stats, appVisible } =
+      req.body ?? {};
+    if (!subscription || typeof subscription.endpoint !== 'string') {
+      res.status(400).json({ error: 'Inscrição push inválida.' });
+      return;
+    }
+    upsertPushSubscription({
+      subscription,
+      ownerId,
+      petName,
+      prefs,
+      stats,
+      appVisible,
     });
-    app.use(vite.middlewares);
+    res.json({ ok: true });
+  });
+
+  app.post('/api/push/sync', (req, res) => {
+    const { endpoint, petName, prefs, stats, appVisible, notifiedNeed } =
+      req.body ?? {};
+    if (!endpoint || typeof endpoint !== 'string') {
+      res.status(400).json({ error: 'Endpoint obrigatório.' });
+      return;
+    }
+    const found = syncPushSubscriptionState({
+      endpoint,
+      petName,
+      prefs,
+      stats,
+      appVisible,
+      notifiedNeed,
+    });
+    res.json({ ok: true, found });
+  });
+
+  app.post('/api/push/test', async (req, res) => {
+    const { endpoint, petName } = req.body ?? {};
+    if (!endpoint || typeof endpoint !== 'string') {
+      res.status(400).json({ sent: false, reason: 'Endpoint ausente.' });
+      return;
+    }
+    const result = await sendTestPush(endpoint, petName);
+    res.json(result);
+  });
+
+  app.post('/api/push/unsubscribe', (req, res) => {
+    const { endpoint } = req.body ?? {};
+    if (endpoint && typeof endpoint === 'string') {
+      removePushSubscription(endpoint);
+    }
+    res.json({ ok: true });
+  });
+
+  if (!IS_PROD) {
+    const vitePromise = import('vite').then(({ createServer: createViteServer }) =>
+      createViteServer({
+        server: {
+          middlewareMode: true,
+          allowedHosts: true,
+          hmr: false,
+          ws: false,
+        },
+        appType: 'spa',
+      })
+    );
+    vitePromise.catch((err) => {
+      console.error('Erro ao inicializar Vite dev middleware:', err);
+    });
+    app.use((req, res, next) => {
+      vitePromise
+        .then((vite) => vite.middlewares(req, res, next))
+        .catch(next);
+    });
   } else {
     const distPath = path.resolve(__dirname, 'dist');
     const distIndexPath = path.join(distPath, 'index.html');
@@ -922,8 +1036,13 @@ async function startServer() {
     });
   });
 
-  server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Servidor Miau rodando em http://0.0.0.0:${PORT}`);
+  server.on('error', (err) => {
+    console.error(`Erro no servidor HTTP (${HOST}:${PORT}):`, err);
+    process.exit(1);
+  });
+
+  server.listen(PORT, HOST, () => {
+    console.log(`Servidor Miau rodando em http://${HOST}:${PORT}`);
   });
 }
 

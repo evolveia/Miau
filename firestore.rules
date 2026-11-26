@@ -75,11 +75,13 @@ service cloud.firestore {
 
     function isValidGameRecords(gr) {
       return gr is map
-        && gr.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy'])
+        && gr.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy', 'pacmiau', 'maze'])
         && (!('fish' in gr) || isValidGameStat(gr.fish))
         && (!('memory' in gr) || isValidGameStat(gr.memory))
         && (!('escape' in gr) || isValidGameStat(gr.escape))
-        && (!('galaxy' in gr) || isValidGameStat(gr.galaxy));
+        && (!('galaxy' in gr) || isValidGameStat(gr.galaxy))
+        && (!('pacmiau' in gr) || isValidGameStat(gr.pacmiau))
+        && (!('maze' in gr) || isValidGameStat(gr.maze));
     }
 
     function isValidDailyRoutine(dr) {
@@ -165,20 +167,24 @@ service cloud.firestore {
 
     function isValidGameScoreMap(m) {
       return m is map
-        && m.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy'])
+        && m.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy', 'pacmiau', 'maze'])
         && (!('fish' in m) || (m.fish is int && m.fish >= 0 && m.fish <= 10000000))
         && (!('memory' in m) || (m.memory is int && m.memory >= 0 && m.memory <= 10000000))
         && (!('escape' in m) || (m.escape is int && m.escape >= 0 && m.escape <= 10000000))
-        && (!('galaxy' in m) || (m.galaxy is int && m.galaxy >= 0 && m.galaxy <= 10000000));
+        && (!('galaxy' in m) || (m.galaxy is int && m.galaxy >= 0 && m.galaxy <= 10000000))
+        && (!('pacmiau' in m) || (m.pacmiau is int && m.pacmiau >= 0 && m.pacmiau <= 10000000))
+        && (!('maze' in m) || (m.maze is int && m.maze >= 0 && m.maze <= 10000000));
     }
 
     function isValidGameStageMap(m) {
       return m is map
-        && m.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy'])
+        && m.keys().hasOnly(['fish', 'memory', 'escape', 'galaxy', 'pacmiau', 'maze'])
         && (!('fish' in m) || (m.fish is int && m.fish >= 1 && m.fish <= 999))
         && (!('memory' in m) || (m.memory is int && m.memory >= 1 && m.memory <= 999))
         && (!('escape' in m) || (m.escape is int && m.escape >= 1 && m.escape <= 999))
-        && (!('galaxy' in m) || (m.galaxy is int && m.galaxy >= 1 && m.galaxy <= 999));
+        && (!('galaxy' in m) || (m.galaxy is int && m.galaxy >= 1 && m.galaxy <= 999))
+        && (!('pacmiau' in m) || (m.pacmiau is int && m.pacmiau >= 1 && m.pacmiau <= 999))
+        && (!('maze' in m) || (m.maze is int && m.maze >= 1 && m.maze <= 999));
     }
 
     function isValidRankingEntry(data, userId) {

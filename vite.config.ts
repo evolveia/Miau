@@ -12,6 +12,7 @@ export default defineConfig({
         'apple-touch-icon.png',
         'icon.svg',
         'og-miau.jpg',
+        'miau-push-sw.js',
       ],
       manifest: {
         id: '/',
@@ -49,6 +50,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/miau-push-sw.js'],
         maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         navigateFallback: 'index.html',
@@ -95,5 +97,6 @@ export default defineConfig({
     port: 3000,
     allowedHosts: true,
     hmr: false,
+    ws: false,
   },
 });

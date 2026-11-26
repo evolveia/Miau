@@ -1,4 +1,9 @@
 import { hapticService } from '../../services/hapticService';
+import {
+  type CareNeedKey,
+  type CarePushPreferences,
+  type PushPermissionState,
+} from '../../services/pushNotificationService';
 import { pwaService, type CameraPermissionState } from '../../services/pwaService';
 import type { ChatMessage, ScreenVisibilityPrefs } from '../../types';
 import { escapeHtml } from '../../utils/html';
@@ -186,9 +191,17 @@ function renderToggleRow(
 }
 
 export function renderSettingsModalHtml(params: {
+  petName: string;
   screenPrefs: ScreenVisibilityPrefs;
   soundEnabled: boolean;
   cameraPermission: CameraPermissionState;
+  pushState: {
+    supported: boolean;
+    permission: PushPermissionState;
+    prefs: CarePushPreferences;
+    webPushActive: boolean;
+  };
+  pushTestPreview?: { title: string; body: string } | null;
 }): string {
   const camLabel =
     params.cameraPermission === 'granted'
@@ -205,6 +218,38 @@ export function renderSettingsModalHtml(params: {
         ? 'bg-rose-100 text-rose-700'
         : 'bg-amber-100 text-amber-800';
 
+  const pushEnabled = params.pushState.prefs.enabled;
+  const pushGranted = params.pushState.permission === 'granted';
+  const pushEnabledAndGranted = pushEnabled && pushGranted;
+  const pushInAppFallback = pushEnabled && !pushGranted;
+  const pushStatusLabel = pushEnabledAndGranted
+    ? params.pushState.webPushActive
+      ? 'Ativas (Web Push + 2º plano)'
+      : 'Ativas (Service Worker + Navegador)'
+    : pushInAppFallback
+      ? 'Ativos no App (Prévia/Navegador sem push do sistema)'
+      : !params.pushState.supported
+        ? 'Somente no App (sem Web Push)'
+        : params.pushState.permission === 'denied'
+          ? 'Push bloqueado (use Modo no App)'
+          : 'Desativadas';
+  const pushBadgeCls = pushEnabled
+    ? 'bg-emerald-100 text-emerald-700'
+    : params.pushState.permission === 'denied'
+      ? 'bg-rose-100 text-rose-700'
+      : 'bg-amber-100 text-amber-800';
+
+  const needChips: Array<{ id: CareNeedKey; label: string; emoji: string }> = [
+    { id: 'hunger', label: 'Fome', emoji: '🐟' },
+    { id: 'hygiene', label: 'Banho', emoji: '🛁' },
+    { id: 'sleep', label: 'Sono', emoji: '🌙' },
+  ];
+  const thresholdChoices = [
+    { value: 20, label: 'Crítico (≤20%)' },
+    { value: 25, label: 'Muito baixo (≤25%)' },
+    { value: 30, label: 'Cedo (≤30%)' },
+  ];
+
   return `
     <div class="flex items-center justify-between mb-3 shrink-0">
       <div class="flex items-center gap-2">
@@ -215,6 +260,142 @@ export function renderSettingsModalHtml(params: {
     </div>
 
     <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+      <!-- Nome do Bichinho Virtual -->
+      <form id="settings-pet-name-form" class="bg-white/90 rounded-2xl p-3 border border-purple-200 flex flex-col gap-2 shadow-sm">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">🐾 Nome do Bichinho Virtual</span>
+          <span class="text-[10px] font-bold text-[#7a60a8]">Até 32 caracteres</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input
+            id="settings-pet-name-input"
+            type="text"
+            maxlength="32"
+            value="${escapeHtml(params.petName)}"
+            placeholder="Ex: Miau, Mingau, Pipoca..."
+            aria-label="Nome personalizado do bichinho virtual"
+            class="flex-1 min-w-0 rounded-xl bg-purple-50/70 border border-purple-200 px-3 py-2 text-sm font-bold text-[#3b1f6e] placeholder-[#947ebe] focus:outline-none focus:border-[#6e45a5] focus:bg-white transition"
+          />
+          <button
+            id="btn-save-pet-name"
+            type="submit"
+            class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] text-white text-xs font-extrabold shadow-sm hover:brightness-110 active:scale-95 transition shrink-0"
+          >
+            Salvar
+          </button>
+        </div>
+        <p class="text-[10px] font-semibold text-[#6b4d9e]">
+          O nome personalizado aparece no HUD do jogo, nas falas e nos lembretes.
+        </p>
+      </form>
+
+      <!-- Notificações Push -->
+      <div class="bg-white/90 rounded-2xl p-3 border border-purple-200 flex flex-col gap-2.5 shadow-sm">
+        <div class="flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e] block">🔔 Notificações Push</span>
+            <span class="inline-block mt-0.5 text-[10px] font-extrabold px-2 py-0.5 rounded-full ${pushBadgeCls}">${pushStatusLabel}</span>
+          </div>
+          <button
+            id="btn-toggle-push"
+            type="button"
+            class="px-3 py-1.5 rounded-full text-xs font-extrabold shrink-0 transition ${
+              pushEnabled
+                ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                : 'bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] text-white shadow-sm hover:brightness-110'
+            }"
+          >
+            ${pushEnabled ? 'Ativado ✓' : '🔔 Ativar Avisos'}
+          </button>
+        </div>
+
+        <p class="text-[11px] font-semibold text-[#5b468f] leading-snug">
+          Receba lembretes quando a fome, o banho ou o sono do Miau ficarem muito baixos para voltar e cuidar dele.
+        </p>
+
+        ${
+          params.pushState.permission === 'denied' || !params.pushState.supported
+            ? `<div class="rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[10px] font-bold text-amber-900">
+                 ${
+                   params.pushState.permission === 'denied'
+                     ? 'Notificações do sistema estão bloqueadas nesta janela. Os alertas no app, som e barra de título continuam funcionando; para pop-ups do sistema, libere no cadeado da barra de endereço.'
+                     : 'Esta janela não suporta pop-ups do sistema; os alertas funcionam automaticamente dentro do app e na barra do navegador.'
+                 }
+               </div>`
+            : ''
+        }
+
+        ${
+          params.pushTestPreview
+            ? `<div class="rounded-2xl bg-gradient-to-r from-[#4c2a85] to-[#6e45a5] text-white px-3 py-2.5 shadow-md flex items-start gap-2.5">
+                 <span class="text-lg shrink-0">🔔</span>
+                 <div class="min-w-0 flex-1">
+                   <div class="text-xs font-extrabold leading-tight">${escapeHtml(params.pushTestPreview.title)}</div>
+                   <div class="text-[11px] text-purple-100 leading-snug mt-0.5">${escapeHtml(params.pushTestPreview.body)}</div>
+                 </div>
+               </div>`
+            : ''
+        }
+
+        <div class="flex flex-col gap-1.5 pt-1 border-t border-purple-100">
+          <span class="text-[10px] font-extrabold uppercase tracking-wide text-[#7a60a8]">Avisar quando estiver baixo:</span>
+          <div class="flex flex-wrap gap-1.5">
+            ${needChips
+              .map((chip) => {
+                const active = params.pushState.prefs.needs[chip.id];
+                return `
+                  <button
+                    type="button"
+                    data-push-need="${chip.id}"
+                    class="px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition ${
+                      active
+                        ? 'bg-purple-100 text-[#4c2a85] border-purple-300'
+                        : 'bg-slate-100 text-slate-500 border-slate-200'
+                    }"
+                  >
+                    ${chip.emoji} ${chip.label} ${active ? '✓' : ''}
+                  </button>
+                `;
+              })
+              .join('')}
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-1.5 pt-1 border-t border-purple-100">
+          <span class="text-[10px] font-extrabold uppercase tracking-wide text-[#7a60a8]">Nível mínimo para avisar:</span>
+          <div class="flex flex-wrap gap-1.5">
+            ${thresholdChoices
+              .map((opt) => {
+                const selected = params.pushState.prefs.threshold === opt.value;
+                return `
+                  <button
+                    type="button"
+                    data-push-threshold="${opt.value}"
+                    class="px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition ${
+                      selected
+                        ? 'bg-sky-500 text-white border-sky-600 shadow-sm'
+                        : 'bg-white text-[#5b468f] border-purple-200 hover:bg-purple-50'
+                    }"
+                  >
+                    ${opt.label}
+                  </button>
+                `;
+              })
+              .join('')}
+          </div>
+        </div>
+
+        <div class="flex justify-end pt-1 border-t border-purple-100">
+          <button
+            id="btn-test-push"
+            type="button"
+            class="px-3 py-1.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-900 text-[11px] font-extrabold border border-amber-200 transition"
+          >
+            🧪 Testar Notificação
+          </button>
+        </div>
+      </div>
+
       <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2">
         <div class="flex items-center justify-between">
           <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal (Sala)</span>

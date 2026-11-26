@@ -1,15 +1,19 @@
 import { getTodayDateKey } from '../../constants';
 import { phonicsAudioEngine } from '../learning/phonicsEngine';
 import {
+  TRACKED_WRITING_CONSONANTS,
   TRACKED_WRITING_VOWELS,
+  WRITING_CONSONANTS_UNITS,
   WRITING_GLYPHS,
   WRITING_UNITS,
   type MotorDifficulty,
   type NormalizedPoint,
   type WritingChallenge,
+  type WritingUnitDef,
 } from './data';
 
 const WRITING_STORAGE_PREFIX = 'miau_writing_v1_';
+const WRITING_CONSONANTS_STORAGE_PREFIX = 'miau_writing_consonants_v1_';
 
 export const WRITING_DAILY_GOAL = 3;
 export const WRITING_DAILY_BONUS = { coins: 50, xp: 40 };
@@ -73,6 +77,98 @@ export const WRITING_MEDALS: ReadonlyArray<WritingMedalDef> = [
   },
 ];
 
+export const CONSONANTS_WRITING_MEDALS: ReadonlyArray<WritingMedalDef> = [
+  {
+    id: 'medal_first_consonant',
+    emoji: '🥉',
+    title: 'Primeira Consoante',
+    description: 'Completou sua primeira consoante escrita com o dedo!',
+  },
+  {
+    id: 'medal_daily_habit',
+    emoji: '🔥',
+    title: 'Hábito Diário',
+    description: 'Bateu a meta diária de 3 consoantes hoje!',
+  },
+  {
+    id: 'medal_half_consonants',
+    emoji: '🏅',
+    title: 'Metade do Caminho',
+    description: 'Já cobriu pelo menos 11 consoantes diferentes!',
+  },
+  {
+    id: 'medal_all_consonants_21',
+    emoji: '🥇',
+    title: 'Mestre do B ao Z',
+    description: 'Completou todas as 21 consoantes do alfabeto!',
+  },
+  {
+    id: 'medal_gold_3stars',
+    emoji: '💎',
+    title: 'Traço de Ouro',
+    description: 'Conquistou 3 estrelas perfeitas em uma consoante!',
+  },
+  {
+    id: 'medal_streak_3',
+    emoji: '🌟',
+    title: 'Estudante Fiel',
+    description: 'Manteve uma sequência de 3 dias seguidos!',
+  },
+];
+
+export interface WritingTrackConfig {
+  trackId: 'infantil_escrita' | 'infantil_escrita_consoantes';
+  kind: 'vowels' | 'consonants';
+  storagePrefix: string;
+  domPrefix: string;
+  headerTitle: string;
+  headerSubtitle: string;
+  trailSectionTitle: string;
+  trackedLabel: string;
+  trackedTargets: ReadonlyArray<string>;
+  secondaryWords?: ReadonlyArray<string>;
+  medals: ReadonlyArray<WritingMedalDef>;
+  units: WritingUnitDef[];
+  accentBarGradient: string;
+  allDoneLabel: string;
+  nextLessonLabel: string;
+}
+
+export const VOWELS_WRITING_CONFIG: WritingTrackConfig = {
+  trackId: 'infantil_escrita',
+  kind: 'vowels',
+  storagePrefix: WRITING_STORAGE_PREFIX,
+  domPrefix: 'wr',
+  headerTitle: 'Vamos Escrever ✍️',
+  headerSubtitle: 'IA ensina o traçado + prática com o dedo na tela',
+  trailSectionTitle: 'Trilha de Coordenação Motora e Escrita (7 Unidades)',
+  trackedLabel: 'Vogais',
+  trackedTargets: TRACKED_WRITING_VOWELS,
+  secondaryWords: TRACKED_WRITING_WORDS,
+  medals: WRITING_MEDALS,
+  units: WRITING_UNITS,
+  accentBarGradient: 'from-[#7b52b8] via-[#a855f7] to-[#ec4899]',
+  allDoneLabel: 'Módulo Completo!',
+  nextLessonLabel: 'Próxima Aula de Escrita',
+};
+
+export const CONSONANTS_WRITING_CONFIG: WritingTrackConfig = {
+  trackId: 'infantil_escrita_consoantes',
+  kind: 'consonants',
+  storagePrefix: WRITING_CONSONANTS_STORAGE_PREFIX,
+  domPrefix: 'wc',
+  headerTitle: 'Escrevendo as Consoantes ✏️',
+  headerSubtitle: 'Cubra todas as 21 consoantes do B ao Z em ordem alfabética',
+  trailSectionTitle: 'Trilha das Consoantes do B ao Z (7 Unidades)',
+  trackedLabel: 'Consoantes',
+  trackedTargets: TRACKED_WRITING_CONSONANTS,
+  medals: CONSONANTS_WRITING_MEDALS,
+  units: WRITING_CONSONANTS_UNITS,
+  accentBarGradient: 'from-[#4f46e5] via-[#7b52b8] to-[#ec4899]',
+  allDoneLabel: 'Todas as Consoantes Completas!',
+  nextLessonLabel: 'Próxima Aula de Consoantes',
+};
+
 export interface CanvasPoint {
   x: number;
   y: number;
@@ -116,6 +212,7 @@ export interface WritingProgress {
   bestStreakDays: number;
   lastStudyDateKey: string;
   masteredVowels: Array<'A' | 'E' | 'I' | 'O' | 'U'>;
+  masteredConsonants: string[];
   masteredTargets: string[];
   letterBestStars: Record<string, number>;
   dailyGoalTarget: number;
@@ -150,6 +247,7 @@ export function createDefaultWritingProgress(
     bestStreakDays: 0,
     lastStudyDateKey: '',
     masteredVowels: [],
+    masteredConsonants: [],
     masteredTargets: [],
     letterBestStars: {},
     dailyGoalTarget: WRITING_DAILY_GOAL,
@@ -193,10 +291,13 @@ function syncWritingDailyWindow(progress: WritingProgress): WritingProgress {
   return next;
 }
 
-export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
+export function loadWritingProgress(
+  ownerId = 'guest',
+  config: WritingTrackConfig = VOWELS_WRITING_CONFIG
+): WritingProgress {
   const safeId = ownerId || 'guest';
   try {
-    const raw = localStorage.getItem(`${WRITING_STORAGE_PREFIX}${safeId}`);
+    const raw = localStorage.getItem(`${config.storagePrefix}${safeId}`);
     if (!raw) return createDefaultWritingProgress(safeId);
     const parsed = JSON.parse(raw) as Partial<WritingProgress>;
     const hydrated: WritingProgress = {
@@ -209,6 +310,9 @@ export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
       unitBestStars: parsed.unitBestStars ?? {},
       masteredVowels: Array.isArray(parsed.masteredVowels)
         ? parsed.masteredVowels
+        : [],
+      masteredConsonants: Array.isArray(parsed.masteredConsonants)
+        ? parsed.masteredConsonants
         : [],
       masteredTargets: Array.isArray(parsed.masteredTargets)
         ? parsed.masteredTargets
@@ -226,7 +330,6 @@ export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
         parsed.streakDays ?? 0
       ),
     };
-    // Backfill letterBestStars for legacy saved masteredTargets
     for (const target of hydrated.masteredTargets) {
       if (!hydrated.letterBestStars[target]) {
         hydrated.letterBestStars[target] = 2;
@@ -238,10 +341,13 @@ export function loadWritingProgress(ownerId = 'guest'): WritingProgress {
   }
 }
 
-export function saveWritingProgress(progress: WritingProgress): void {
+export function saveWritingProgress(
+  progress: WritingProgress,
+  config: WritingTrackConfig = VOWELS_WRITING_CONFIG
+): void {
   try {
     localStorage.setItem(
-      `${WRITING_STORAGE_PREFIX}${progress.ownerId || 'guest'}`,
+      `${config.storagePrefix}${progress.ownerId || 'guest'}`,
       JSON.stringify(progress)
     );
   } catch {
@@ -251,23 +357,68 @@ export function saveWritingProgress(progress: WritingProgress): void {
 
 export function isWritingUnitUnlocked(
   progress: WritingProgress,
-  unitIndex: number
+  unitIndex: number,
+  config: WritingTrackConfig = VOWELS_WRITING_CONFIG
 ): boolean {
   if (unitIndex <= 0 || progress.freeExploreUnlocked) return true;
-  const prev = WRITING_UNITS[unitIndex - 1];
+  const prev = config.units[unitIndex - 1];
   if (!prev) return true;
   return progress.completedUnits.includes(prev.id);
 }
 
-function evaluateWritingMedals(progress: WritingProgress): string[] {
+function evaluateWritingMedals(
+  progress: WritingProgress,
+  config: WritingTrackConfig = VOWELS_WRITING_CONFIG
+): string[] {
   const earned = new Set(progress.unlockedMedals);
+
+  if (config.kind === 'consonants') {
+    if (
+      progress.masteredTargets.length >= 1 ||
+      progress.totalPracticesCompleted >= 1
+    ) {
+      earned.add('medal_first_consonant');
+    }
+    if (
+      progress.dailyBonusClaimedDateKey === getTodayDateKey() ||
+      progress.dailyStepsCount >= progress.dailyGoalTarget
+    ) {
+      earned.add('medal_daily_habit');
+    }
+    if (progress.masteredConsonants.length >= 11) {
+      earned.add('medal_half_consonants');
+    }
+    if (
+      TRACKED_WRITING_CONSONANTS.every(
+        (c) =>
+          progress.masteredConsonants.includes(c) ||
+          progress.masteredTargets.includes(c)
+      )
+    ) {
+      earned.add('medal_all_consonants_21');
+    }
+    if (
+      Object.values(progress.letterBestStars).some((stars) => stars >= 3) ||
+      Object.values(progress.unitBestStars).some((stars) => stars >= 3)
+    ) {
+      earned.add('medal_gold_3stars');
+    }
+    if (progress.streakDays >= 3 || progress.bestStreakDays >= 3) {
+      earned.add('medal_streak_3');
+    }
+    return Array.from(earned);
+  }
+
   if (
     progress.masteredTargets.length >= 1 ||
     progress.totalPracticesCompleted >= 1
   ) {
     earned.add('medal_first_letter');
   }
-  if (progress.dailyBonusClaimedDateKey === getTodayDateKey() || progress.dailyStepsCount >= progress.dailyGoalTarget) {
+  if (
+    progress.dailyBonusClaimedDateKey === getTodayDateKey() ||
+    progress.dailyStepsCount >= progress.dailyGoalTarget
+  ) {
     earned.add('medal_daily_habit');
   }
   if (
@@ -300,7 +451,8 @@ export function getWritingLetterStarsTotal(progress: WritingProgress): number {
 export function recordWritingStepSolved(
   progress: WritingProgress,
   challenge: WritingChallenge,
-  starsEarned = 2
+  starsEarned = 2,
+  config: WritingTrackConfig = VOWELS_WRITING_CONFIG
 ): WritingStepRewardOutcome {
   const synced = syncWritingDailyWindow(progress);
   const todayKey = getTodayDateKey();
@@ -310,6 +462,7 @@ export function recordWritingStepSolved(
   const next: WritingProgress = {
     ...synced,
     masteredVowels: [...synced.masteredVowels],
+    masteredConsonants: [...synced.masteredConsonants],
     masteredTargets: [...synced.masteredTargets],
     letterBestStars: { ...synced.letterBestStars },
     dailyCompletedTargets: [...synced.dailyCompletedTargets],
@@ -337,7 +490,14 @@ export function recordWritingStepSolved(
     next.masteredVowels.push(challenge.vowelTag);
   }
 
-  // Update daily routine and study streak on every completed letter trace
+  if (
+    challenge.consonantTag &&
+    TRACKED_WRITING_CONSONANTS.includes(challenge.consonantTag) &&
+    !next.masteredConsonants.includes(challenge.consonantTag)
+  ) {
+    next.masteredConsonants.push(challenge.consonantTag);
+  }
+
   if (next.lastStudyDateKey === todayKey) {
     next.streakDays = Math.max(1, next.streakDays);
   } else if (next.lastStudyDateKey === prevDayKey) {
@@ -374,12 +534,12 @@ export function recordWritingStepSolved(
   }
 
   const prevMedalSet = new Set(next.unlockedMedals);
-  next.unlockedMedals = evaluateWritingMedals(next);
-  const newlyUnlockedMedals = WRITING_MEDALS.filter(
+  next.unlockedMedals = evaluateWritingMedals(next, config);
+  const newlyUnlockedMedals = config.medals.filter(
     (m) => next.unlockedMedals.includes(m.id) && !prevMedalSet.has(m.id)
   );
 
-  saveWritingProgress(next);
+  saveWritingProgress(next, config);
   return {
     progress: next,
     isNewLetterMastered,
@@ -393,7 +553,8 @@ export function recordWritingStepSolved(
 export function completeWritingUnit(
   progress: WritingProgress,
   unitId: string,
-  starsEarned: number
+  starsEarned: number,
+  config: WritingTrackConfig = VOWELS_WRITING_CONFIG
 ): WritingProgress {
   const synced = syncWritingDailyWindow(progress);
   const clampedStars = Math.max(1, Math.min(3, starsEarned));
@@ -428,8 +589,8 @@ export function completeWritingUnit(
     bestStreakDays: Math.max(synced.bestStreakDays, nextStreak),
     lastStudyDateKey: todayKey,
   };
-  updated.unlockedMedals = evaluateWritingMedals(updated);
-  saveWritingProgress(updated);
+  updated.unlockedMedals = evaluateWritingMedals(updated, config);
+  saveWritingProgress(updated, config);
   return updated;
 }
 

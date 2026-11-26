@@ -43,6 +43,8 @@ export function createDefaultGameRecords(): Record<GameId, GameStatsRecord> {
     memory: { highScore: 0, maxStage: 1, bestTimeSec: 0, totalCoins: 0, plays: 0 },
     escape: { highScore: 0, maxStage: 1, bestTimeSec: 0, totalCoins: 0, plays: 0 },
     galaxy: { highScore: 0, maxStage: 1, bestTimeSec: 0, totalCoins: 0, plays: 0 },
+    pacmiau: { highScore: 0, maxStage: 1, bestTimeSec: 0, totalCoins: 0, plays: 0 },
+    maze: { highScore: 0, maxStage: 1, bestTimeSec: 0, totalCoins: 0, plays: 0 },
   };
 }
 
@@ -731,8 +733,8 @@ export const SEED_RANKING_ENTRIES: RankingEntry[] = [
     totalScore: 2480,
     bestStage: 5,
     coinsEarned: 1420,
-    gameScores: { fish: 680, memory: 540, escape: 640, galaxy: 620 },
-    gameStages: { fish: 5, memory: 4, escape: 5, galaxy: 4 },
+    gameScores: { fish: 680, memory: 540, escape: 640, galaxy: 620, pacmiau: 2450, maze: 680 },
+    gameStages: { fish: 5, memory: 4, escape: 5, galaxy: 4, pacmiau: 3, maze: 4 },
     updatedAtMs: Date.now() - 3600_000,
   },
   {
@@ -742,8 +744,8 @@ export const SEED_RANKING_ENTRIES: RankingEntry[] = [
     totalScore: 1940,
     bestStage: 4,
     coinsEarned: 1120,
-    gameScores: { fish: 520, memory: 460, escape: 490, galaxy: 470 },
-    gameStages: { fish: 4, memory: 4, escape: 4, galaxy: 3 },
+    gameScores: { fish: 520, memory: 460, escape: 490, galaxy: 470, pacmiau: 1980, maze: 540 },
+    gameStages: { fish: 4, memory: 4, escape: 4, galaxy: 3, pacmiau: 2, maze: 3 },
     updatedAtMs: Date.now() - 7200_000,
   },
   {
@@ -753,8 +755,8 @@ export const SEED_RANKING_ENTRIES: RankingEntry[] = [
     totalScore: 1520,
     bestStage: 4,
     coinsEarned: 880,
-    gameScores: { fish: 410, memory: 380, escape: 360, galaxy: 370 },
-    gameStages: { fish: 3, memory: 4, escape: 3, galaxy: 3 },
+    gameScores: { fish: 410, memory: 380, escape: 360, galaxy: 370, pacmiau: 1420, maze: 420 },
+    gameStages: { fish: 3, memory: 4, escape: 3, galaxy: 3, pacmiau: 2, maze: 3 },
     updatedAtMs: Date.now() - 10800_000,
   },
   {
@@ -764,8 +766,8 @@ export const SEED_RANKING_ENTRIES: RankingEntry[] = [
     totalScore: 1090,
     bestStage: 3,
     coinsEarned: 640,
-    gameScores: { fish: 290, memory: 260, escape: 280, galaxy: 260 },
-    gameStages: { fish: 3, memory: 3, escape: 3, galaxy: 2 },
+    gameScores: { fish: 290, memory: 260, escape: 280, galaxy: 260, pacmiau: 960, maze: 310 },
+    gameStages: { fish: 3, memory: 3, escape: 3, galaxy: 2, pacmiau: 1, maze: 2 },
     updatedAtMs: Date.now() - 14400_000,
   },
   {
@@ -775,8 +777,8 @@ export const SEED_RANKING_ENTRIES: RankingEntry[] = [
     totalScore: 760,
     bestStage: 2,
     coinsEarned: 430,
-    gameScores: { fish: 210, memory: 190, escape: 185, galaxy: 175 },
-    gameStages: { fish: 2, memory: 2, escape: 2, galaxy: 2 },
+    gameScores: { fish: 210, memory: 190, escape: 185, galaxy: 175, pacmiau: 620, maze: 220 },
+    gameStages: { fish: 2, memory: 2, escape: 2, galaxy: 2, pacmiau: 1, maze: 2 },
     updatedAtMs: Date.now() - 18000_000,
   },
 ];

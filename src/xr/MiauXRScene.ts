@@ -229,6 +229,7 @@ export class MiauXRScene extends xb.Script {
 
   // Spatial UI
   private statusCard?: xb.UICard;
+  private titleLabel?: xb.UIText;
   private statsLabel?: xb.UIText;
   private speechLabel?: xb.UIText;
 
@@ -1507,16 +1508,18 @@ export class MiauXRScene extends xb.Script {
       },
     });
 
+    this.titleLabel = new xb.UIText({
+      text: '🐾 Miau • Sala 3D / XR',
+      style: { fontSize: 25, fontWeight: 'bold', textAlign: 'center' },
+    });
+
     this.statusCard = new xb.UICard({
       size: { width: 0.64, height: 'auto' },
       manipulation: true,
       edge: true,
       style: { flexDirection: 'column', gap: 10, padding: 16 },
       children: [
-        new xb.UIText({
-          text: 'Sala do Miau (3D / XR)',
-          style: { fontSize: 25, fontWeight: 'bold', textAlign: 'center' },
-        }),
+        this.titleLabel,
         this.statsLabel,
         this.speechLabel,
         new xb.UIPanel({
@@ -1587,7 +1590,8 @@ export class MiauXRScene extends xb.Script {
     stats: PetStats,
     equipped: EquippedItems,
     speechText: string,
-    isSleeping = false
+    isSleeping = false,
+    petName?: string
   ): void {
     const wasSleeping = this.isSleeping;
     this.isSleeping = isSleeping;
@@ -1614,6 +1618,9 @@ export class MiauXRScene extends xb.Script {
       this.applyBackgroundTheme(equipped.background || this.activeBackgroundId);
     }
 
+    if (this.titleLabel && petName) {
+      this.titleLabel.text = `🐾 ${petName} • Sala 3D / XR`;
+    }
     if (this.statsLabel) {
       this.statsLabel.text =
         `Fome ${Math.round(stats.hunger)}%  •  Higiene ${Math.round(stats.hygiene)}%\n` +

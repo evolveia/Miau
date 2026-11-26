@@ -46,6 +46,11 @@ import {
   pwaService,
   type CameraPermissionState,
 } from '../services/pwaService';
+import {
+  pushNotificationService,
+  type CareNeedKey,
+  type NotificationActionType,
+} from '../services/pushNotificationService';
 import { LiveVoiceSession, soundService } from '../services/soundService';
 import type {
   AchievementDef,
@@ -80,8 +85,16 @@ import {
   mountFishCatchGame,
   mountGalaxyRatGame,
   mountMemoryGame,
+  mountMilkMazeGame,
+  mountPacMiauGame,
   type MiniGameResult,
 } from './MiniGames';
+import {
+  claimBallCoins,
+  claimMinigameCoins,
+  claimPetCoins,
+} from '../services/coinEconomyService';
+import { buildEducationProgressReport } from '../services/progressReportService';
 import { renderRoomScenerySvg } from './RoomScenery';
 import {
   createEmptyHumanProfile,
@@ -113,8 +126,18 @@ import {
 } from './modals/LearnModal';
 import { EarlyLiteracyController } from './modals/EarlyLiteracyView';
 import { ConsonantsModuleController } from '../modules/consonants/ConsonantsModule';
+import { ADICAO_SUBTRACAO_CONFIG } from '../modules/themed/adicaoSubtracaoData';
+import { ANIMAIS_NATUREZA_CONFIG } from '../modules/themed/animaisNaturezaData';
+import { COMIDAS_BEBIDAS_CONFIG } from '../modules/themed/comidasBebidasData';
+import { CORES_FORMAS_CONFIG } from '../modules/themed/coresFormasData';
+import { LOGICA_MATEMATICA_CONFIG } from '../modules/themed/logicaMatematicaData';
+import { ThemedLearningModuleController } from '../modules/themed/ThemedLearningModule';
+import type { ThemedModuleConfig } from '../modules/themed/types';
 import { WritingModuleController } from '../modules/writing/WritingModule';
-import { loadWritingProgress } from '../modules/writing/writingEngine';
+import {
+  CONSONANTS_WRITING_CONFIG,
+  loadWritingProgress,
+} from '../modules/writing/writingEngine';
 import {
   bindLoginScreenEvents,
   renderLoginScreenHtml,
@@ -124,6 +147,10 @@ import {
   renderPreloaderHtml,
   updatePreloaderProgressDom,
 } from './modals/PreloaderScreen';
+import {
+  renderProgressReportModalHtml,
+  type ProgressReportFilter,
+} from './modals/ProgressReportModal';
 import { UserProfileModalController } from './modals/UserProfileModal';
 
 const LOCAL_DEMO_KEY = 'miau_demo_profile_v1';
@@ -146,7 +173,8 @@ export interface MiauUIXRBridge {
     stats: UserPetProfile['stats'],
     equipped: UserPetProfile['equipped'],
     speech: string,
-    isSleeping?: boolean
+    isSleeping?: boolean,
+    petName?: string
   ) => void;
   triggerBounce: () => void;
   enterXRMode: () => void;
@@ -169,12 +197,13 @@ export class MiauAppUI {
   private activeModal: ActiveModal = 'none';
   private legalDoc: 'terms' | 'privacy' = 'terms';
   private shopTab: 'hat' | 'accessory' | 'background' = 'hat';
-  private activeMiniGame: 'none' | 'fish' | 'memory' | 'escape' | 'galaxy' =
-    'none';
+  private activeMiniGame: 'none' | GameId = 'none';
   private miniGameCleanup: (() => void) | null = null;
   private leaderboard: RankingEntry[] = [];
   private rankingLoading = false;
   private rankingTab: 'all' | GameId = 'all';
+  private progressReportTab: ProgressReportFilter = 'all';
+  private decayTickCount = 0;
   private lastSleepRewardAtMs = 0;
 
   private currentSpeech = {
@@ -212,16 +241,29 @@ export class MiauAppUI {
   private screenPrefs: ScreenVisibilityPrefs = { ...DEFAULT_SCREEN_PREFS };
   private cameraPermission: CameraPermissionState = 'unknown';
   private showInstallGuideModal = false;
+  private pushTestPreview: { title: string; body: string } | null = null;
   private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
   private learnPreviewLevel: SchoolingLevel | null = null;
   private activeLearnTrack:
     | 'none'
     | 'infantil_letras'
     | 'infantil_escrita'
-    | 'infantil_consoantes' = 'none';
+    | 'infantil_escrita_consoantes'
+    | 'infantil_consoantes'
+    | 'infantil_cores_numeros'
+    | 'infantil_soma_subtracao'
+    | 'infantil_matematica_desafios'
+    | 'infantil_natureza'
+    | 'infantil_comidas_bebidas' = 'none';
   private earlyLiteracyView: EarlyLiteracyController;
   private writingView: WritingModuleController;
+  private writingConsonantsView: WritingModuleController;
   private consonantsView: ConsonantsModuleController;
+  private coresFormasView: ThemedLearningModuleController;
+  private somaSubtracaoView: ThemedLearningModuleController;
+  private logicaMatematicaView: ThemedLearningModuleController;
+  private animaisNaturezaView: ThemedLearningModuleController;
+  private comidasBebidasView: ThemedLearningModuleController;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
 
@@ -247,6 +289,48 @@ export class MiauAppUI {
     miauSpeechService.setSpeakingListener((speaking) => {
       this.isSpeaking = speaking;
       this.updateSpeakerButtonDOM();
+    });
+    pushNotificationService.registerNotificationActionHandler((action) => {
+      this.handleNotificationDeepLink(action);
+    });
+    document.addEventListener('visibilitychange', () => {
+      if (this.screen !== 'game') return;
+      const statsSnap = {
+        hunger: this.profile.stats.hunger,
+        hygiene: this.profile.stats.hygiene,
+        sleep: this.profile.stats.sleep,
+        isSleeping: this.isSleeping,
+      };
+      if (document.hidden) {
+        pushNotificationService.syncWithServerOnHide(
+          this.profile.petName,
+          statsSnap
+        );
+      } else {
+        pushNotificationService.clearServiceWorkerFallbackReminders();
+        pushNotificationService.updateAppBadgeAndTitle(
+          this.profile.petName,
+          statsSnap
+        );
+        void pushNotificationService.syncCareSnapshotToServiceWorker(
+          this.profile.petName,
+          statsSnap
+        );
+        void pushNotificationService.syncWithServer(
+          this.profile.petName,
+          statsSnap,
+          true
+        );
+      }
+    });
+    window.addEventListener('pagehide', () => {
+      if (this.screen !== 'game') return;
+      pushNotificationService.syncWithServerOnHide(this.profile.petName, {
+        hunger: this.profile.stats.hunger,
+        hygiene: this.profile.stats.hygiene,
+        sleep: this.profile.stats.sleep,
+        isSleeping: this.isSleeping,
+      });
     });
     this.profileModal = new UserProfileModalController({
       getProfile: () => this.humanProfile,
@@ -278,10 +362,7 @@ export class MiauAppUI {
       onOpenLearn: () => {
         this.profileModal.disposeCameraStream();
         this.learnPreviewLevel = null;
-        this.activeLearnTrack = 'none';
-        this.earlyLiteracyView.resetToTrail();
-        this.writingView.resetToTrail();
-        this.consonantsView.resetToTrail();
+        this.resetAllLearnTracks();
         this.activeModal = 'learn';
         this.render();
       },
@@ -358,6 +439,42 @@ export class MiauAppUI {
       },
       onToast: (msg) => this.showToast(msg),
     });
+    this.writingConsonantsView = new WritingModuleController(
+      {
+        getOwnerId: () =>
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
+        getHumanProfile: () => this.humanProfile,
+        getEquipped: () => this.profile.equipped,
+        isSoundEnabled: () => this.profile.soundEnabled,
+        onToggleSoundMute: () => this.toggleSoundMute(),
+        onGrantRewards: (coinsDelta, xpDelta) => {
+          this.ensureProfileDefaults();
+          this.addRewards(coinsDelta, xpDelta);
+          this.updateStatusBarsDOM();
+          void this.persistStats();
+        },
+        onExitToLearnHub: () => {
+          this.activeLearnTrack = 'none';
+          this.render();
+        },
+        onExitToMainMenu: () => {
+          this.activeLearnTrack = 'none';
+          this.activeModal = 'menu';
+          this.render();
+        },
+        onRequestRerender: () => {
+          if (
+            this.screen === 'game' &&
+            this.activeModal === 'learn' &&
+            this.activeLearnTrack === 'infantil_escrita_consoantes'
+          ) {
+            this.render();
+          }
+        },
+        onToast: (msg) => this.showToast(msg),
+      },
+      CONSONANTS_WRITING_CONFIG
+    );
     this.consonantsView = new ConsonantsModuleController({
       getOwnerId: () =>
         this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
@@ -391,6 +508,13 @@ export class MiauAppUI {
       },
       onToast: (msg) => this.showToast(msg),
     });
+    this.coresFormasView = this.createThemedController(CORES_FORMAS_CONFIG);
+    this.somaSubtracaoView = this.createThemedController(ADICAO_SUBTRACAO_CONFIG);
+    this.logicaMatematicaView = this.createThemedController(
+      LOGICA_MATEMATICA_CONFIG
+    );
+    this.animaisNaturezaView = this.createThemedController(ANIMAIS_NATUREZA_CONFIG);
+    this.comidasBebidasView = this.createThemedController(COMIDAS_BEBIDAS_CONFIG);
     this.loadScreenPrefs();
     pwaService.subscribe(() => {
       if (
@@ -404,6 +528,57 @@ export class MiauAppUI {
     });
     void this.refreshCameraPermissionState();
     this.initLifecycle();
+  }
+
+  private createThemedController(
+    config: ThemedModuleConfig
+  ): ThemedLearningModuleController {
+    return new ThemedLearningModuleController(config, {
+      getOwnerId: () =>
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
+      getHumanProfile: () => this.humanProfile,
+      getEquipped: () => this.profile.equipped,
+      isSoundEnabled: () => this.profile.soundEnabled,
+      onToggleSoundMute: () => this.toggleSoundMute(),
+      onGrantRewards: (coinsDelta, xpDelta) => {
+        this.ensureProfileDefaults();
+        this.addRewards(coinsDelta, xpDelta);
+        this.updateStatusBarsDOM();
+        void this.persistStats();
+      },
+      onExitToLearnHub: () => {
+        this.activeLearnTrack = 'none';
+        this.render();
+      },
+      onExitToMainMenu: () => {
+        this.activeLearnTrack = 'none';
+        this.activeModal = 'menu';
+        this.render();
+      },
+      onRequestRerender: () => {
+        if (
+          this.screen === 'game' &&
+          this.activeModal === 'learn' &&
+          this.activeLearnTrack === config.trackId
+        ) {
+          this.render();
+        }
+      },
+      onToast: (msg) => this.showToast(msg),
+    });
+  }
+
+  private resetAllLearnTracks(): void {
+    this.activeLearnTrack = 'none';
+    this.earlyLiteracyView.resetToTrail();
+    this.writingView.resetToTrail();
+    this.writingConsonantsView.resetToTrail();
+    this.consonantsView.resetToTrail();
+    this.coresFormasView.resetToTrail();
+    this.somaSubtracaoView.resetToTrail();
+    this.logicaMatematicaView.resetToTrail();
+    this.animaisNaturezaView.resetToTrail();
+    this.comidasBebidasView.resetToTrail();
   }
 
   private loadScreenPrefs(): void {
@@ -508,6 +683,17 @@ export class MiauAppUI {
             this.mood = lastMiau.mood;
           }
           this.syncXR();
+          void pushNotificationService
+            .initializeRuntime(user.uid, this.profile.petName, {
+              hunger: this.profile.stats.hunger,
+              hygiene: this.profile.stats.hygiene,
+              sleep: this.profile.stats.sleep,
+              isSleeping: this.isSleeping,
+            })
+            .then(() => {
+              const urlAct = pushNotificationService.consumeInitialUrlAction();
+              if (urlAct) this.handleNotificationDeepLink(urlAct);
+            });
         } catch (err) {
           console.error('Erro ao carregar perfil no Firestore:', err);
           this.humanProfile = await loadUserHumanProfile(null, user.uid);
@@ -546,21 +732,57 @@ export class MiauAppUI {
       if (this.screen !== 'game') return;
       if (this.isSleeping) return;
       this.ensureProfileDefaults();
+      this.decayTickCount += 1;
+      // Ritmo organizado e realista: Fome a cada ciclo (~35s), Sono/Diversão a cada 2 ciclos (~70s), Banho/Higiene a cada 3 ciclos (~105s)
       this.profile.stats.hunger = Math.max(5, this.profile.stats.hunger - 1);
-      this.profile.stats.hygiene = Math.max(8, this.profile.stats.hygiene - 1);
-      this.profile.stats.fun = Math.max(5, this.profile.stats.fun - 1);
-      this.profile.stats.sleep = Math.max(5, this.profile.stats.sleep - 1);
+      if (this.decayTickCount % 3 === 0) {
+        this.profile.stats.hygiene = Math.max(8, this.profile.stats.hygiene - 1);
+      }
+      if (this.decayTickCount % 2 === 0) {
+        this.profile.stats.fun = Math.max(5, this.profile.stats.fun - 1);
+        this.profile.stats.sleep = Math.max(5, this.profile.stats.sleep - 1);
+      }
       const anyLow =
         this.profile.stats.hunger < 30 ||
         this.profile.stats.hygiene < 30 ||
         this.profile.stats.fun < 30 ||
         this.profile.stats.sleep < 30;
-      this.profile.stats.happiness = Math.max(
-        5,
-        this.profile.stats.happiness - (anyLow ? 2 : 1)
-      );
+      if (anyLow || this.decayTickCount % 2 === 0) {
+        this.profile.stats.happiness = Math.max(
+          5,
+          this.profile.stats.happiness - (anyLow ? 2 : 1)
+        );
+      }
       this.updateStatusBarsDOM();
       void this.persistStats();
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      void pushNotificationService
+        .evaluateAndNotifyLowNeeds({
+          ownerId,
+          petName: this.profile.petName,
+          stats: {
+            hunger: this.profile.stats.hunger,
+            hygiene: this.profile.stats.hygiene,
+            sleep: this.profile.stats.sleep,
+            isSleeping: this.isSleeping,
+          },
+          soundEnabled: this.profile.soundEnabled,
+        })
+        .then((alertedNeed) => {
+          if (
+            alertedNeed &&
+            pushNotificationService.getPermission() !== 'granted'
+          ) {
+            const label =
+              alertedNeed === 'hunger'
+                ? 'com muita fome 🐟'
+                : alertedNeed === 'hygiene'
+                  ? 'precisando de banho 🛁'
+                  : 'com muito sono 🌙';
+            this.showToast(`${this.profile.petName} está ${label}!`);
+          }
+        });
     }, 35000);
 
     this.proactiveTimer = window.setInterval(() => {
@@ -728,7 +950,8 @@ export class MiauAppUI {
       this.profile.stats,
       this.profile.equipped,
       `${this.currentSpeech.meowPrefix} ${this.currentSpeech.text}`.trim(),
-      this.isSleeping
+      this.isSleeping,
+      this.profile.petName
     );
   }
 
@@ -769,6 +992,8 @@ export class MiauAppUI {
       memory: { ...defaultRecords.memory, ...(currentRecords.memory || {}) },
       escape: { ...defaultRecords.escape, ...(currentRecords.escape || {}) },
       galaxy: { ...defaultRecords.galaxy, ...(currentRecords.galaxy || {}) },
+      pacmiau: { ...defaultRecords.pacmiau, ...(currentRecords.pacmiau || {}) },
+      maze: { ...defaultRecords.maze, ...(currentRecords.maze || {}) },
     };
     const todayKey = getTodayDateKey();
     if (
@@ -878,7 +1103,14 @@ export class MiauAppUI {
   private buildCurrentRankingEntry(): RankingEntry {
     this.ensureProfileDefaults();
     const recs = this.profile.gameRecords!;
-    const gameIds: GameId[] = ['fish', 'memory', 'escape', 'galaxy'];
+    const gameIds: GameId[] = [
+      'fish',
+      'memory',
+      'escape',
+      'galaxy',
+      'pacmiau',
+      'maze',
+    ];
     const totalScore = gameIds.reduce(
       (sum, id) => sum + (recs[id]?.highScore || 0),
       0
@@ -896,12 +1128,16 @@ export class MiauAppUI {
       memory: recs.memory?.highScore || 0,
       escape: recs.escape?.highScore || 0,
       galaxy: recs.galaxy?.highScore || 0,
+      pacmiau: recs.pacmiau?.highScore || 0,
+      maze: recs.maze?.highScore || 0,
     };
     const gameStages: Partial<Record<GameId, number>> = {
       fish: recs.fish?.maxStage || 1,
       memory: recs.memory?.maxStage || 1,
       escape: recs.escape?.maxStage || 1,
       galaxy: recs.galaxy?.maxStage || 1,
+      pacmiau: recs.pacmiau?.maxStage || 1,
+      maze: recs.maze?.maxStage || 1,
     };
     const id = this.firebaseUser?.uid || 'local_player';
     return {
@@ -1041,8 +1277,82 @@ export class MiauAppUI {
     }
   }
 
+  private handleNotificationDeepLink(action: NotificationActionType): void {
+    if (this.screen !== 'game') return;
+    if (action === 'feed') {
+      this.activeModal = 'feed';
+      this.render();
+    } else if (action === 'clean') {
+      this.activeModal = 'clean';
+      this.render();
+    } else if (action === 'sleep') {
+      this.activeModal = 'none';
+      if (!this.isSleeping) {
+        this.toggleSleep();
+      } else {
+        this.render();
+      }
+    } else {
+      this.activeModal = 'none';
+      this.render();
+    }
+  }
+
+  private async activatePushFromUI(): Promise<void> {
+    const ownerId =
+      this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+    const res = await pushNotificationService.enablePushNotifications({
+      ownerId,
+      petName: this.profile.petName,
+      stats: {
+        hunger: this.profile.stats.hunger,
+        hygiene: this.profile.stats.hygiene,
+        sleep: this.profile.stats.sleep,
+        isSleeping: this.isSleeping,
+      },
+    });
+    this.pushTestPreview = null;
+    if (res.permission === 'granted') {
+      soundService.playCoin();
+      this.showToast(
+        res.webPushActive
+          ? 'Notificações Push ativadas! Avisaremos em 2º plano quando o Miau precisar.'
+          : 'Notificações ativadas via Service Worker e navegador!'
+      );
+    } else if (res.inAppActive) {
+      soundService.playCoin();
+      this.showToast(
+        res.permission === 'denied'
+          ? 'Alertas no App ativados (barra e badge)! Para pop-ups do sistema, libere no navegador.'
+          : 'Alertas no App ativados para fome, banho e sono!'
+      );
+    }
+    this.render();
+  }
+
   private async persistStats(): Promise<void> {
     this.syncXR();
+    if (this.screen === 'game') {
+      const statsSnap = {
+        hunger: this.profile.stats.hunger,
+        hygiene: this.profile.stats.hygiene,
+        sleep: this.profile.stats.sleep,
+        isSleeping: this.isSleeping,
+      };
+      pushNotificationService.updateAppBadgeAndTitle(
+        this.profile.petName,
+        statsSnap
+      );
+      void pushNotificationService.syncCareSnapshotToServiceWorker(
+        this.profile.petName,
+        statsSnap
+      );
+      void pushNotificationService.syncWithServer(
+        this.profile.petName,
+        statsSnap,
+        !document.hidden
+      );
+    }
     if (this.firebaseUser) {
       try {
         await saveStatsProgress(this.firebaseUser.uid, this.profile);
@@ -1226,6 +1536,17 @@ export class MiauAppUI {
     this.syncXR();
     this.render();
     void this.requestCameraPermissionOnStart();
+    void pushNotificationService
+      .initializeRuntime('demo', this.profile.petName, {
+        hunger: this.profile.stats.hunger,
+        hygiene: this.profile.stats.hygiene,
+        sleep: this.profile.stats.sleep,
+        isSleeping: this.isSleeping,
+      })
+      .then(() => {
+        const urlAct = pushNotificationService.consumeInitialUrlAction();
+        if (urlAct) this.handleNotificationDeepLink(urlAct);
+      });
   }
 
   // Public actions usable from XR scene too
@@ -1243,13 +1564,17 @@ export class MiauAppUI {
       this.profile.stats.happiness + 8
     );
     this.profile.progress.petsCount += 1;
-    this.addRewards(8, 5);
+    const petClaim = claimPetCoins(this.profile.ownerId || 'guest', 6);
+    this.addRewards(petClaim.coinsGranted, 5);
     this.evaluateAchievements();
     this.triggerMiauReaction('jump');
     this.spawnFloatingParticle('💖');
     this.currentSpeech = {
       meowPrefix: 'Purrr~ 💖',
-      text: '(Obrigado pelo carinho gostoso! Adoro ficar com você!)',
+      text:
+        petClaim.coinsGranted > 0
+          ? `(Obrigado pelo carinho gostoso! +🪙 ${petClaim.coinsGranted} moedas!)`
+          : '(Obrigado pelo carinho gostoso! Estude nas lições para ganhar mais moedas!)',
     };
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
@@ -1278,7 +1603,8 @@ export class MiauAppUI {
       100,
       this.profile.stats.happiness + 6
     );
-    this.addRewards(4, 4);
+    const meowClaim = claimPetCoins(this.profile.ownerId || 'guest', 4);
+    this.addRewards(meowClaim.coinsGranted, 4);
     this.triggerMiauReaction('jump');
     this.spawnFloatingParticle('🎵');
     this.currentSpeech = { meowPrefix: prefix, text: msg };
@@ -1383,21 +1709,35 @@ export class MiauAppUI {
       100,
       this.profile.stats.happiness + 12
     );
-    this.addRewards(10, 8);
+    const ballClaim = claimBallCoins(this.profile.ownerId || 'guest', 8);
+    this.addRewards(ballClaim.coinsGranted, 8);
     this.evaluateAchievements();
     this.mood = 'playful';
     this.triggerMiauReaction('spin');
     this.spawnFloatingParticle(source === 'ball' ? '⚽' : '🧶');
-    this.currentSpeech =
-      source === 'ball'
-        ? {
-            meowPrefix: 'Miau!! ⚽',
-            text: '(Peguei a bolinha! Obrigado por brincar comigo!)',
-          }
-        : {
-            meowPrefix: 'Miau!! 🧶',
-            text: '(Obrigado por brincar comigo com o novelo de lã!)',
-          };
+    if (ballClaim.coinsGranted > 0) {
+      this.currentSpeech =
+        source === 'ball'
+          ? {
+              meowPrefix: 'Miau!! ⚽',
+              text: `(Peguei a bolinha! +🪙 ${ballClaim.coinsGranted} moedas! Estude no Vamos Aprender para ganhar ainda mais!)`,
+            }
+          : {
+              meowPrefix: 'Miau!! 🧶',
+              text: `(Adorei o novelo! +🪙 ${ballClaim.coinsGranted} moedas!)`,
+            };
+    } else {
+      this.currentSpeech =
+        source === 'ball'
+          ? {
+              meowPrefix: 'Miau!! ⚽',
+              text: '(Que brincadeira legal! Para ganhar mais moedas agora, pratique nas lições educativas!)',
+            }
+          : {
+              meowPrefix: 'Miau!! 🧶',
+              text: '(Obrigado por brincar com o novelo! Ganhe mais moedas estudando com o Miau!)',
+            };
+    }
     this.updateStatusBarsDOM();
     this.updateSpeechDOM();
     this.updateCharacterSvgDOM();
@@ -1867,8 +2207,10 @@ export class MiauAppUI {
     const recs = this.profile.gameRecords!;
     const prevRec = recs[res.gameId];
     const isNewRecord = res.score > prevRec.highScore && prevRec.highScore > 0;
-    const recordBonus = isNewRecord ? 25 : 0;
-    const totalCoinsGained = res.coinsEarned + recordBonus;
+    const recordBonus = isNewRecord ? 20 : 0;
+    const rawCoins = res.coinsEarned + recordBonus;
+    const ecoClaim = claimMinigameCoins(this.profile.ownerId || 'guest', rawCoins);
+    const totalCoinsGained = ecoClaim.coinsGranted;
 
     recs[res.gameId] = {
       highScore: Math.max(prevRec.highScore, res.score),
@@ -1898,25 +2240,30 @@ export class MiauAppUI {
           ? 'playful'
           : 'happy';
 
+    const coinSuffix =
+      totalCoinsGained > 0
+        ? `+${totalCoinsGained} moedas!`
+        : 'cota diária de jogos atingida — ganhe mais moedas estudando!';
+
     if (isNewRecord) {
       this.currentSpeech = {
         meowPrefix: 'NOVO RECORDE!! 🏆',
-        text: `(${res.gameName}: ${res.score} pts • Fase ${res.stageReached}! Obrigado por jogar comigo! +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.score} pts • Fase ${res.stageReached}! ${coinSuffix})`,
       };
     } else if (res.performanceTier === 'gold') {
       this.currentSpeech = {
         meowPrefix: 'Miau!! 🏆',
-        text: `(${res.gameName}: ${res.summaryText}! Obrigado por brincar comigo, +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! ${coinSuffix})`,
       };
     } else if (res.performanceTier === 'silver') {
       this.currentSpeech = {
         meowPrefix: 'Miau! ✨',
-        text: `(${res.gameName}: ${res.summaryText}! Obrigado por jogar comigo, +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! ${coinSuffix})`,
       };
     } else {
       this.currentSpeech = {
         meowPrefix: 'Purrr~ 🐾',
-        text: `(${res.gameName}: ${res.summaryText}! Obrigado por brincar comigo, +${totalCoinsGained} moedas!)`,
+        text: `(${res.gameName}: ${res.summaryText}! ${coinSuffix})`,
       };
     }
 
@@ -1925,9 +2272,11 @@ export class MiauAppUI {
     this.spawnFloatingParticle(res.performanceTier === 'gold' ? '🏆' : '🎮');
     if (!unlockedNew) {
       this.showToast(
-        isNewRecord
-          ? `🏆 Novo Recorde em ${res.gameName}! +${totalCoinsGained} moedas`
-          : `${res.gameName}: +${totalCoinsGained} moedas e +${res.xpEarned} XP!`
+        totalCoinsGained === 0
+          ? `${res.gameName}: +${res.xpEarned} XP! (Cota diária de jogos completa; estude para +🪙)`
+          : isNewRecord
+            ? `🏆 Novo Recorde em ${res.gameName}! +${totalCoinsGained} moedas`
+            : `${res.gameName}: +${totalCoinsGained} moedas e +${res.xpEarned} XP!`
       );
     }
     void this.persistStats();
@@ -2639,6 +2988,7 @@ export class MiauAppUI {
       bgId === 'bg_dc' ||
       bgId === 'bg_halloween' ||
       bgId === 'bg_natal';
+    const petName = (this.profile.petName || 'Miau').trim() || 'Miau';
     const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
     const activeRoutineCount = this.getActiveWindowSlots().length;
 
@@ -2658,7 +3008,10 @@ export class MiauAppUI {
               </svg>
             </button>
 
-            <h1 class="font-display text-2xl font-bold ${isNight ? 'text-white' : 'text-[#2d1b4e]'} tracking-tight truncate">Sala de Estar</h1>
+            <div class="min-w-0 flex-1 text-center px-1">
+              <h1 id="hud-pet-name" class="font-display text-xl sm:text-2xl font-bold ${isNight ? 'text-white' : 'text-[#2d1b4e]'} tracking-tight truncate">🐾 ${escapeHtml(petName)}</h1>
+              <p class="text-[10px] font-extrabold uppercase tracking-wider ${isNight ? 'text-purple-200/85' : 'text-[#5b468f]/85'} leading-none mt-0.5">Sala de Estar</p>
+            </div>
 
             <div class="flex items-center gap-1.5 shrink-0">
               <button
@@ -2745,13 +3098,22 @@ export class MiauAppUI {
               ${renderRoomScenerySvg(this.profile.equipped.background, this.isSleeping)}
             </div>
 
-            <!-- Cleaning Banner -->
+            <!-- Cleaning / Push Opt-in Banner -->
             ${
               this.isCleaningMode
                 ? `<div class="absolute top-2 z-20 glass-pill px-4 py-1.5 rounded-full text-xs font-extrabold text-cyan-800 animate-bounce">
                      🫧 Toque no Miau para ensaboar e limpar!
                    </div>`
-                : ''
+                : (this.profile.stats.hunger < 35 ||
+                      this.profile.stats.hygiene < 35 ||
+                      this.profile.stats.sleep < 35) &&
+                    pushNotificationService.shouldOfferRoomPrompt()
+                  ? `<div class="absolute top-2 z-20 glass-pill px-3 py-1.5 rounded-full flex items-center gap-2 shadow-md max-w-[92%]">
+                       <span class="text-[11px] font-extrabold text-[#3b1f6e] truncate">🔔 Avisar quando Miau precisar?</span>
+                       <button id="btn-room-enable-push" type="button" class="px-2.5 py-0.5 rounded-full bg-[#6e45a5] text-white text-[10px] font-extrabold shrink-0 hover:brightness-110">Ativar</button>
+                       <button id="btn-room-dismiss-push" type="button" aria-label="Dispensar aviso" class="text-[11px] font-bold text-[#7a60a8] px-1 shrink-0">✕</button>
+                     </div>`
+                  : ''
             }
 
             <!-- Interactive Miau Character -->
@@ -2759,7 +3121,7 @@ export class MiauAppUI {
               id="miau-character-wrap"
               role="button"
               tabindex="0"
-              aria-label="Fazer carinho no Miau"
+              aria-label="Fazer carinho em ${escapeHtml(petName)}"
               class="relative z-10 w-[235px] h-[210px] sm:w-[260px] sm:h-[230px] cursor-pointer active:scale-95 transition-transform"
             >
               <div id="miau-svg-container" class="w-full h-full">
@@ -2775,7 +3137,7 @@ export class MiauAppUI {
                   <!-- Speech Bubble -->
                   <div id="speech-bubble-card" class="relative glass-card rounded-[24px] p-3 flex items-center gap-3 cursor-pointer hover:brightness-[1.02] transition">
                     <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-200 bg-purple-100 shrink-0 shadow-sm">
-                      <img src="${MIAU_AVATAR_URL}" alt="Miau" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
+                      <img src="${MIAU_AVATAR_URL}" alt="${escapeHtml(petName)}" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
                     </div>
                     <div class="flex-1 min-w-0">
                       <div id="speech-prefix" class="font-display text-sm font-bold text-[#2d1b4e]">${escapeHtml(this.currentSpeech.meowPrefix)}</div>
@@ -2784,7 +3146,7 @@ export class MiauAppUI {
                     <button
                       id="btn-speaker"
                       type="button"
-                      aria-label="Ouvir voz do Miau"
+                      aria-label="Ouvir voz de ${escapeHtml(petName)}"
                       class="w-11 h-11 rounded-full bg-gradient-to-br from-[#7d52bd] to-[#5d3798] text-white flex items-center justify-center shrink-0 shadow-md hover:scale-105 active:scale-95 transition"
                     >
                       <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -2798,7 +3160,7 @@ export class MiauAppUI {
                     <input
                       id="quick-chat-input"
                       type="text"
-                      placeholder="${this.isRecordingMic ? '🔴 Gravando... solte para enviar!' : 'Fale com o Miau...'}"
+                      placeholder="${this.isRecordingMic ? '🔴 Gravando... solte para enviar!' : `Fale com ${escapeHtml(petName)}...`}"
                       class="flex-1 bg-transparent text-sm font-semibold text-[#3b1f6e] placeholder-[#8f79b5] focus:outline-none min-w-0"
                     />
                     <button
@@ -2806,7 +3168,7 @@ export class MiauAppUI {
                       type="button"
                       style="touch-action:none"
                       title="Segure para gravar e solte para enviar"
-                      aria-label="${this.isRecordingMic ? 'Solte para enviar áudio' : 'Segure para gravar voz para o Miau'}"
+                      aria-label="${this.isRecordingMic ? 'Solte para enviar áudio' : `Segure para gravar voz para ${escapeHtml(petName)}`}"
                       class="w-9 h-9 rounded-full select-none ${this.isRecordingMic ? 'bg-rose-500 animate-pulse scale-110' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
                     >
                       <svg class="w-4 h-4 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
@@ -2841,7 +3203,7 @@ export class MiauAppUI {
           <!-- Toast Notification -->
           <div
             id="miau-toast"
-            class="pointer-events-none opacity-0 transition-opacity duration-300 absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-[#3b1f6e]/90 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg whitespace-nowrap max-w-[90%] truncate"
+            class="pointer-events-none ${this.toastMessage ? 'opacity-100' : 'opacity-0'} transition-opacity duration-300 absolute top-16 left-1/2 -translate-x-1/2 z-40 bg-[#3b1f6e]/95 text-white text-xs font-bold px-4 py-2 rounded-full shadow-lg whitespace-nowrap max-w-[90%] truncate"
           >${escapeHtml(this.toastMessage)}</div>
 
           <!-- Active Drawer / Modal -->
@@ -2943,11 +3305,19 @@ export class MiauAppUI {
     } else if (this.activeModal === 'routine') {
       const ownerId =
         this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      pushNotificationService.setOwner(ownerId);
+      const pushPrefs = pushNotificationService.getPrefs(ownerId);
       body = renderRoutineModalHtml(
         this.profile,
         this.isSleeping,
         (slot, now) => this.isSlotInWindow(slot, now),
-        loadWritingProgress(ownerId)
+        loadWritingProgress(ownerId),
+        {
+          supported: pushNotificationService.isSupported(),
+          enabled: pushPrefs.enabled,
+          permission: pushNotificationService.getPermission(),
+          threshold: pushPrefs.threshold,
+        }
       );
     } else if (this.activeModal === 'menu') {
       const unlockedCount = (this.profile.unlockedAchievements || []).length;
@@ -2977,14 +3347,47 @@ export class MiauAppUI {
           ? this.earlyLiteracyView.render()
           : this.activeLearnTrack === 'infantil_escrita'
             ? this.writingView.render()
-            : this.activeLearnTrack === 'infantil_consoantes'
-              ? this.consonantsView.render()
-              : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
+            : this.activeLearnTrack === 'infantil_escrita_consoantes'
+              ? this.writingConsonantsView.render()
+              : this.activeLearnTrack === 'infantil_consoantes'
+                ? this.consonantsView.render()
+                : this.activeLearnTrack === 'infantil_cores_numeros'
+                  ? this.coresFormasView.render()
+                  : this.activeLearnTrack === 'infantil_soma_subtracao'
+                    ? this.somaSubtracaoView.render()
+                    : this.activeLearnTrack === 'infantil_matematica_desafios'
+                      ? this.logicaMatematicaView.render()
+                      : this.activeLearnTrack === 'infantil_natureza'
+                        ? this.animaisNaturezaView.render()
+                        : this.activeLearnTrack === 'infantil_comidas_bebidas'
+                          ? this.comidasBebidasView.render()
+                          : renderLearnModalHtml(
+                              this.humanProfile,
+                              this.learnPreviewLevel
+                            );
+    } else if (this.activeModal === 'progress_report') {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      body = renderProgressReportModalHtml(
+        buildEducationProgressReport(ownerId),
+        this.progressReportTab
+      );
     } else if (this.activeModal === 'settings') {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      pushNotificationService.setOwner(ownerId);
       body = renderSettingsModalHtml({
+        petName: this.profile.petName,
         screenPrefs: this.screenPrefs,
         soundEnabled: this.profile.soundEnabled,
         cameraPermission: this.cameraPermission,
+        pushState: {
+          supported: pushNotificationService.isSupported(),
+          permission: pushNotificationService.getPermission(),
+          prefs: pushNotificationService.getPrefs(ownerId),
+          webPushActive: pushNotificationService.hasActiveWebPushSubscription(),
+        },
+        pushTestPreview: this.pushTestPreview,
       });
     } else if (this.activeModal === 'support') {
       body = renderSupportModalHtml(
@@ -3329,9 +3732,7 @@ export class MiauAppUI {
       });
     });
 
-    const launchGame = (
-      id: 'fish' | 'memory' | 'escape' | 'galaxy'
-    ) => {
+    const launchGame = (id: GameId) => {
       this.ensureProfileDefaults();
       const high = this.profile.gameRecords![id].highScore;
       this.activeMiniGame = id;
@@ -3369,6 +3770,22 @@ export class MiauAppUI {
           high,
           this.toggleSoundMute
         );
+      } else if (id === 'pacmiau') {
+        this.miniGameCleanup = mountPacMiauGame(
+          host,
+          onDone,
+          onExit,
+          high,
+          this.toggleSoundMute
+        );
+      } else if (id === 'maze') {
+        this.miniGameCleanup = mountMilkMazeGame(
+          host,
+          onDone,
+          onExit,
+          high,
+          this.toggleSoundMute
+        );
       } else {
         this.miniGameCleanup = mountGalaxyRatGame(
           host,
@@ -3384,6 +3801,8 @@ export class MiauAppUI {
     this.root.querySelector('#start-memory-game')?.addEventListener('click', () => launchGame('memory'));
     this.root.querySelector('#start-escape-game')?.addEventListener('click', () => launchGame('escape'));
     this.root.querySelector('#start-galaxy-game')?.addEventListener('click', () => launchGame('galaxy'));
+    this.root.querySelector('#start-pacmiau-game')?.addEventListener('click', () => launchGame('pacmiau'));
+    this.root.querySelector('#start-maze-game')?.addEventListener('click', () => launchGame('maze'));
 
     // Routine modal quick actions
     this.root.querySelector('#btn-routine-feed')?.addEventListener('click', () => {
@@ -3409,6 +3828,31 @@ export class MiauAppUI {
         this.writingView.resetToTrail();
         this.activeLearnTrack = 'infantil_escrita';
         this.activeModal = 'learn';
+        this.render();
+      });
+    this.root
+      .querySelector('#btn-routine-push-action')
+      ?.addEventListener('click', async () => {
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        const prefs = pushNotificationService.getPrefs(ownerId);
+        if (prefs.enabled) {
+          this.activeModal = 'settings';
+          this.render();
+          return;
+        }
+        await this.activatePushFromUI();
+      });
+
+    this.root
+      .querySelector('#btn-room-enable-push')
+      ?.addEventListener('click', () => {
+        void this.activatePushFromUI();
+      });
+    this.root
+      .querySelector('#btn-room-dismiss-push')
+      ?.addEventListener('click', () => {
+        pushNotificationService.dismissPromptTemporarily(3);
         this.render();
       });
 
@@ -3639,16 +4083,82 @@ export class MiauAppUI {
       .querySelector('#btn-menu-learn')
       ?.addEventListener('click', () => {
         this.learnPreviewLevel = null;
-        this.activeLearnTrack = 'none';
-        this.earlyLiteracyView.resetToTrail();
-        this.writingView.resetToTrail();
-        this.consonantsView.resetToTrail();
+        this.resetAllLearnTracks();
         this.activeModal = 'learn';
         this.render();
       });
 
+    this.root
+      .querySelector('#btn-menu-progress-report')
+      ?.addEventListener('click', () => {
+        this.activeModal = 'progress_report';
+        this.render();
+      });
+
+    const openEducationTrack = (trackId: string) => {
+      this.activeModal = 'learn';
+      if (trackId === 'infantil_letras') {
+        this.earlyLiteracyView.resetToTrail();
+        this.activeLearnTrack = 'infantil_letras';
+      } else if (trackId === 'infantil_escrita') {
+        this.writingView.resetToTrail();
+        this.activeLearnTrack = 'infantil_escrita';
+      } else if (trackId === 'infantil_escrita_consoantes') {
+        this.writingConsonantsView.resetToTrail();
+        this.activeLearnTrack = 'infantil_escrita_consoantes';
+      } else if (trackId === 'infantil_consoantes') {
+        this.consonantsView.resetToTrail();
+        this.activeLearnTrack = 'infantil_consoantes';
+      } else if (trackId === 'infantil_cores_numeros') {
+        this.coresFormasView.resetToTrail();
+        this.activeLearnTrack = 'infantil_cores_numeros';
+      } else if (trackId === 'infantil_soma_subtracao') {
+        this.somaSubtracaoView.resetToTrail();
+        this.activeLearnTrack = 'infantil_soma_subtracao';
+      } else if (trackId === 'infantil_matematica_desafios') {
+        this.logicaMatematicaView.resetToTrail();
+        this.activeLearnTrack = 'infantil_matematica_desafios';
+      } else if (trackId === 'infantil_natureza') {
+        this.animaisNaturezaView.resetToTrail();
+        this.activeLearnTrack = 'infantil_natureza';
+      } else if (trackId === 'infantil_comidas_bebidas') {
+        this.comidasBebidasView.resetToTrail();
+        this.activeLearnTrack = 'infantil_comidas_bebidas';
+      }
+      this.render();
+    };
+
     if (this.activeModal === 'profile') {
       this.profileModal.bind(this.root);
+    }
+
+    if (this.activeModal === 'progress_report') {
+      this.root
+        .querySelector('#btn-report-back')
+        ?.addEventListener('click', () => {
+          this.activeModal = 'menu';
+          this.render();
+        });
+      this.root
+        .querySelector('#btn-report-open-shop')
+        ?.addEventListener('click', () => {
+          this.activeModal = 'customize';
+          this.render();
+        });
+      this.root.querySelectorAll('[data-report-tab]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const tab = btn.getAttribute('data-report-tab') as ProgressReportFilter | null;
+          if (!tab) return;
+          this.progressReportTab = tab;
+          this.render();
+        });
+      });
+      this.root.querySelectorAll('[data-report-open-track]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const trackId = btn.getAttribute('data-report-open-track');
+          if (trackId) openEducationTrack(trackId);
+        });
+      });
     }
 
     if (this.activeModal === 'learn') {
@@ -3656,8 +4166,20 @@ export class MiauAppUI {
         this.earlyLiteracyView.bind(this.root);
       } else if (this.activeLearnTrack === 'infantil_escrita') {
         this.writingView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_escrita_consoantes') {
+        this.writingConsonantsView.bind(this.root);
       } else if (this.activeLearnTrack === 'infantil_consoantes') {
         this.consonantsView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_cores_numeros') {
+        this.coresFormasView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_soma_subtracao') {
+        this.somaSubtracaoView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_matematica_desafios') {
+        this.logicaMatematicaView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_natureza') {
+        this.animaisNaturezaView.bind(this.root);
+      } else if (this.activeLearnTrack === 'infantil_comidas_bebidas') {
+        this.comidasBebidasView.bind(this.root);
       } else {
         bindLearnModalEvents(this.root, {
           onBackToMenu: () => {
@@ -3669,25 +4191,15 @@ export class MiauAppUI {
             this.activeModal = 'profile';
             this.render();
           },
+          onOpenProgressReport: () => {
+            this.activeModal = 'progress_report';
+            this.render();
+          },
           onSelectPreviewLevel: (level) => {
             this.learnPreviewLevel = level;
             this.render();
           },
-          onOpenTrack: (trackId) => {
-            if (trackId === 'infantil_letras') {
-              this.earlyLiteracyView.resetToTrail();
-              this.activeLearnTrack = 'infantil_letras';
-              this.render();
-            } else if (trackId === 'infantil_escrita') {
-              this.writingView.resetToTrail();
-              this.activeLearnTrack = 'infantil_escrita';
-              this.render();
-            } else if (trackId === 'infantil_consoantes') {
-              this.consonantsView.resetToTrail();
-              this.activeLearnTrack = 'infantil_consoantes';
-              this.render();
-            }
-          },
+          onOpenTrack: openEducationTrack,
         });
       }
     }
@@ -3724,6 +4236,45 @@ export class MiauAppUI {
       .querySelector('#btn-settings-back')
       ?.addEventListener('click', () => {
         this.activeModal = 'menu';
+        this.render();
+      });
+
+    this.root
+      .querySelector('#settings-pet-name-form')
+      ?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = this.root.querySelector(
+          '#settings-pet-name-input'
+        ) as HTMLInputElement | null;
+        if (!input) return;
+        const cleanName = input.value.replace(/\s+/g, ' ').trim().slice(0, 32);
+        if (!cleanName) {
+          this.showToast('Digite um nome válido para o seu bichinho!');
+          input.focus();
+          return;
+        }
+        this.profile.petName = cleanName;
+        this.syncXR();
+        const statsSnap = {
+          hunger: this.profile.stats.hunger,
+          hygiene: this.profile.stats.hygiene,
+          sleep: this.profile.stats.sleep,
+          isSleeping: this.isSleeping,
+        };
+        pushNotificationService.updateAppBadgeAndTitle(cleanName, statsSnap);
+        void pushNotificationService.syncCareSnapshotToServiceWorker(
+          cleanName,
+          statsSnap
+        );
+        void pushNotificationService.syncWithServer(
+          cleanName,
+          statsSnap,
+          !document.hidden
+        );
+        await this.persistSettings();
+        void this.syncRankingEntry();
+        if (this.profile.soundEnabled) soundService.playCoin();
+        this.showToast(`🐾 Nome salvo! Agora seu bichinho se chama ${cleanName}!`);
         this.render();
       });
 
@@ -3799,6 +4350,85 @@ export class MiauAppUI {
         } else {
           this.showToast('Câmera não suportada neste dispositivo.');
         }
+      });
+
+    this.root
+      .querySelector('#btn-toggle-push')
+      ?.addEventListener('click', async () => {
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        const prefs = pushNotificationService.getPrefs(ownerId);
+        if (prefs.enabled) {
+          this.pushTestPreview = null;
+          await pushNotificationService.disablePushNotifications(
+            this.profile.petName,
+            {
+              hunger: this.profile.stats.hunger,
+              hygiene: this.profile.stats.hygiene,
+              sleep: this.profile.stats.sleep,
+              isSleeping: this.isSleeping,
+            }
+          );
+          this.showToast('Notificações de cuidado desativadas.');
+          this.render();
+        } else {
+          await this.activatePushFromUI();
+        }
+      });
+
+    this.root.querySelectorAll('[data-push-need]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const need = btn.getAttribute('data-push-need') as CareNeedKey | null;
+        if (!need) return;
+        const next = pushNotificationService.toggleNeedEnabled(
+          need,
+          this.profile.petName,
+          {
+            hunger: this.profile.stats.hunger,
+            hygiene: this.profile.stats.hygiene,
+            sleep: this.profile.stats.sleep,
+            isSleeping: this.isSleeping,
+          }
+        );
+        this.showToast(
+          next
+            ? 'Alerta ativado para essa necessidade!'
+            : 'Alerta pausado para essa necessidade.'
+        );
+        this.render();
+      });
+    });
+
+    this.root.querySelectorAll('[data-push-threshold]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const val = Number(btn.getAttribute('data-push-threshold'));
+        if (!Number.isFinite(val)) return;
+        pushNotificationService.updateThreshold(val, this.profile.petName, {
+          hunger: this.profile.stats.hunger,
+          hygiene: this.profile.stats.hygiene,
+          sleep: this.profile.stats.sleep,
+          isSleeping: this.isSleeping,
+        });
+        this.showToast(`Aviso ajustado para quando cair para ≤ ${val}%!`);
+        this.render();
+      });
+    });
+
+    this.root
+      .querySelector('#btn-test-push')
+      ?.addEventListener('click', async () => {
+        if (this.profile.soundEnabled && soundService.enabled) {
+          soundService.playMeow(1.12);
+        }
+        const result = await pushNotificationService.sendTestNotification(
+          this.profile.petName
+        );
+        this.pushTestPreview =
+          result.previewTitle && result.previewBody
+            ? { title: result.previewTitle, body: result.previewBody }
+            : null;
+        this.showToast(result.message);
+        this.render();
       });
 
     this.root
@@ -3893,10 +4523,7 @@ export class MiauAppUI {
       this.lastNeedAlertAt = 0;
       this.humanProfile = createEmptyHumanProfile('guest');
       this.learnPreviewLevel = null;
-      this.activeLearnTrack = 'none';
-      this.earlyLiteracyView.resetToTrail();
-      this.writingView.resetToTrail();
-      this.consonantsView.resetToTrail();
+      this.resetAllLearnTracks();
       if (this.firebaseUser) {
         await logoutUser();
       }
@@ -3959,10 +4586,7 @@ export class MiauAppUI {
 
   private closeActiveModal(): void {
     this.profileModal.disposeCameraStream();
-    this.earlyLiteracyView.resetToTrail();
-    this.writingView.resetToTrail();
-    this.consonantsView.resetToTrail();
-    this.activeLearnTrack = 'none';
+    this.resetAllLearnTracks();
     this.miniGameCleanup?.();
     this.miniGameCleanup = null;
     this.activeMiniGame = 'none';

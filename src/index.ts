@@ -13,7 +13,14 @@ if (import.meta.env.PROD) {
 } else if ('serviceWorker' in navigator) {
   void navigator.serviceWorker
     .getRegistrations()
-    .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+    .then(async (regs) => {
+      await Promise.all(
+        regs
+          .filter((r) => !r.active?.scriptURL?.endsWith('/miau-push-sw.js'))
+          .map((r) => r.unregister())
+      );
+      await navigator.serviceWorker.register('/miau-push-sw.js', { scope: '/' });
+    })
     .catch(() => {});
 }
 
@@ -281,8 +288,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   };
 
   ui = new MiauAppUI(appRoot, {
-    syncState: (stats, equipped, speech, isSleeping) => {
-      xrScene.syncState(stats, equipped, speech, isSleeping);
+    syncState: (stats, equipped, speech, isSleeping, petName) => {
+      xrScene.syncState(stats, equipped, speech, isSleeping, petName);
     },
     triggerBounce: () => {
       xrScene.triggerBounce();

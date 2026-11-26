@@ -17,10 +17,15 @@ import type {
 } from '../../types';
 import { escapeHtml } from '../../utils/html';
 import {
+  getCoinEconomySnapshot,
+  getOrganizedCareSchedule,
+} from '../../services/coinEconomyService';
+import {
   WRITING_DAILY_BONUS,
   WRITING_MEDALS,
   type WritingProgress,
 } from '../../modules/writing/writingEngine';
+import type { PushPermissionState } from '../../services/pushNotificationService';
 
 export function renderFeedModalHtml(): string {
   return `
@@ -86,7 +91,7 @@ export function renderCleanModalHtml(): string {
 
 export function renderGamesHubModalHtml(
   profile: UserPetProfile,
-  activeMiniGame: 'none' | 'fish' | 'memory' | 'escape' | 'galaxy'
+  activeMiniGame: 'none' | GameId
 ): string {
   if (activeMiniGame !== 'none') {
     return `<div id="minigame-host" class="flex-1 flex flex-col min-h-0 h-full"></div>`;
@@ -145,6 +150,26 @@ export function renderGamesHubModalHtml(
           </div>
           <span class="text-xs font-extrabold text-indigo-700 bg-indigo-100 px-3 py-1.5 rounded-full shrink-0">Jogar</span>
         </button>
+
+        <button id="start-pacmiau-game" class="bg-slate-950 hover:bg-slate-900 rounded-2xl p-4 border-2 border-blue-500 shadow-sm flex items-center gap-3.5 text-left active:scale-95 transition">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-300 to-yellow-500 flex items-center justify-center text-3xl shadow shrink-0">🟡</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-display text-base font-bold text-amber-300 leading-tight">Pac-Miau: Ratos e Cachorros</div>
+            <div class="text-xs text-blue-200">Labirinto neon, 244 bolinhas, 4 cachorros e ratos!</div>
+            <div class="text-[11px] font-extrabold text-cyan-300 mt-1">Recorde: ${recs.pacmiau.highScore} pts • Fase ${recs.pacmiau.maxStage}</div>
+          </div>
+          <span class="text-xs font-extrabold text-slate-950 bg-amber-300 px-3 py-1.5 rounded-full shrink-0">Jogar</span>
+        </button>
+
+        <button id="start-maze-game" class="bg-white/90 hover:bg-white rounded-2xl p-4 border border-sky-200 shadow-sm flex items-center gap-3.5 text-left active:scale-95 transition">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-300 to-violet-500 flex items-center justify-center text-3xl shadow shrink-0">🥛</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-display text-base font-bold text-[#3b1f6e] leading-tight">Labirinto do Leitinho</div>
+            <div class="text-xs text-[#6b4d9e]">Guie o Miau por labirintos crescentes até o leite!</div>
+            <div class="text-[11px] font-extrabold text-sky-700 mt-1">Recorde: ${recs.maze.highScore} pts • Fase ${recs.maze.maxStage}</div>
+          </div>
+          <span class="text-xs font-extrabold text-sky-800 bg-sky-100 px-3 py-1.5 rounded-full shrink-0">Jogar</span>
+        </button>
       </div>
     </div>
   `;
@@ -162,6 +187,10 @@ export function renderCustomizeModalHtml(
         <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Personalizar Miau 👗</h2>
       </div>
       <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
+    </div>
+    <div class="rounded-2xl px-3 py-2 mb-2.5 bg-amber-50/90 border border-amber-200 flex items-center justify-between gap-2 text-[11px] font-bold text-amber-900 shrink-0">
+      <span>💡 Ganhe mais moedas estudando no Vamos Aprender e cuidando do Miau nos horários!</span>
+      <span class="px-2 py-0.5 rounded-full bg-white text-amber-800 font-extrabold shrink-0">🪙 ${profile.coins}</span>
     </div>
     <div class="flex gap-2 mb-3 shrink-0">
       ${(['hat', 'accessory', 'background'] as const)
@@ -284,6 +313,8 @@ const RANKING_TABS: Array<{
   shortName: string;
 }> = [
   { id: 'all', label: 'Geral', emoji: '🏆', shortName: 'Todos os Jogos' },
+  { id: 'pacmiau', label: 'Pac-Miau', emoji: '🟡', shortName: 'Pac-Miau' },
+  { id: 'maze', label: 'Labirinto', emoji: '🥛', shortName: 'Labirinto do Leitinho' },
   { id: 'fish', label: 'Peixinhos', emoji: '🐟', shortName: 'Caça aos Peixinhos' },
   { id: 'memory', label: 'Memória', emoji: '🐾', shortName: 'Memória dos Miados' },
   { id: 'escape', label: 'Escape', emoji: '🚗', shortName: 'Miau Escape Run' },
@@ -344,6 +375,8 @@ export function renderRankingModalHtml(params: {
       : matchHistory.filter((item) => item.gameId === activeTab);
 
   const perGameCards: Array<{ id: GameId; emoji: string; name: string }> = [
+    { id: 'pacmiau', emoji: '🟡', name: 'Pac-Miau' },
+    { id: 'maze', emoji: '🥛', name: 'Labirinto' },
     { id: 'fish', emoji: '🐟', name: 'Peixinhos' },
     { id: 'memory', emoji: '🐾', name: 'Memória' },
     { id: 'escape', emoji: '🚗', name: 'Escape Run' },
@@ -451,7 +484,11 @@ export function renderRankingModalHtml(params: {
                               ? '🐾'
                               : item.gameId === 'escape'
                                 ? '🚗'
-                                : '🚀';
+                                : item.gameId === 'pacmiau'
+                                  ? '🟡'
+                                  : item.gameId === 'maze'
+                                    ? '🥛'
+                                    : '🚀';
                         const tierMedal =
                           item.performanceTier === 'gold'
                             ? '🥇'
@@ -486,7 +523,13 @@ export function renderRoutineModalHtml(
   profile: UserPetProfile,
   isSleeping: boolean,
   isSlotInWindow: (slot: RoutineSlotDef, now: Date) => boolean,
-  writingProgress?: WritingProgress
+  writingProgress?: WritingProgress,
+  pushSummary?: {
+    supported: boolean;
+    enabled: boolean;
+    permission: PushPermissionState;
+    threshold: number;
+  }
 ): string {
   const completed = profile.dailyRoutine?.completedSlots || [];
   const now = new Date();
@@ -523,6 +566,13 @@ export function renderRoutineModalHtml(
       actionLabel: isSleeping ? 'Dormindo...' : 'Iniciar Soneca',
     },
   ];
+  const careTimings = getOrganizedCareSchedule(
+    profile.stats,
+    completed,
+    isSleeping,
+    now
+  );
+  const economySnap = getCoinEconomySnapshot(profile.ownerId || 'guest');
   return `
     <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
@@ -535,13 +585,74 @@ export function renderRoutineModalHtml(
       <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
     </div>
     <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+      <!-- Cronograma Organizado de Fome, Banho e Sono -->
+      <div class="bg-white/90 rounded-2xl p-3 border border-purple-200 shadow-sm flex flex-col gap-2">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-xs font-extrabold text-[#4c2a85]">⏱️ Tempo de Fome, Banho e Sono</span>
+          <span class="text-[10px] font-bold text-[#6b4d9e]">Ritmo equilibrado</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          ${careTimings
+            .map((ct) => {
+              const badgeClass =
+                ct.urgency === 'urgent'
+                  ? 'bg-rose-100 text-rose-800 border-rose-200'
+                  : ct.urgency === 'soon'
+                    ? 'bg-amber-100 text-amber-800 border-amber-200'
+                    : 'bg-emerald-50 text-emerald-800 border-emerald-200';
+              return `
+                <div class="rounded-xl p-2.5 border ${badgeClass} flex flex-col gap-1">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="text-xs font-extrabold text-[#3b1f6e]">${ct.emoji} ${escapeHtml(ct.title)}</span>
+                    <span class="text-[11px] font-extrabold text-[#4c2a85]">${ct.currentValue}%</span>
+                  </div>
+                  <div class="text-[10px] font-bold leading-tight">${escapeHtml(ct.statusLabel)}</div>
+                  <div class="text-[9px] font-semibold opacity-80">${escapeHtml(ct.cadenceLabel)} (${ct.completedCount}/${ct.totalCount})</div>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+        <div class="rounded-xl bg-amber-50/90 border border-amber-200 px-2.5 py-1.5 text-[10px] font-bold text-amber-900 flex items-center justify-between gap-2 flex-wrap">
+          <span>🪙 Cota diária equilibrada:</span>
+          <span>Carinho ${economySnap.petCoinsToday}/${economySnap.petDailyCap} · Bolinha ${economySnap.ballCoinsToday}/${economySnap.ballDailyCap} · Jogos ${economySnap.minigameCoinsToday}/${economySnap.minigameDailyCap}</span>
+        </div>
+        ${
+          pushSummary
+            ? `<div class="rounded-xl ${
+                pushSummary.enabled
+                  ? 'bg-emerald-50/90 border-emerald-200 text-emerald-900'
+                  : 'bg-sky-50/90 border-sky-200 text-sky-900'
+              } border px-2.5 py-2 flex items-center justify-between gap-2 flex-wrap">
+                 <div class="min-w-0">
+                   <div class="text-[11px] font-extrabold">
+                     ${
+                       pushSummary.enabled && pushSummary.permission === 'granted'
+                         ? `🔔 Notificações Push ativas (aviso em ≤ ${pushSummary.threshold}%)`
+                         : pushSummary.enabled
+                           ? `🔔 Alertas no App ativos (aviso em ≤ ${pushSummary.threshold}%)`
+                           : '🔔 Quer receber avisos quando fome, banho ou sono estiverem baixos?'
+                     }
+                   </div>
+                 </div>
+                 <button id="btn-routine-push-action" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold shrink-0 ${
+                   pushSummary.enabled
+                     ? 'bg-white text-emerald-800 border border-emerald-200'
+                     : 'bg-sky-600 text-white shadow-sm hover:bg-sky-700'
+                 }">
+                   ${pushSummary.enabled ? 'Configurar' : '🔔 Ativar Push'}
+                 </button>
+               </div>`
+            : ''
+        }
+      </div>
       ${
         writingProgress
           ? `
             <div class="bg-gradient-to-br from-purple-50 via-white to-pink-50 rounded-2xl p-3 border-2 border-[#a882e3] shadow-sm flex flex-col gap-2">
               <div class="flex items-center justify-between gap-2 flex-wrap">
                 <div class="min-w-0">
-                  <span class="text-xs font-extrabold text-[#4c2a85]">✍️ Hábito Diário de Escrita & Estudo</span>
+                  <span class="text-xs font-extrabold text-[#4c2a85]">✍️ Hábito Diário de Escrita e Estudo</span>
                   <div class="text-[10px] font-semibold text-[#6b4d9e]">
                     Meta de hoje: ${Math.min(dailySteps, dailyGoal)}/${dailyGoal} letras • 🔥 ${streakDays} dia(s) • 🏅 ${medalsCount}/${WRITING_MEDALS.length}
                   </div>

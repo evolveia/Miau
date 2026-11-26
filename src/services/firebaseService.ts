@@ -198,6 +198,8 @@ function sanitizeGameRecords(
     memory: sanitizeGameStat(raw?.memory || defaults.memory),
     escape: sanitizeGameStat(raw?.escape || defaults.escape),
     galaxy: sanitizeGameStat(raw?.galaxy || defaults.galaxy),
+    pacmiau: sanitizeGameStat(raw?.pacmiau || defaults.pacmiau),
+    maze: sanitizeGameStat(raw?.maze || defaults.maze),
   };
 }
 
@@ -427,7 +429,7 @@ function isValidExistingUserDoc(
   if ('gameRecords' in raw) {
     const gr = raw.gameRecords as Record<string, unknown> | undefined;
     if (!gr || typeof gr !== 'object') return false;
-    const validGames = ['fish', 'memory', 'escape', 'galaxy'];
+    const validGames = ['fish', 'memory', 'escape', 'galaxy', 'pacmiau', 'maze'];
     if (!Object.keys(gr).every((k) => validGames.includes(k))) return false;
     for (const g of Object.keys(gr)) {
       const r = gr[g] as Record<string, unknown> | undefined;
@@ -883,7 +885,7 @@ function sanitizeRankingGameMap(
 ): Partial<Record<GameId, number>> {
   const src = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const out: Partial<Record<GameId, number>> = {};
-  for (const id of ['fish', 'memory', 'escape', 'galaxy'] as const) {
+  for (const id of ['fish', 'memory', 'escape', 'galaxy', 'pacmiau', 'maze'] as const) {
     const val = Number(src[id]);
     if (Number.isFinite(val)) {
       out[id] = Math.max(minVal, Math.min(maxVal, Math.round(val)));

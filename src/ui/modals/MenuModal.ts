@@ -103,6 +103,15 @@ export function renderMenuModalHtml(params: MenuModalRenderParams): string {
         </span>
       </button>
 
+      <button id="btn-menu-progress-report" class="w-full py-2.5 px-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-950 font-bold text-sm flex items-center gap-3 text-left hover:bg-emerald-100/70 transition">
+        <span class="w-9 h-9 rounded-xl bg-emerald-200/80 flex items-center justify-center text-lg shrink-0">📊</span>
+        <div class="flex-1 min-w-0 text-left">
+          <div class="font-bold leading-tight">Relatório de Progresso</div>
+          <div class="text-[11px] font-semibold text-emerald-800/85">Lições completas e barras por módulo</div>
+        </div>
+        <span class="text-xs font-extrabold bg-emerald-200/80 px-2.5 py-0.5 rounded-full shrink-0">Ver</span>
+      </button>
+
       <button id="btn-menu-routine" class="w-full py-2.5 px-3 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 font-bold text-sm flex items-center gap-3 text-left hover:bg-sky-100/70 transition">
         <span class="w-9 h-9 rounded-xl bg-sky-200/70 flex items-center justify-center text-lg shrink-0">📅</span>
         <div class="flex-1 min-w-0 text-left">
@@ -134,7 +143,7 @@ export function renderMenuModalHtml(params: MenuModalRenderParams): string {
         <span class="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center text-lg shrink-0">⚙️</span>
         <div class="flex-1 min-w-0 text-left">
           <div class="font-bold leading-tight">Configurações da Tela</div>
-          <div class="text-[11px] font-semibold text-[#6b4d9e]">Áudio, vibração, câmera e HUD</div>
+          <div class="text-[11px] font-semibold text-[#6b4d9e]">Notificações push, áudio, câmera e HUD</div>
         </div>
         <span class="text-[11px] font-extrabold bg-purple-100 text-[#6e45a5] px-2.5 py-0.5 rounded-full shrink-0">${params.visibleHudCount === 4 ? 'Completo' : params.visibleHudCount === 0 ? 'Limpo' : `${params.visibleHudCount}/4 itens`}</span>
       </button>

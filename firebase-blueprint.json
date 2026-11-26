@@ -249,11 +249,11 @@
         },
         "gameScores": {
           "type": "object",
-          "description": "Optional per-minigame best scores (fish, memory, escape, galaxy)."
+          "description": "Optional per-minigame best scores (fish, memory, escape, galaxy, pacmiau, maze)."
         },
         "gameStages": {
           "type": "object",
-          "description": "Optional per-minigame max stages reached (fish, memory, escape, galaxy)."
+          "description": "Optional per-minigame max stages reached (fish, memory, escape, galaxy, pacmiau, maze)."
         },
         "updatedAt": {
           "type": "string",

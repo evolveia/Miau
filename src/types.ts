@@ -22,6 +22,7 @@ export type ActiveModal =
   | 'menu'
   | 'profile'
   | 'learn'
+  | 'progress_report'
   | 'support'
   | 'ar'
   | 'settings'
@@ -55,7 +56,7 @@ export interface EducationTrackDef {
   statusLabel: string;
 }
 
-export type GameId = 'fish' | 'memory' | 'escape' | 'galaxy';
+export type GameId = 'fish' | 'memory' | 'escape' | 'galaxy' | 'pacmiau' | 'maze';
 
 export interface GameStatsRecord {
   highScore: number;

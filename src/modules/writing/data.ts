@@ -25,6 +25,7 @@ export interface WritingChallenge {
   displayBadge: string;
   emoji: string;
   vowelTag?: 'A' | 'E' | 'I' | 'O' | 'U';
+  consonantTag?: string;
   motorLevel: MotorDifficulty;
   title: string;
   prompt: string;
@@ -51,6 +52,30 @@ export const TRACKED_WRITING_VOWELS: ReadonlyArray<'A' | 'E' | 'I' | 'O' | 'U'> 
   'I',
   'O',
   'U',
+];
+
+export const TRACKED_WRITING_CONSONANTS: ReadonlyArray<string> = [
+  'B',
+  'C',
+  'D',
+  'F',
+  'G',
+  'H',
+  'J',
+  'K',
+  'L',
+  'M',
+  'N',
+  'P',
+  'Q',
+  'R',
+  'S',
+  'T',
+  'V',
+  'W',
+  'X',
+  'Y',
+  'Z',
 ];
 
 function sampleEllipticalArc(
@@ -341,6 +366,457 @@ export const WRITING_GLYPHS: Record<string, GlyphTemplate> = {
           { x: 0.86, y: 0.08 },
         ],
         cue: '1. Escorregue da esquerda até o centro da base e suba para a direita!',
+      },
+    ],
+  },
+  B: {
+    char: 'B',
+    aspectRatio: 0.78,
+    overviewCue:
+      'Para fazer a letra B, fazemos um tracinho reto em pé e depois duas barrigonas fofinhas para a direita!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.2, y: 0.92 },
+        ],
+        cue: '1. Desça uma linha reta firme de cima até a base.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.52, y: 0.08 },
+          ...sampleEllipticalArc(0.52, 0.29, 0.28, 0.21, -Math.PI / 2, Math.PI / 2, 16),
+          { x: 0.2, y: 0.5 },
+        ],
+        cue: '2. Faça a primeira barriguinha no alto até o meio.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.2, y: 0.5 },
+          { x: 0.54, y: 0.5 },
+          ...sampleEllipticalArc(0.54, 0.71, 0.3, 0.21, -Math.PI / 2, Math.PI / 2, 16),
+          { x: 0.2, y: 0.92 },
+        ],
+        cue: '3. Agora faça a barriguinha de baixo fechando na base!',
+      },
+    ],
+  },
+  C: {
+    char: 'C',
+    aspectRatio: 0.82,
+    overviewCue:
+      'A letra C é uma curva aberta parecida com uma lua minguante!',
+    strokes: [
+      {
+        id: 1,
+        points: sampleEllipticalArc(0.54, 0.5, 0.36, 0.42, -0.58, -Math.PI * 2 + 0.58, 30),
+        cue: '1. Comece perto do alto à direita, contorne para a esquerda e pare embaixo aberto!',
+      },
+    ],
+  },
+  D: {
+    char: 'D',
+    aspectRatio: 0.82,
+    overviewCue:
+      'Para o D, descemos um pauzinho reto e depois fazemos uma barriga bem grande fechando na base!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.2, y: 0.92 },
+        ],
+        cue: '1. Desça uma linha reta bem firme de cima até a base.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.46, y: 0.08 },
+          ...sampleEllipticalArc(0.46, 0.5, 0.38, 0.42, -Math.PI / 2, Math.PI / 2, 24),
+          { x: 0.2, y: 0.92 },
+        ],
+        cue: '2. Contorne numa grande curva suave para a direita até fechar embaixo!',
+      },
+    ],
+  },
+  F: {
+    char: 'F',
+    aspectRatio: 0.74,
+    overviewCue:
+      'A letra F é igual ao E, mas só tem dois bracinhos no alto e no meio!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.24, y: 0.08 },
+          { x: 0.24, y: 0.92 },
+        ],
+        cue: '1. Desça uma linha reta de cima até embaixo.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.24, y: 0.08 },
+          { x: 0.82, y: 0.08 },
+        ],
+        cue: '2. Puxe o bracinho de cima para a direita.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.24, y: 0.49 },
+          { x: 0.7, y: 0.49 },
+        ],
+        cue: '3. Puxe o bracinho do meio para a direita!',
+      },
+    ],
+  },
+  G: {
+    char: 'G',
+    aspectRatio: 0.86,
+    overviewCue:
+      'O G começa como uma letra C bem redondinha, sobe um pouquinho e ganha um degrau para dentro!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          ...sampleEllipticalArc(0.52, 0.5, 0.36, 0.42, -0.52, -Math.PI * 2 + 0.1, 30),
+          { x: 0.86, y: 0.54 },
+          { x: 0.54, y: 0.54 },
+        ],
+        cue: '1. Contorne como um C, suba até o meio à direita e puxe o tracinho para dentro!',
+      },
+    ],
+  },
+  H: {
+    char: 'H',
+    aspectRatio: 0.82,
+    overviewCue:
+      'O H são duas torres em pé ligadas por uma pontezinha no meio!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.2, y: 0.92 },
+        ],
+        cue: '1. Desça a primeira linha reta à esquerda.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.8, y: 0.08 },
+          { x: 0.8, y: 0.92 },
+        ],
+        cue: '2. Desça a segunda linha reta à direita.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.2, y: 0.5 },
+          { x: 0.8, y: 0.5 },
+        ],
+        cue: '3. Ligue as duas torres com uma ponte no meio!',
+      },
+    ],
+  },
+  J: {
+    char: 'J',
+    aspectRatio: 0.68,
+    overviewCue:
+      'A letra J desce retinha e faz um ganchinho parecido com um guarda-chuva!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.68, y: 0.08 },
+          { x: 0.68, y: 0.64 },
+          ...sampleEllipticalArc(0.45, 0.64, 0.23, 0.28, 0, Math.PI * 0.95, 20),
+        ],
+        cue: '1. Desça pela direita e faça a curvinha suave virando para a esquerda!',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.36, y: 0.08 },
+          { x: 0.86, y: 0.08 },
+        ],
+        cue: '2. Coloque o chapeuzinho reto no alto do J!',
+      },
+    ],
+  },
+  K: {
+    char: 'K',
+    aspectRatio: 0.8,
+    overviewCue:
+      'Para fazer o K, traçamos uma linha em pé e depois duas perninhas saindo do meio como um biquinho!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.22, y: 0.08 },
+          { x: 0.22, y: 0.92 },
+        ],
+        cue: '1. Desça uma linha reta à esquerda.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.8, y: 0.08 },
+          { x: 0.22, y: 0.54 },
+        ],
+        cue: '2. Escorregue do alto direito até o meio da linha.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.22, y: 0.54 },
+          { x: 0.82, y: 0.92 },
+        ],
+        cue: '3. Saia do meio e escorregue para o pé direito!',
+      },
+    ],
+  },
+  N: {
+    char: 'N',
+    aspectRatio: 0.82,
+    overviewCue:
+      'O N sobe, desce escorregando na diagonal e sobe de novo como uma montanha!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.18, y: 0.92 },
+          { x: 0.18, y: 0.08 },
+        ],
+        cue: '1. Suba uma linha reta pela esquerda.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.18, y: 0.08 },
+          { x: 0.82, y: 0.92 },
+        ],
+        cue: '2. Escorregue do alto esquerdo até a base direita.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.82, y: 0.92 },
+          { x: 0.82, y: 0.08 },
+        ],
+        cue: '3. Suba retinho pela direita até o topo!',
+      },
+    ],
+  },
+  P: {
+    char: 'P',
+    aspectRatio: 0.76,
+    overviewCue:
+      'O P é uma linha reta em pé com uma cabecinha redonda lá no alto!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.22, y: 0.08 },
+          { x: 0.22, y: 0.92 },
+        ],
+        cue: '1. Desça uma linha reta de cima até embaixo.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.22, y: 0.08 },
+          { x: 0.52, y: 0.08 },
+          ...sampleEllipticalArc(0.52, 0.3, 0.28, 0.22, -Math.PI / 2, Math.PI / 2, 18),
+          { x: 0.22, y: 0.52 },
+        ],
+        cue: '2. Faça a curvinha redonda lá no alto fechando no meio!',
+      },
+    ],
+  },
+  Q: {
+    char: 'Q',
+    aspectRatio: 0.88,
+    overviewCue:
+      'O Q é uma bolinha redonda igual ao O, mas ganha um rabinho simpático embaixo!',
+    strokes: [
+      {
+        id: 1,
+        points: sampleEllipticalArc(
+          0.5,
+          0.48,
+          0.34,
+          0.4,
+          -Math.PI / 2,
+          -Math.PI / 2 - Math.PI * 2,
+          34
+        ),
+        cue: '1. Contorne o círculo completo começando no alto.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.58, y: 0.68 },
+          { x: 0.86, y: 0.94 },
+        ],
+        cue: '2. Faça o tracinho inclinado embaixo à direita!',
+      },
+    ],
+  },
+  R: {
+    char: 'R',
+    aspectRatio: 0.8,
+    overviewCue:
+      'O R parece o P lá em cima, e depois ganha uma perninha inclinada apoiando na base!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.2, y: 0.92 },
+        ],
+        cue: '1. Desça a linha reta pela esquerda.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.2, y: 0.08 },
+          { x: 0.52, y: 0.08 },
+          ...sampleEllipticalArc(0.52, 0.29, 0.26, 0.21, -Math.PI / 2, Math.PI / 2, 18),
+          { x: 0.2, y: 0.5 },
+        ],
+        cue: '2. Faça a curvinha de cima fechando no meio.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.44, y: 0.5 },
+          { x: 0.82, y: 0.92 },
+        ],
+        cue: '3. Puxe a perninha escorregando para a direita até a base!',
+      },
+    ],
+  },
+  T: {
+    char: 'T',
+    aspectRatio: 0.8,
+    overviewCue:
+      'O T tem um chapéu bem comprido no alto e uma linha reta bem no meio!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.14, y: 0.08 },
+          { x: 0.86, y: 0.08 },
+        ],
+        cue: '1. Trace o chapéu reto da esquerda para a direita no alto.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.5, y: 0.08 },
+          { x: 0.5, y: 0.92 },
+        ],
+        cue: '2. Desça uma linha reta bem no meio até a base!',
+      },
+    ],
+  },
+  W: {
+    char: 'W',
+    aspectRatio: 1.05,
+    overviewCue:
+      'O W parece dois Vs de mãos dadas: desce, sobe, desce e sobe!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.1, y: 0.08 },
+          { x: 0.3, y: 0.92 },
+          { x: 0.5, y: 0.36 },
+          { x: 0.7, y: 0.92 },
+          { x: 0.9, y: 0.08 },
+        ],
+        cue: '1. Desça à esquerda, suba ao meio, desça de novo e suba até o alto à direita!',
+      },
+    ],
+  },
+  X: {
+    char: 'X',
+    aspectRatio: 0.82,
+    overviewCue:
+      'O X são dois escorregadores que se cruzam bem no meiozinho!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.16, y: 0.08 },
+          { x: 0.84, y: 0.92 },
+        ],
+        cue: '1. Escorregue do canto alto esquerdo até embaixo à direita.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.84, y: 0.08 },
+          { x: 0.16, y: 0.92 },
+        ],
+        cue: '2. Agora cruze do canto alto direito até embaixo à esquerda!',
+      },
+    ],
+  },
+  Y: {
+    char: 'Y',
+    aspectRatio: 0.8,
+    overviewCue:
+      'O Y faz um V curtinho lá no alto e depois desce uma perninha reta no meio!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.18, y: 0.08 },
+          { x: 0.5, y: 0.5 },
+        ],
+        cue: '1. Escorregue do alto esquerdo até o meio.',
+      },
+      {
+        id: 2,
+        points: [
+          { x: 0.82, y: 0.08 },
+          { x: 0.5, y: 0.5 },
+        ],
+        cue: '2. Escorregue do alto direito até o mesmo ponto no meio.',
+      },
+      {
+        id: 3,
+        points: [
+          { x: 0.5, y: 0.5 },
+          { x: 0.5, y: 0.92 },
+        ],
+        cue: '3. Desça retinho do meio até a base!',
+      },
+    ],
+  },
+  Z: {
+    char: 'Z',
+    aspectRatio: 0.82,
+    overviewCue:
+      'O Z vai para a direita no alto, escorrega na diagonal até a base e volta para a direita embaixo!',
+    strokes: [
+      {
+        id: 1,
+        points: [
+          { x: 0.16, y: 0.08 },
+          { x: 0.84, y: 0.08 },
+          { x: 0.16, y: 0.92 },
+          { x: 0.84, y: 0.92 },
+        ],
+        cue: '1. Trace no alto para a direita, desça em zigue-zague para a esquerda e feche à direita na base!',
       },
     ],
   },
@@ -739,6 +1215,394 @@ export const WRITING_UNITS: WritingUnitDef[] = [
         teachScript:
           'Purrr! Chegou o grande momento: escreva o meu nome, MIAU! Capriche no M, no I, no A e no U!',
         contextHint: 'M - I - A - U = MIAU!',
+      },
+    ],
+  },
+];
+
+export const WRITING_CONSONANTS_UNITS: WritingUnitDef[] = [
+  {
+    id: 'wc_unit_1_bcd',
+    number: 1,
+    title: 'Consoantes B, C e D',
+    subtitle: 'Barriguinhas suaves e curvas iniciais em ordem alfabética',
+    focusLabel: 'Letras B, C e D • Traço Largo',
+    emoji: '🐳',
+    accentGradient: 'from-violet-100 via-purple-50 to-fuchsia-100',
+    coinReward: 40,
+    xpReward: 45,
+    challenges: [
+      {
+        id: 'wc_b',
+        unitId: 'wc_unit_1_bcd',
+        targetText: 'B',
+        displayBadge: 'Consoante B • Traço Largo',
+        emoji: '🐳',
+        consonantTag: 'B',
+        motorLevel: 'largo',
+        title: 'Vamos cobrir a letra B de Baleia!',
+        prompt: 'Desça o traço reto número 1 e depois faça as duas barriguinhas do B.',
+        teachScript:
+          'Miau! A primeira consoante do alfabeto é o B de Baleia e Bola! Desça em pé e depois faça duas barriguinhas fofinhas para a direita!',
+        contextHint: 'B de Baleia e Bola! Siga os números 1, 2 e 3.',
+      },
+      {
+        id: 'wc_c',
+        unitId: 'wc_unit_1_bcd',
+        targetText: 'C',
+        displayBadge: 'Consoante C • Traço Largo',
+        emoji: '🐶',
+        consonantTag: 'C',
+        motorLevel: 'largo',
+        title: 'Curva suave da letra C de Cachorro!',
+        prompt: 'Contorne a meia-lua redondinha da letra C sem fechar a ponta.',
+        teachScript:
+          'Miau! Olha o C de Cachorro e Casa! Ele parece uma boquinha aberta ou uma lua minguante bem redondinha.',
+        contextHint: 'C de Cachorro e Casa! Comece no pontinho 1 lá no alto.',
+      },
+      {
+        id: 'wc_d',
+        unitId: 'wc_unit_1_bcd',
+        targetText: 'D',
+        displayBadge: 'Consoante D • Traço Largo',
+        emoji: '🦕',
+        consonantTag: 'D',
+        motorLevel: 'largo',
+        title: 'Cobrindo a letra D de Dinossauro!',
+        prompt: 'Trace o pauzinho reto e feche com uma barriga bem grande do alto até a base.',
+        teachScript:
+          'Vamos escrever o D de Dinossauro e Dado! Primeiro desça bem retinho e depois faça um barrigão redondo até fechar embaixo!',
+        contextHint: 'D de Dinossauro e Dado!',
+      },
+    ],
+  },
+  {
+    id: 'wc_unit_2_fgh',
+    number: 2,
+    title: 'Consoantes F, G e H',
+    subtitle: 'Traços retos, curvas com degrau e pontes divertidas',
+    focusLabel: 'Letras F, G e H • Traço Largo',
+    emoji: '🦭',
+    accentGradient: 'from-sky-100 via-cyan-50 to-indigo-100',
+    coinReward: 40,
+    xpReward: 45,
+    challenges: [
+      {
+        id: 'wc_f',
+        unitId: 'wc_unit_2_fgh',
+        targetText: 'F',
+        displayBadge: 'Consoante F • Traço Largo',
+        emoji: '🦭',
+        consonantTag: 'F',
+        motorLevel: 'largo',
+        title: 'Vamos cobrir a letra F de Foca!',
+        prompt: 'Desça o traço em pé e puxe os dois bracinhos de cima para a direita.',
+        teachScript:
+          'Miau! Agora é a vez do F de Foca e Flor! Desça uma linha firme e puxe um bracinho lá no alto e outro no meio!',
+        contextHint: 'F de Foca e Foguete!',
+      },
+      {
+        id: 'wc_g',
+        unitId: 'wc_unit_2_fgh',
+        targetText: 'G',
+        displayBadge: 'Consoante G • Traço Largo',
+        emoji: '🐱',
+        consonantTag: 'G',
+        motorLevel: 'largo',
+        title: 'Escrevendo o G de Gato como o Miau!',
+        prompt: 'Contorne como um C, suba um pouco e puxe o tracinho para dentro.',
+        teachScript:
+          'Purrr! Essa é minha letra favorita: G de Gato! Contorne redondinho como o C e puxe um degrauzinho no meio para dentro.',
+        contextHint: 'G de Gato e Girafa!',
+      },
+      {
+        id: 'wc_h',
+        unitId: 'wc_unit_2_fgh',
+        targetText: 'H',
+        displayBadge: 'Consoante H • Traço Médio',
+        emoji: '🦛',
+        consonantTag: 'H',
+        motorLevel: 'medio',
+        title: 'As duas torres do H de Hipopótamo!',
+        prompt: 'Desça a torre esquerda, a torre direita e ligue no meio.',
+        teachScript:
+          'O H de Hipopótamo parece uma portinha com duas torres em pé e uma ponte no meio! Capriche nos três traços.',
+        contextHint: 'H de Hipopótamo e Helicóptero!',
+      },
+    ],
+  },
+  {
+    id: 'wc_unit_3_jkl',
+    number: 3,
+    title: 'Consoantes J, K e L',
+    subtitle: 'Ganchinhos, diagonais e cantinhos bem feitos',
+    focusLabel: 'Letras J, K e L • Traço Médio',
+    emoji: '🐊',
+    accentGradient: 'from-emerald-100 via-teal-50 to-sky-100',
+    coinReward: 45,
+    xpReward: 50,
+    challenges: [
+      {
+        id: 'wc_j',
+        unitId: 'wc_unit_3_jkl',
+        targetText: 'J',
+        displayBadge: 'Consoante J • Traço Médio',
+        emoji: '🐊',
+        consonantTag: 'J',
+        motorLevel: 'medio',
+        title: 'O ganchinho do J de Jacaré!',
+        prompt: 'Desça e curve embaixo como um guarda-chuva, depois coloque o chapéu.',
+        teachScript:
+          'Miau! Olha o J de Jacaré e Joaninha! Desça com uma curvinha macia embaixo e finalize com o chapeuzinho no topo.',
+        contextHint: 'J de Jacaré e Joaninha!',
+      },
+      {
+        id: 'wc_k',
+        unitId: 'wc_unit_3_jkl',
+        targetText: 'K',
+        displayBadge: 'Consoante K • Traço Médio',
+        emoji: '🥝',
+        consonantTag: 'K',
+        motorLevel: 'medio',
+        title: 'Cobrindo a letra K de Kiwi!',
+        prompt: 'Faça a linha em pé e encoste os dois bracinhos inclinados no meio.',
+        teachScript:
+          'Vamos escrever o K de Kiwi! Trace a linha reta e depois faça as duas perninhas se encontrando no meio!',
+        contextHint: 'K de Kiwi e Karaokê!',
+      },
+      {
+        id: 'wc_l',
+        unitId: 'wc_unit_3_jkl',
+        targetText: 'L',
+        displayBadge: 'Consoante L • Traço Médio',
+        emoji: '🦁',
+        consonantTag: 'L',
+        motorLevel: 'medio',
+        title: 'O cantinho da letra L de Leão!',
+        prompt: 'Desça bem retinho pela esquerda e vire para a direita na base.',
+        teachScript:
+          'Roar! O L de Leão e Lua é super gostoso de escrever: desça retinho e faça a curva em L para a direita!',
+        contextHint: 'L de Leão e Lua!',
+      },
+    ],
+  },
+  {
+    id: 'wc_unit_4_mnp',
+    number: 4,
+    title: 'Consoantes M, N e P',
+    subtitle: 'Montanhas altas e traços firmes com o dedo',
+    focusLabel: 'Letras M, N e P • Traço Médio',
+    emoji: '🐒',
+    accentGradient: 'from-amber-100 via-orange-50 to-yellow-100',
+    coinReward: 45,
+    xpReward: 50,
+    challenges: [
+      {
+        id: 'wc_m',
+        unitId: 'wc_unit_4_mnp',
+        targetText: 'M',
+        displayBadge: 'Consoante M • Traço Médio',
+        emoji: '🐒',
+        consonantTag: 'M',
+        motorLevel: 'medio',
+        title: 'As duas montanhas do M de Macaco!',
+        prompt: 'Suba à esquerda, faça o V no meio e desça à direita.',
+        teachScript:
+          'Miau! O M começa o meu nome e também o de Macaco! Suba a montanha, desça ao vale no meio e desça pelo outro lado!',
+        contextHint: 'M de Macaco, Maçã e Miau!',
+      },
+      {
+        id: 'wc_n',
+        unitId: 'wc_unit_4_mnp',
+        targetText: 'N',
+        displayBadge: 'Consoante N • Traço Médio',
+        emoji: '🚢',
+        consonantTag: 'N',
+        motorLevel: 'medio',
+        title: 'Subindo e descendo no N de Navio!',
+        prompt: 'Suba pela esquerda, escorregue na diagonal e suba pela direita.',
+        teachScript:
+          'Vamos navegar com o N de Navio e Nuvem! Suba à esquerda, escorregue até o cantinho de baixo e suba de novo!',
+        contextHint: 'N de Navio e Nuvem!',
+      },
+      {
+        id: 'wc_p',
+        unitId: 'wc_unit_4_mnp',
+        targetText: 'P',
+        displayBadge: 'Consoante P • Traço Médio',
+        emoji: '🦆',
+        consonantTag: 'P',
+        motorLevel: 'medio',
+        title: 'Cobrindo a letra P de Pato!',
+        prompt: 'Desça o traço reto e faça a cabecinha redonda no alto.',
+        teachScript:
+          'Quá-quá! O P de Pato e Peixe tem uma linha reta em pé e uma voltinha redonda lá no alto!',
+        contextHint: 'P de Pato e Pipoca!',
+      },
+    ],
+  },
+  {
+    id: 'wc_unit_5_qrs',
+    number: 5,
+    title: 'Consoantes Q, R e S',
+    subtitle: 'Voltas completas, perninhas e curvas em S',
+    focusLabel: 'Letras Q, R e S • Coordenação Média',
+    emoji: '🧀',
+    accentGradient: 'from-rose-100 via-pink-50 to-purple-100',
+    coinReward: 50,
+    xpReward: 55,
+    challenges: [
+      {
+        id: 'wc_q',
+        unitId: 'wc_unit_5_qrs',
+        targetText: 'Q',
+        displayBadge: 'Consoante Q • Traço Médio',
+        emoji: '🧀',
+        consonantTag: 'Q',
+        motorLevel: 'medio',
+        title: 'A bolinha com rabinho do Q de Queijo!',
+        prompt: 'Feche o círculo bonito e puxe o tracinho embaixo à direita.',
+        teachScript:
+          'Miau! Para fazer o Q de Queijo, desenhe uma bola redonda bem fechadinha e depois coloque um rabinho inclinado embaixo!',
+        contextHint: 'Q de Queijo e Quadrado!',
+      },
+      {
+        id: 'wc_r',
+        unitId: 'wc_unit_5_qrs',
+        targetText: 'R',
+        displayBadge: 'Consoante R • Traço Médio',
+        emoji: '🐭',
+        consonantTag: 'R',
+        motorLevel: 'medio',
+        title: 'Cobrindo a letra R de Rato!',
+        prompt: 'Faça a forma do P e puxe a perninha escorregando para a direita.',
+        teachScript:
+          'Olha o R de Rato e Robô! Primeiro desça e faça a cabecinha no alto, depois puxe a perninha apoiada na base!',
+        contextHint: 'R de Rato e Rei!',
+      },
+      {
+        id: 'wc_s',
+        unitId: 'wc_unit_5_qrs',
+        targetText: 'S',
+        displayBadge: 'Consoante S • Traço Fino',
+        emoji: '🐸',
+        consonantTag: 'S',
+        motorLevel: 'fino',
+        title: 'A curvinha sinuosa do S de Sapo!',
+        prompt: 'Passe o dedo devagar seguindo as duas curvas da cobrinha do S.',
+        teachScript:
+          'Miau! O S de Sapo e Sol é uma cobrinha elegante! Curve lá em cima para a esquerda e deslize para a direita embaixo.',
+        contextHint: 'S de Sapo e Sol!',
+      },
+    ],
+  },
+  {
+    id: 'wc_unit_6_tvw',
+    number: 6,
+    title: 'Consoantes T, V e W',
+    subtitle: 'Precisão fina em linhas retas e pontinhas ligadas',
+    focusLabel: 'Letras T, V e W • Coordenação Fina',
+    emoji: '🐢',
+    accentGradient: 'from-teal-100 via-emerald-50 to-lime-100',
+    coinReward: 55,
+    xpReward: 60,
+    challenges: [
+      {
+        id: 'wc_t',
+        unitId: 'wc_unit_6_tvw',
+        targetText: 'T',
+        displayBadge: 'Consoante T • Traço Fino',
+        emoji: '🐢',
+        consonantTag: 'T',
+        motorLevel: 'fino',
+        title: 'Cobrindo o T de Tartaruga no traço fino!',
+        prompt: 'Trace o chapéu lá no alto e desça bem no meio até a base.',
+        teachScript:
+          'Com calma de Tartaruga, vamos fazer o T no guia fino! Puxe o traço retinho no alto e desça pelo centro.',
+        contextHint: 'T de Tartaruga e Trem!',
+      },
+      {
+        id: 'wc_v',
+        unitId: 'wc_unit_6_tvw',
+        targetText: 'V',
+        displayBadge: 'Consoante V • Traço Fino',
+        emoji: '🐮',
+        consonantTag: 'V',
+        motorLevel: 'fino',
+        title: 'Escorrega e sobe: letra V de Vaca!',
+        prompt: 'Desça até uma pontinha bem no centro e suba firme para o alto.',
+        teachScript:
+          'Muu! O V de Vaca e Violão escorrega até uma ponta bem definida lá embaixo e sobe até o topo!',
+        contextHint: 'V de Vaca e Vela!',
+      },
+      {
+        id: 'wc_w',
+        unitId: 'wc_unit_6_tvw',
+        targetText: 'W',
+        displayBadge: 'Consoante W • Traço Fino',
+        emoji: '🧇',
+        consonantTag: 'W',
+        motorLevel: 'fino',
+        title: 'Os dois Vs juntos do W de Wafer!',
+        prompt: 'Desça, suba até o meio, desça de novo e suba firme até o fim.',
+        teachScript:
+          'Uau! O W parece dois Vs de mãos dadas! Vá devagarinho no guia fino: desce, sobe, desce e sobe!',
+        contextHint: 'W de Wafer e Windsurf!',
+      },
+    ],
+  },
+  {
+    id: 'wc_unit_7_xyz',
+    number: 7,
+    title: 'Consoantes Finais X, Y e Z',
+    subtitle: 'Complete todo o alfabeto das consoantes do B ao Z!',
+    focusLabel: 'Letras X, Y e Z • Mestre das Consoantes',
+    emoji: '🦓',
+    accentGradient: 'from-indigo-100 via-purple-50 to-pink-100',
+    coinReward: 75,
+    xpReward: 90,
+    challenges: [
+      {
+        id: 'wc_x',
+        unitId: 'wc_unit_7_xyz',
+        targetText: 'X',
+        displayBadge: 'Consoante X • Traço Fino',
+        emoji: '☕',
+        consonantTag: 'X',
+        motorLevel: 'fino',
+        title: 'Cruzando os dois traços do X de Xícara!',
+        prompt: 'Faça um risco inclinado de cima para baixo e cruze com o outro no meio.',
+        teachScript:
+          'Miau! Olha o X de Xícara e Xilofone! Cruze dois escorregadores bem no meiozinho da caixa!',
+        contextHint: 'X de Xícara e Xadrez!',
+      },
+      {
+        id: 'wc_y',
+        unitId: 'wc_unit_7_xyz',
+        targetText: 'Y',
+        displayBadge: 'Consoante Y • Traço Fino',
+        emoji: '🧘',
+        consonantTag: 'Y',
+        motorLevel: 'fino',
+        title: 'A forquilha equilibrada do Y de Yoga!',
+        prompt: 'Junte dois tracinhos no meio e desça uma linha reta até a base.',
+        teachScript:
+          'Respiração zen com o Y de Yoga e Yakult! Faça o V curtinho no alto e desça retinho no meio!',
+        contextHint: 'Y de Yoga e Yakissoba!',
+      },
+      {
+        id: 'wc_z',
+        unitId: 'wc_unit_7_xyz',
+        targetText: 'Z',
+        displayBadge: 'Consoante Z • Traço Fino',
+        emoji: '🦓',
+        consonantTag: 'Z',
+        motorLevel: 'fino',
+        title: 'Zigue-zague final: letra Z de Zebra!',
+        prompt: 'Vá para a direita no alto, escorregue para a esquerda e volte à direita na base!',
+        teachScript:
+          'Parabéns por chegar à última letra! O Z de Zebra fecha todo o alfabeto com um zigue-zague super divertido!',
+        contextHint: 'Z de Zebra e Zíper — Parabéns por completar do B ao Z!',
       },
     ],
   },

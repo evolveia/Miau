@@ -7,17 +7,14 @@ import { soundService } from '../../services/soundService';
 import type { EquippedItems, MiauMood, UserHumanProfile } from '../../types';
 import { escapeHtml } from '../../utils/html';
 import { renderMiauSvg } from '../../ui/MiauIllustration';
-import {
-  TRACKED_WRITING_VOWELS,
-  WRITING_UNITS,
-  type MotorDifficulty,
-  type WritingChallenge,
-  type WritingUnitDef,
+import type {
+  MotorDifficulty,
+  WritingChallenge,
+  WritingUnitDef,
 } from './data';
 import {
+  VOWELS_WRITING_CONFIG,
   WRITING_DAILY_BONUS,
-  WRITING_MEDALS,
-  TRACKED_WRITING_WORDS,
   buildStrokeCueSummary,
   completeWritingUnit,
   evaluateHandwritingTrace,
@@ -33,6 +30,7 @@ import {
   type CanvasPoint,
   type TargetCanvasLayout,
   type WritingProgress,
+  type WritingTrackConfig,
 } from './writingEngine';
 
 export interface WritingModuleDeps {
@@ -98,22 +96,25 @@ export class WritingModuleController {
   private teachCache = new Map<string, { coachTip: string; audioScript: string }>();
   private unsubscribeAudio: (() => void) | null = null;
 
-  constructor(private deps: WritingModuleDeps) {
+  constructor(
+    private deps: WritingModuleDeps,
+    private config: WritingTrackConfig = VOWELS_WRITING_CONFIG
+  ) {
     this.unsubscribeAudio = writingAudioEngine.subscribeAudioState((state) => {
-      const badge = document.getElementById('wr-miau-audio-badge');
+      const badge = document.getElementById(`${this.config.domPrefix}-miau-audio-badge`);
       if (!badge) return;
       if (state.loading) {
         badge.textContent = '🐾 Preparando voz...';
         badge.className =
-          'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] animate-pulse';
+          'inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696] animate-pulse';
       } else if (state.speaking) {
         badge.textContent = '🔊 Miau ensinando...';
         badge.className =
-          'inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse';
+          'inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 animate-pulse';
       } else {
         badge.textContent = '✍️ Voz do Miau';
         badge.className =
-          'inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-[#6b4d9e] border border-purple-100';
+          'inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/90 text-[#6b4d9e] border border-purple-100';
       }
     });
   }
@@ -149,16 +150,16 @@ export class WritingModuleController {
   }
 
   private getProgress(): WritingProgress {
-    return loadWritingProgress(this.deps.getOwnerId());
+    return loadWritingProgress(this.deps.getOwnerId(), this.config);
   }
 
   private getCurrentUnit(progress: WritingProgress): WritingUnitDef {
-    const next = WRITING_UNITS.find(
+    const next = this.config.units.find(
       (u, idx) =>
-        isWritingUnitUnlocked(progress, idx) &&
+        isWritingUnitUnlocked(progress, idx, this.config) &&
         !progress.completedUnits.includes(u.id)
     );
-    return next || WRITING_UNITS[WRITING_UNITS.length - 1];
+    return next || this.config.units[this.config.units.length - 1];
   }
 
   public render(): string {
@@ -191,11 +192,12 @@ export class WritingModuleController {
   }
 
   private renderTrailHtml(progress: WritingProgress): string {
+    const p = this.config.domPrefix;
     const firstName =
       this.deps.getHumanProfile().fullName.trim().split(/\s+/)[0] ||
       'Pequeno(a)';
     const completedCount = progress.completedUnits.length;
-    const totalUnits = WRITING_UNITS.length;
+    const totalUnits = this.config.units.length;
     const pct = Math.round((completedCount / totalUnits) * 100);
     const activeUnit = this.getCurrentUnit(progress);
     const dailySteps = progress.dailyStepsCount;
@@ -209,78 +211,87 @@ export class WritingModuleController {
     const totalStarsDisplay = progress.totalStars + letterStarsTotal;
     const unlockedMedalSet = new Set(progress.unlockedMedals);
 
+    const trackedTargets = this.config.trackedTargets;
+    const trackedDoneCount = trackedTargets.filter(
+      (ch) =>
+        progress.masteredTargets.includes(ch) ||
+        (this.config.kind === 'vowels'
+          ? progress.masteredVowels.includes(ch as 'A' | 'E' | 'I' | 'O' | 'U')
+          : progress.masteredConsonants.includes(ch))
+    ).length;
+
     return `
       <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
         <div class="flex items-center gap-1.5 min-w-0">
           <button
-            id="btn-wr-main-menu"
+            id="btn-${p}-main-menu"
             type="button"
-            class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-[#4c2a85] font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
+            class="px-3 py-1.5 rounded-full bg-white/95 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0"
           >
             🏠 Menu
           </button>
           <button
-            id="btn-wr-back"
+            id="btn-${p}-back"
             type="button"
-            class="px-2.5 py-1 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] hover:bg-purple-200/80 active:scale-95 transition shrink-0"
+            class="px-3 py-1.5 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-xs hover:bg-purple-200/80 active:scale-95 transition shrink-0"
           >
             ← Trilhas
           </button>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
-          ${this.renderSoundToggleButton('btn-wr-sound')}
-          <button id="modal-close" type="button" class="w-7 h-7 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold active:scale-95 transition shrink-0">✕</button>
+          ${this.renderSoundToggleButton(`btn-${p}-sound`)}
+          <button id="modal-close" type="button" class="w-8 h-8 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold active:scale-95 transition shrink-0">✕</button>
         </div>
       </div>
 
-      <div class="rounded-2xl px-3 py-2.5 mb-2 bg-white/90 border border-purple-200/80 shadow-sm text-left shrink-0">
+      <div class="rounded-2xl px-3.5 py-2.5 mb-2 bg-white/95 border border-purple-200/80 shadow-sm text-left shrink-0">
         <div class="flex items-center justify-between gap-2 mb-1.5">
           <div class="min-w-0">
-            <h2 class="font-display text-sm sm:text-base font-bold text-[#3b1f6e] leading-tight">
-              Vamos Escrever ✍️
+            <h2 class="font-display text-base sm:text-lg font-bold text-[#3b1f6e] leading-tight">
+              ${escapeHtml(this.config.headerTitle)}
             </h2>
-            <p class="text-[10px] font-semibold text-[#6b4d9e] leading-tight">
-              IA ensina o traçado + prática com o dedo na tela
+            <p class="text-[11px] font-semibold text-[#6b4d9e] leading-tight">
+              ${escapeHtml(this.config.headerSubtitle)}
             </p>
           </div>
-          <span class="px-2 py-0.5 rounded-full bg-purple-100 text-[#5a3696] text-[10px] font-extrabold shrink-0">
+          <span class="px-2.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696] text-[11px] font-extrabold shrink-0">
             ${pct}% concluído
           </span>
         </div>
-        <div class="w-full h-2 rounded-full bg-purple-100 border border-purple-200/70 overflow-hidden">
+        <div class="w-full h-2.5 rounded-full bg-purple-100 border border-purple-200/70 overflow-hidden">
           <div
-            class="h-full rounded-full bg-gradient-to-r from-[#7b52b8] via-[#a855f7] to-[#ec4899] transition-all duration-500"
+            class="h-full rounded-full bg-gradient-to-r ${this.config.accentBarGradient} transition-all duration-500"
             style="width: ${Math.max(6, pct)}%"
           ></div>
         </div>
       </div>
 
-      <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
+      <div class="flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-0.5 text-left">
         <!-- Rotina Diária de Escrita -->
-        <div class="rounded-2xl p-2.5 sm:p-3 bg-gradient-to-br from-[#fff9eb] via-white to-[#f6efff] border border-amber-300/80 shadow-sm flex flex-col gap-2">
+        <div class="rounded-2xl p-3 bg-gradient-to-br from-[#fff9eb] via-white to-[#f6efff] border border-amber-300/80 shadow-sm flex flex-col gap-2">
           <div class="flex items-center justify-between gap-2 flex-wrap">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="w-8 h-8 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-lg shrink-0">
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="w-9 h-9 rounded-xl bg-amber-100 border border-amber-200 flex items-center justify-center text-xl shrink-0">
                 ${dailyCompleted ? '🏆' : '📅'}
               </span>
               <div class="min-w-0">
                 <div class="text-[10px] font-extrabold uppercase tracking-wide text-amber-800">
                   Rotina Diária de Estudo
                 </div>
-                <div class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight">
+                <div class="font-display text-sm font-bold text-[#3b1f6e] leading-tight">
                   ${
                     dailyCompleted
                       ? 'Meta de hoje concluída! Parabéns!'
-                      : `Complete ${dailyGoal} letras ou palavras hoje (${Math.min(dailySteps, dailyGoal)}/${dailyGoal})`
+                      : `Complete ${dailyGoal} letras hoje (${Math.min(dailySteps, dailyGoal)}/${dailyGoal})`
                   }
                 </div>
               </div>
             </div>
-            <div class="flex items-center gap-1.5 shrink-0">
-              <span class="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-200 text-orange-800 text-[10px] font-extrabold">
+            <div class="flex items-center gap-1.5 shrink-0 text-[11px] font-extrabold">
+              <span class="px-2 py-0.5 rounded-full bg-orange-100 border border-orange-200 text-orange-800">
                 🔥 ${progress.streakDays} dia(s)
               </span>
-              <span class="px-2 py-0.5 rounded-full ${dailyCompleted ? 'bg-emerald-100 border border-emerald-200 text-emerald-800' : 'bg-amber-100 border border-amber-200 text-amber-800'} text-[10px] font-extrabold">
+              <span class="px-2 py-0.5 rounded-full ${dailyCompleted ? 'bg-emerald-100 border border-emerald-200 text-emerald-800' : 'bg-amber-100 border border-amber-200 text-amber-800'}">
                 ${dailyCompleted ? '✅ Bônus ganho' : `🎁 +🪙${WRITING_DAILY_BONUS.coins}`}
               </span>
             </div>
@@ -297,7 +308,7 @@ export class WritingModuleController {
             ></div>
           </div>
 
-          <div class="flex items-center justify-between gap-2 flex-wrap text-[10px] font-bold text-[#5e4294]">
+          <div class="flex items-center justify-between gap-2 flex-wrap text-[11px] font-bold text-[#5e4294]">
             <span>
               ${
                 progress.dailyCompletedTargets.length > 0
@@ -310,50 +321,50 @@ export class WritingModuleController {
         </div>
 
         <!-- Unidade em Destaque -->
-        <div class="rounded-2xl p-2.5 sm:p-3 bg-gradient-to-br from-white via-[#f8f3ff] to-[#efe5ff] border border-[#9b72cf] shadow-sm flex items-center justify-between gap-2.5 flex-wrap">
-          <div class="flex items-center gap-2.5 min-w-0 flex-1">
-            <div class="w-11 h-11 rounded-xl bg-gradient-to-br ${activeUnit.accentGradient} border border-white shadow-inner flex items-center justify-center text-2xl shrink-0">
+        <div class="rounded-2xl p-3 bg-gradient-to-br from-white via-[#f8f3ff] to-[#efe5ff] border border-[#9b72cf] shadow-sm flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-3 min-w-0 flex-1">
+            <div class="w-12 h-12 rounded-xl bg-gradient-to-br ${activeUnit.accentGradient} border border-white shadow-inner flex items-center justify-center text-2xl shrink-0">
               ${activeUnit.emoji}
             </div>
             <div class="min-w-0">
-              <div class="inline-flex items-center gap-1 text-[9px] font-extrabold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696] mb-0.5">
-                ✍️ ${completedCount === totalUnits ? 'Módulo Completo!' : 'Próxima Aula de Escrita'}
+              <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#5a3696] mb-0.5">
+                ✍️ ${completedCount === totalUnits ? this.config.allDoneLabel : this.config.nextLessonLabel}
               </div>
-              <h3 class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-snug truncate">
+              <h3 class="font-display text-sm sm:text-base font-bold text-[#3b1f6e] leading-snug truncate">
                 ${activeUnit.number}. ${escapeHtml(activeUnit.title)}
               </h3>
-              <p class="text-[10px] font-semibold text-[#5e4294] leading-tight truncate">
+              <p class="text-[11px] font-semibold text-[#5e4294] leading-tight truncate">
                 ${escapeHtml(activeUnit.focusLabel)}
               </p>
             </div>
           </div>
           <button
             type="button"
-            data-wr-start-unit="${activeUnit.id}"
-            class="px-3.5 py-2 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-[11px] sm:text-xs shadow-sm transition shrink-0"
+            data-${p}-start-unit="${activeUnit.id}"
+            class="px-4 py-2.5 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-sm transition shrink-0"
           >
             ${progress.completedUnits.includes(activeUnit.id) ? '🔁 Treinar' : '▶ Começar'}
           </button>
         </div>
 
-        <!-- Painel de Letras, Estrelas & Medalhas -->
-        <div class="rounded-2xl p-2.5 sm:p-3 bg-white/90 border border-purple-100 shadow-sm flex flex-col gap-2.5">
+        <!-- Painel de Letras, Estrelas e Medalhas -->
+        <div class="rounded-2xl p-3 bg-white/95 border border-purple-100 shadow-sm flex flex-col gap-2.5">
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2 min-w-0">
               <div class="w-10 h-10 shrink-0">
                 ${renderMiauSvg('playful', this.deps.getEquipped(), false)}
               </div>
               <div class="min-w-0">
-                <div class="text-[9px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Caderno de ${escapeHtml(firstName)}</div>
-                <div class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight truncate">
-                  Estrelas & Medalhas por Letra
+                <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#6b4d9e]">Caderno de ${escapeHtml(firstName)}</div>
+                <div class="font-display text-sm font-bold text-[#3b1f6e] leading-tight truncate">
+                  Estrelas e Medalhas por Letra
                 </div>
               </div>
             </div>
             <button
-              id="btn-wr-free-mode"
+              id="btn-${p}-free-mode"
               type="button"
-              class="px-2.5 py-1 rounded-full text-[10px] font-extrabold border active:scale-95 transition shrink-0 ${
+              class="px-3 py-1.5 rounded-full text-[11px] font-extrabold border active:scale-95 transition shrink-0 ${
                 progress.freeExploreUnlocked
                   ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
                   : 'bg-purple-50 border-purple-200 text-[#5a3696] hover:bg-purple-100'
@@ -377,22 +388,26 @@ export class WritingModuleController {
               <div class="text-[9px] font-extrabold text-orange-800 uppercase">Sequência</div>
             </div>
             <div class="rounded-xl py-1.5 px-1 bg-emerald-50 border border-emerald-200 text-center">
-              <div class="text-sm font-display font-bold text-emerald-700 leading-tight">🏅 ${progress.unlockedMedals.length}/${WRITING_MEDALS.length}</div>
+              <div class="text-sm font-display font-bold text-emerald-700 leading-tight">🏅 ${progress.unlockedMedals.length}/${this.config.medals.length}</div>
               <div class="text-[9px] font-extrabold text-emerald-800 uppercase">Medalhas</div>
             </div>
           </div>
 
-          <!-- Vogais com Estrelas Individuais -->
+          <!-- Letras com Estrelas Individuais -->
           <div>
             <div class="flex items-center justify-between gap-2 mb-1.5">
-              <span class="text-[10px] font-extrabold text-[#5a3696]">Vogais (${progress.masteredVowels.length}/5):</span>
-              <span class="text-[9px] font-bold text-[#7a60a8]">3★ = Traço de Ouro</span>
+              <span class="text-[11px] font-extrabold text-[#5a3696]">${escapeHtml(this.config.trackedLabel)} (${trackedDoneCount}/${trackedTargets.length}):</span>
+              <span class="text-[10px] font-bold text-[#7a60a8]">3★ = Traço de Ouro</span>
             </div>
-            <div class="grid grid-cols-5 gap-1.5">
-              ${TRACKED_WRITING_VOWELS.map((v) => {
-                const done = progress.masteredVowels.includes(v) || progress.masteredTargets.includes(v);
-                const stars = progress.letterBestStars[v] ?? (done ? 2 : 0);
-                const doneToday = progress.dailyCompletedTargets.includes(v);
+            <div class="grid ${trackedTargets.length <= 5 ? 'grid-cols-5' : 'grid-cols-7'} gap-1.5">
+              ${trackedTargets.map((letter) => {
+                const done =
+                  progress.masteredTargets.includes(letter) ||
+                  (this.config.kind === 'vowels'
+                    ? progress.masteredVowels.includes(letter as 'A' | 'E' | 'I' | 'O' | 'U')
+                    : progress.masteredConsonants.includes(letter));
+                const stars = progress.letterBestStars[letter] ?? (done ? 2 : 0);
+                const doneToday = progress.dailyCompletedTargets.includes(letter);
                 return `
                   <div class="rounded-xl p-1.5 flex flex-col items-center justify-center border text-center transition ${
                     stars >= 3
@@ -402,7 +417,7 @@ export class WritingModuleController {
                         : 'bg-purple-50/70 border-purple-100 text-purple-300'
                   }">
                     <div class="flex items-center gap-0.5 leading-none">
-                      <span class="font-display text-sm sm:text-base font-bold ${done ? 'text-[#3b1f6e]' : 'text-purple-300'}">${v}</span>
+                      <span class="font-display text-sm sm:text-base font-bold ${done ? 'text-[#3b1f6e]' : 'text-purple-300'}">${letter}</span>
                       ${stars >= 3 ? '<span class="text-[10px]">🥇</span>' : done ? '<span class="text-[9px] text-emerald-600">✓</span>' : ''}
                     </div>
                     <div class="text-[9px] leading-none mt-1 ${done ? 'text-amber-500' : 'text-purple-200'}">
@@ -415,34 +430,41 @@ export class WritingModuleController {
             </div>
           </div>
 
-          <!-- Palavras Fáceis Praticadas -->
-          <div>
-            <div class="text-[10px] font-extrabold text-[#5a3696] mb-1">Palavras Fáceis:</div>
-            <div class="flex items-center gap-1 flex-wrap">
-              ${TRACKED_WRITING_WORDS.map((word) => {
-                const done = progress.masteredTargets.includes(word);
-                const stars = progress.letterBestStars[word] ?? 0;
-                return `
-                  <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold border ${
-                    done
-                      ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
-                      : 'bg-purple-50/60 border-purple-100 text-purple-400'
-                  }">
-                    ${escapeHtml(word)} ${stars > 0 ? `<span class="text-amber-500">${'★'.repeat(stars)}</span>` : ''}
-                  </span>
-                `;
-              }).join('')}
-            </div>
-          </div>
+          ${
+            this.config.secondaryWords && this.config.secondaryWords.length > 0
+              ? `
+                <div>
+                  <div class="text-[11px] font-extrabold text-[#5a3696] mb-1">Palavras Fáceis:</div>
+                  <div class="flex items-center gap-1 flex-wrap">
+                    ${this.config.secondaryWords
+                      .map((word) => {
+                        const done = progress.masteredTargets.includes(word);
+                        const stars = progress.letterBestStars[word] ?? 0;
+                        return `
+                          <span class="px-2 py-0.5 rounded-lg text-[10px] font-extrabold border ${
+                            done
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+                              : 'bg-purple-50/60 border-purple-100 text-purple-400'
+                          }">
+                            ${escapeHtml(word)} ${stars > 0 ? `<span class="text-amber-500">${'★'.repeat(stars)}</span>` : ''}
+                          </span>
+                        `;
+                      })
+                      .join('')}
+                  </div>
+                </div>
+              `
+              : ''
+          }
 
           <!-- Galeria de Medalhas -->
           <div>
             <div class="flex items-center justify-between gap-2 mb-1.5">
-              <span class="text-[10px] font-extrabold text-[#5a3696]">Medalhas de Escrita:</span>
-              <span class="text-[9px] font-bold text-[#7a60a8]">${progress.unlockedMedals.length} de ${WRITING_MEDALS.length} conquistadas</span>
+              <span class="text-[11px] font-extrabold text-[#5a3696]">Medalhas de Escrita:</span>
+              <span class="text-[10px] font-bold text-[#7a60a8]">${progress.unlockedMedals.length} de ${this.config.medals.length} conquistadas</span>
             </div>
             <div class="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-              ${WRITING_MEDALS.map((medal) => {
+              ${this.config.medals.map((medal) => {
                 const unlocked = unlockedMedalSet.has(medal.id);
                 return `
                   <div class="rounded-xl p-2 border flex items-start gap-1.5 transition ${
@@ -467,12 +489,12 @@ export class WritingModuleController {
         </div>
 
         <!-- Trilha das 7 Unidades -->
-        <div class="flex flex-col gap-1.5 pb-1">
-          <div class="text-[10px] font-extrabold uppercase tracking-wide text-[#5a3696] px-1">
-            Trilha de Coordenação Motora & Escrita (${totalUnits} Unidades)
+        <div class="flex flex-col gap-2 pb-1">
+          <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#5a3696] px-1">
+            ${escapeHtml(this.config.trailSectionTitle)}
           </div>
-          ${WRITING_UNITS.map((unit, idx) => {
-            const unlocked = isWritingUnitUnlocked(progress, idx);
+          ${this.config.units.map((unit, idx) => {
+            const unlocked = isWritingUnitUnlocked(progress, idx, this.config);
             const completed = progress.completedUnits.includes(unit.id);
             const stars = progress.unitBestStars[unit.id] ?? 0;
             const isNext = unit.id === activeUnit.id && !completed;
@@ -482,40 +504,40 @@ export class WritingModuleController {
               .join(' • ');
 
             return `
-              <div class="rounded-2xl p-2.5 border transition-all ${
+              <div class="rounded-2xl p-3 border transition-all ${
                 isNext
                   ? 'bg-white border-[#7b52b8] shadow-sm ring-1 ring-[#9b72cf]/40'
                   : unlocked
                     ? 'bg-white/95 border-purple-100 shadow-sm hover:border-purple-300'
                     : 'bg-white/60 border-purple-100/80 opacity-80'
               }">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-11 h-11 rounded-xl bg-gradient-to-br ${unit.accentGradient} border border-white shadow-inner flex flex-col items-center justify-center shrink-0">
+                <div class="flex items-center gap-3">
+                  <div class="w-12 h-12 rounded-xl bg-gradient-to-br ${unit.accentGradient} border border-white shadow-inner flex flex-col items-center justify-center shrink-0">
                     ${
                       unlocked
-                        ? `<span class="text-xl leading-none">${unit.emoji}</span>`
-                        : `<span class="text-base leading-none">🔒</span><span class="text-[8px] font-extrabold text-[#4c2a85]">Un.${unit.number}</span>`
+                        ? `<span class="text-2xl leading-none">${unit.emoji}</span>`
+                        : `<span class="text-lg leading-none">🔒</span><span class="text-[9px] font-extrabold text-[#4c2a85]">Un.${unit.number}</span>`
                     }
                   </div>
 
                   <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-1 flex-wrap">
-                      <span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-purple-100 text-[#5a3696]">
-                        Un. ${unit.number} • ${escapeHtml(previewTargets)}
+                    <div class="flex items-center gap-1.5 flex-wrap text-[10px] font-extrabold">
+                      <span class="text-[#5a3696]">
+                        Un. ${unit.number} · ${escapeHtml(previewTargets)}
                       </span>
                       ${
                         completed
-                          ? `<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>`
+                          ? `<span class="text-amber-700">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>`
                           : isNext
-                            ? `<span class="text-[9px] font-extrabold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Próxima</span>`
+                            ? `<span class="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">Próxima</span>`
                             : ''
                       }
                     </div>
-                    <h3 class="font-display text-xs sm:text-sm font-bold text-[#3b1f6e] leading-tight mt-0.5 truncate">${escapeHtml(unit.title)}</h3>
-                    <p class="text-[10px] font-semibold text-[#5e4294] leading-tight truncate">${escapeHtml(unit.subtitle)}</p>
-                    <div class="mt-1 flex items-center gap-1.5 text-[9px] font-bold text-[#6b4d9e]">
+                    <h3 class="font-display text-sm sm:text-base font-bold text-[#3b1f6e] leading-tight mt-0.5 truncate">${escapeHtml(unit.title)}</h3>
+                    <p class="text-[11px] font-semibold text-[#5e4294] leading-tight truncate">${escapeHtml(unit.subtitle)}</p>
+                    <div class="mt-1 flex items-center gap-1.5 text-[10px] font-bold text-[#6b4d9e]">
                       <span>✍️ ${unit.challenges.length} etapas</span>
-                      <span>•</span>
+                      <span>·</span>
                       <span>🪙 +${unit.coinReward}</span>
                     </div>
                   </div>
@@ -525,8 +547,8 @@ export class WritingModuleController {
                       unlocked
                         ? `<button
                              type="button"
-                             data-wr-start-unit="${unit.id}"
-                             class="px-3 py-1.5 rounded-xl font-extrabold text-[11px] shadow-sm active:scale-95 transition ${
+                             data-${p}-start-unit="${unit.id}"
+                             class="px-3.5 py-2 rounded-xl font-extrabold text-xs shadow-sm active:scale-95 transition ${
                                completed
                                  ? 'bg-purple-100 hover:bg-purple-200 text-[#4c2a85]'
                                  : 'bg-[#6e45a5] hover:bg-[#5c3691] text-white'
@@ -534,7 +556,7 @@ export class WritingModuleController {
                            >
                              ${completed ? '🔁 Refazer' : '▶ Abrir'}
                            </button>`
-                        : `<span class="inline-block px-2.5 py-1 rounded-xl bg-purple-50 text-purple-400 text-[10px] font-extrabold border border-purple-100">Bloq.</span>`
+                        : `<span class="inline-block px-2.5 py-1.5 rounded-xl bg-purple-50 text-purple-400 text-[11px] font-extrabold border border-purple-100">Bloq.</span>`
                     }
                   </div>
                 </div>
@@ -547,6 +569,7 @@ export class WritingModuleController {
   }
 
   private renderLessonHtml(lesson: WritingLessonState): string {
+    const p = this.config.domPrefix;
     const ch = lesson.unit.challenges[lesson.cursor];
     const total = lesson.unit.challenges.length;
     const pct = Math.round(
@@ -567,56 +590,56 @@ export class WritingModuleController {
     const bestLetterStars = progress.letterBestStars[ch.targetText] ?? 0;
 
     return `
-      <!-- Cabeçalho de Aula Compacto -->
+      <!-- Cabeçalho de Aula -->
       <div class="flex items-center justify-between gap-1.5 mb-1.5 text-left shrink-0">
         <div class="flex items-center gap-1 shrink-0">
-          <button id="btn-wr-exit-lesson" type="button" class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-[11px] shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0">← Trilha</button>
-          <button id="btn-wr-lesson-menu" type="button" class="px-2 py-1 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-[11px] hover:bg-purple-200/80 active:scale-95 transition shrink-0">🏠</button>
+          <button id="btn-${p}-exit-lesson" type="button" class="px-3 py-1.5 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-xs shadow-sm hover:bg-purple-50 active:scale-95 transition shrink-0">← Trilha</button>
+          <button id="btn-${p}-lesson-menu" type="button" class="px-2.5 py-1.5 rounded-full bg-purple-100/90 border border-purple-200 text-[#5a3696] font-extrabold text-xs hover:bg-purple-200/80 active:scale-95 transition shrink-0">🏠</button>
         </div>
         <div class="flex-1 min-w-0 px-1">
-          <div class="flex items-center justify-between text-[10px] font-extrabold text-[#4c2a85] mb-0.5 gap-1">
+          <div class="flex items-center justify-between text-[11px] font-extrabold text-[#4c2a85] mb-0.5 gap-1">
             <span class="truncate">Un. ${lesson.unit.number}: ${escapeHtml(ch.displayBadge)}</span>
             <span class="shrink-0">${lesson.cursor + 1}/${total}</span>
           </div>
-          <div class="w-full h-2 rounded-full bg-white/80 border border-purple-200 overflow-hidden">
+          <div class="w-full h-2.5 rounded-full bg-white/80 border border-purple-200 overflow-hidden">
             <div
-              class="h-full rounded-full bg-gradient-to-r from-[#7b52b8] via-[#a855f7] to-[#ec4899] transition-all duration-300"
+              class="h-full rounded-full bg-gradient-to-r ${this.config.accentBarGradient} transition-all duration-300"
               style="width: ${Math.max(10, pct)}%"
             ></div>
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0">
-          ${this.renderSoundToggleButton('btn-wr-lesson-sound')}
-          <button id="modal-close" type="button" class="w-7 h-7 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold active:scale-95 transition shrink-0">✕</button>
+          ${this.renderSoundToggleButton(`btn-${p}-lesson-sound`)}
+          <button id="modal-close" type="button" class="w-8 h-8 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold active:scale-95 transition shrink-0">✕</button>
         </div>
       </div>
 
-      <div class="flex items-center justify-between gap-1.5 mb-2 text-[10px] font-extrabold shrink-0 flex-wrap">
-        <span class="px-2 py-0.5 rounded-full border ${dailyDone ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}">
+      <div class="flex items-center justify-between gap-2 mb-2 text-[11px] font-extrabold shrink-0 flex-wrap px-1">
+        <span class="${dailyDone ? 'text-emerald-800' : 'text-amber-800'}">
           📅 Meta hoje: ${dailySteps}/${dailyGoal} ${dailyDone ? '✓' : ''}
         </span>
-        <span class="px-2 py-0.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85]">
+        <span class="text-[#4c2a85]">
           ${escapeHtml(ch.targetText)}: <span class="text-amber-500">${bestLetterStars > 0 ? '★'.repeat(bestLetterStars) + '☆'.repeat(3 - bestLetterStars) : '☆☆☆'}</span>
         </span>
-        <span class="px-2 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-800">
-          🔥 ${progress.streakDays}d • 🏅 ${progress.unlockedMedals.length}/${WRITING_MEDALS.length}
+        <span class="text-orange-800">
+          🔥 ${progress.streakDays}d · 🏅 ${progress.unlockedMedals.length}/${this.config.medals.length}
         </span>
       </div>
 
-      <div class="flex-1 min-h-0 flex flex-col gap-2 overflow-y-auto miau-scroll pr-0.5 text-left">
+      <div class="flex-1 min-h-0 flex flex-col gap-2.5 overflow-y-auto miau-scroll pr-0.5 text-left">
         <!-- Professor Miau IA Card -->
-        <div class="rounded-2xl p-2.5 bg-white/95 border border-purple-200 shadow-sm flex items-start gap-2.5 shrink-0">
-          <div class="w-11 h-11 shrink-0 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center p-0.5">
+        <div class="rounded-2xl p-3 bg-white/95 border border-purple-200 shadow-sm flex items-start gap-3 shrink-0">
+          <div class="w-14 h-14 sm:w-16 sm:h-16 shrink-0 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center p-0.5">
             ${renderMiauSvg(lesson.coachMood, this.deps.getEquipped(), false)}
           </div>
           <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between gap-1.5 flex-wrap mb-0.5">
-              <span class="text-[10px] font-extrabold uppercase tracking-wide text-[#5a3696]">
+            <div class="flex items-center justify-between gap-1.5 flex-wrap mb-1">
+              <span class="text-[11px] font-extrabold uppercase tracking-wide text-[#5a3696]">
                 ${ch.emoji} ${escapeHtml(ch.title)}
               </span>
               <span
-                id="wr-miau-audio-badge"
-                class="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/90 text-[#6b4d9e] border border-purple-100"
+                id="${p}-miau-audio-badge"
+                class="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-white/90 text-[#6b4d9e] border border-purple-100"
               >
                 ${
                   audioState.loading
@@ -627,26 +650,26 @@ export class WritingModuleController {
                 }
               </span>
             </div>
-            <p id="wr-coach-tip" class="text-[11px] sm:text-xs font-semibold text-[#3b1f6e] leading-snug">
+            <p id="${p}-coach-tip" class="text-xs sm:text-sm font-semibold text-[#3b1f6e] leading-snug">
               ${escapeHtml(lesson.coachTip || ch.teachScript)}
             </p>
-            <div class="mt-1.5 flex items-center gap-1.5 flex-wrap">
+            <div class="mt-2 flex items-center gap-1.5 flex-wrap">
               <button
-                id="btn-wr-ai-teach"
+                id="btn-${p}-ai-teach"
                 type="button"
                 ${lesson.isAiTeaching ? 'disabled' : ''}
-                class="px-2.5 py-1 rounded-full bg-purple-100 hover:bg-purple-200 text-[#4c2a85] font-extrabold text-[10px] active:scale-95 transition disabled:opacity-60"
+                class="px-3 py-1.5 rounded-full bg-purple-100 hover:bg-purple-200 text-[#4c2a85] font-extrabold text-[11px] active:scale-95 transition disabled:opacity-60"
               >
                 ${lesson.isAiTeaching ? '🐾 Pensando...' : '🤖 IA Ensinar'}
               </button>
               <button
-                id="btn-wr-demo-anim"
+                id="btn-${p}-demo-anim"
                 type="button"
-                class="px-2.5 py-1 rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-extrabold text-[10px] active:scale-95 transition"
+                class="px-3 py-1.5 rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-extrabold text-[11px] active:scale-95 transition"
               >
                 ${lesson.isDemoAnimating ? '✨ Mostrando...' : '🎬 Ver Traçado'}
               </button>
-              <span class="text-[10px] font-bold text-[#6b4d9e] ml-auto">
+              <span class="text-[11px] font-bold text-[#6b4d9e] ml-auto">
                 Guia: ${escapeHtml(motorLabel)}
               </span>
             </div>
@@ -654,9 +677,9 @@ export class WritingModuleController {
         </div>
 
         <!-- Seletor de Coordenação Motora Fina + Área de Desenho com o Dedo -->
-        <div class="rounded-2xl p-2.5 bg-white/95 border-2 border-[#b99ce8] shadow-md flex flex-col gap-2 shrink-0">
-          <div class="flex items-center justify-between gap-2 flex-wrap">
-            <span class="text-[10px] font-extrabold text-[#5a3696]">
+        <div class="rounded-2xl p-3 bg-white/95 border-2 border-[#b99ce8] shadow-md flex-1 min-h-[280px] flex flex-col gap-2.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap shrink-0">
+            <span class="text-xs font-extrabold text-[#5a3696]">
               ✍️ Cubra "${escapeHtml(ch.targetText)}" com o dedo seguindo os números:
             </span>
             <div class="flex items-center gap-1">
@@ -665,40 +688,40 @@ export class WritingModuleController {
           </div>
 
           <div
-            id="wr-canvas-wrap"
-            class="relative w-full h-[220px] sm:h-[260px] rounded-2xl overflow-hidden bg-gradient-to-b from-[#fdfaff] via-[#ffffff] to-[#f8f3ff] border border-purple-200 shadow-inner select-none"
+            id="${p}-canvas-wrap"
+            class="relative w-full flex-1 min-h-[240px] sm:min-h-[290px] rounded-2xl overflow-hidden bg-gradient-to-b from-[#fdfaff] via-[#ffffff] to-[#f8f3ff] border border-purple-200 shadow-inner select-none"
             style="touch-action: none;"
           >
             <canvas
-              id="wr-canvas"
+              id="${p}-canvas"
               class="block w-full h-full cursor-crosshair"
               style="touch-action: none;"
             ></canvas>
           </div>
 
           <!-- Botões de Ação do Traçado -->
-          <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap shrink-0">
             <button
-              id="btn-wr-clear"
+              id="btn-${p}-clear"
               type="button"
-              class="px-3 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-[#4c2a85] font-extrabold text-xs active:scale-95 transition shrink-0"
+              class="px-3.5 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-[#4c2a85] font-extrabold text-xs sm:text-sm active:scale-95 transition shrink-0"
             >
               🧹 Limpar
             </button>
             <button
-              id="btn-wr-verify"
+              id="btn-${p}-verify"
               type="button"
               ${lesson.isEvaluating ? 'disabled' : ''}
-              class="flex-1 min-w-[140px] py-2 px-4 rounded-xl bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] hover:opacity-95 text-white font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition disabled:opacity-60"
+              class="flex-1 min-w-[150px] py-2.5 px-4 rounded-xl bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] hover:opacity-95 text-white font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition disabled:opacity-60"
             >
               ${lesson.isEvaluating ? '🐾 Miau olhando...' : '✨ Verificar com IA'}
             </button>
             ${
               lesson.stepSolved
                 ? `<button
-                     id="btn-wr-next"
+                     id="btn-${p}-next"
                      type="button"
-                     class="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-95 text-white font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition shrink-0"
+                     class="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:opacity-95 text-white font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition shrink-0"
                    >
                      ${lesson.cursor + 1 >= total ? 'Finalizar 🏅' : 'Próximo ➜'}
                    </button>`
@@ -711,7 +734,7 @@ export class WritingModuleController {
         ${
           lesson.lastEval
             ? `
-              <div class="rounded-2xl p-2.5 border shadow-sm flex items-start gap-2.5 shrink-0 ${
+              <div class="rounded-2xl p-3 border shadow-sm flex items-start gap-2.5 shrink-0 ${
                 lesson.lastEval.verdict === 'positive'
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-950'
                   : lesson.lastEval.verdict === 'medium'
@@ -729,7 +752,7 @@ export class WritingModuleController {
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center justify-between gap-2 flex-wrap mb-0.5">
-                    <span class="text-xs font-extrabold">
+                    <span class="text-xs sm:text-sm font-extrabold">
                       ${'★'.repeat(lesson.lastEval.stars)}${'☆'.repeat(3 - lesson.lastEval.stars)}
                       ${
                         lesson.lastEval.verdict === 'positive'
@@ -739,18 +762,18 @@ export class WritingModuleController {
                             : ' Vamos Tentar de Novo!'
                       }
                     </span>
-                    <span class="text-[10px] font-bold opacity-85">
-                      Cobertura ${lesson.lastEval.coveragePct}% • Firmeza ${lesson.lastEval.precisionPct}%
+                    <span class="text-[11px] font-bold opacity-85">
+                      Cobertura ${lesson.lastEval.coveragePct}% · Firmeza ${lesson.lastEval.precisionPct}%
                     </span>
                   </div>
-                  <p class="text-[11px] font-semibold leading-snug">
+                  <p class="text-xs font-semibold leading-snug">
                     ${escapeHtml(lesson.lastEval.feedbackText)}
                   </p>
                 </div>
               </div>
             `
             : `
-              <div class="rounded-xl px-3 py-2 bg-white/80 border border-purple-100 text-[10px] font-semibold text-[#5e4294] shrink-0">
+              <div class="rounded-xl px-3 py-2 bg-white/85 border border-purple-100 text-xs font-semibold text-[#5e4294] shrink-0">
                 💡 ${escapeHtml(ch.contextHint)}
               </div>
             `
@@ -766,8 +789,8 @@ export class WritingModuleController {
           return `
             <button
               type="button"
-              data-wr-motor="${lvl}"
-              class="px-2 py-0.5 rounded-full text-[10px] font-extrabold border transition active:scale-95 ${
+              data-${p}-motor="${lvl}"
+              class="px-2.5 py-1 rounded-full text-[11px] font-extrabold border transition active:scale-95 ${
                 active
                   ? 'bg-[#6e45a5] text-white border-[#6e45a5]'
                   : 'bg-purple-50 text-[#5a3696] border-purple-200 hover:bg-purple-100'
@@ -782,12 +805,13 @@ export class WritingModuleController {
   }
 
   private renderCelebrationHtml(celeb: WritingCelebrationState): string {
+    const p = this.config.domPrefix;
     return `
       <div class="flex items-center justify-between gap-1.5 mb-2 text-left shrink-0">
-        <button id="btn-wr-celeb-trail" type="button" class="px-2.5 py-1 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-[11px] shadow-sm active:scale-95 transition">← Trilha</button>
+        <button id="btn-${p}-celeb-trail" type="button" class="px-3 py-1.5 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-xs shadow-sm active:scale-95 transition">← Trilha</button>
         <div class="flex items-center gap-1.5">
-          ${this.renderSoundToggleButton('btn-wr-celeb-sound')}
-          <button id="modal-close" type="button" class="w-7 h-7 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold">✕</button>
+          ${this.renderSoundToggleButton(`btn-${p}-celeb-sound`)}
+          <button id="modal-close" type="button" class="w-8 h-8 rounded-full bg-white/95 border border-purple-200 text-purple-800 text-xs font-bold">✕</button>
         </div>
       </div>
 
@@ -803,7 +827,7 @@ export class WritingModuleController {
             <h3 class="font-display text-lg font-bold text-[#3b1f6e] leading-tight">
               ${escapeHtml(celeb.unitTitle)}
             </h3>
-            <p class="text-xs font-semibold text-[#5e4294]">
+            <p class="text-xs sm:text-sm font-semibold text-[#5e4294]">
               Sua coordenação motora fina está ficando incrível!
             </p>
           </div>
@@ -823,24 +847,24 @@ export class WritingModuleController {
               📅 Hoje: ${Math.min(celeb.dailyStepsCount, celeb.dailyGoalTarget)}/${celeb.dailyGoalTarget}
             </span>
             <span class="px-2.5 py-1 rounded-full bg-yellow-50 border border-yellow-200 text-amber-800">
-              🏅 ${celeb.unlockedMedalsCount}/${WRITING_MEDALS.length}
+              🏅 ${celeb.unlockedMedalsCount}/${this.config.medals.length}
             </span>
           </div>
           <div class="flex items-center gap-2 w-full pt-1">
             <button
-              id="btn-wr-celeb-back"
+              id="btn-${p}-celeb-back"
               type="button"
-              class="flex-1 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-[#4c2a85] font-extrabold text-xs active:scale-95 transition"
+              class="flex-1 py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-[#4c2a85] font-extrabold text-xs sm:text-sm active:scale-95 transition"
             >
               Ver Trilha
             </button>
             ${
               celeb.nextUnitId
                 ? `<button
-                     id="btn-wr-celeb-next"
+                     id="btn-${p}-celeb-next"
                      type="button"
-                     data-wr-next-unit="${celeb.nextUnitId}"
-                     class="flex-1 py-2.5 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] text-white font-extrabold text-xs shadow-sm active:scale-95 transition"
+                     data-${p}-next-unit="${celeb.nextUnitId}"
+                     class="flex-1 py-2.5 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] text-white font-extrabold text-xs sm:text-sm shadow-sm active:scale-95 transition"
                    >
                      Próxima Unidade ➜
                    </button>`
@@ -853,28 +877,29 @@ export class WritingModuleController {
   }
 
   public bind(root: HTMLElement): void {
+    const p = this.config.domPrefix;
     this.stopCanvasResources();
 
     // Trail bindings
     root
-      .querySelector('#btn-wr-main-menu')
+      .querySelector(`#btn-${p}-main-menu`)
       ?.addEventListener('click', () => {
         this.resetToTrail();
         this.deps.onExitToMainMenu?.();
       });
-    root.querySelector('#btn-wr-back')?.addEventListener('click', () => {
+    root.querySelector(`#btn-${p}-back`)?.addEventListener('click', () => {
       this.resetToTrail();
       this.deps.onExitToLearnHub();
     });
     root
-      .querySelector('#btn-wr-sound')
+      .querySelector(`#btn-${p}-sound`)
       ?.addEventListener('click', () => this.handleSoundToggle());
     root
-      .querySelector('#btn-wr-free-mode')
+      .querySelector(`#btn-${p}-free-mode`)
       ?.addEventListener('click', () => {
         const progress = this.getProgress();
         progress.freeExploreUnlocked = !progress.freeExploreUnlocked;
-        saveWritingProgress(progress);
+        saveWritingProgress(progress, this.config);
         this.deps.onToast(
           progress.freeExploreUnlocked
             ? 'Todas as unidades de escrita liberadas!'
@@ -883,40 +908,40 @@ export class WritingModuleController {
         this.deps.onRequestRerender();
       });
 
-    root.querySelectorAll('[data-wr-start-unit]').forEach((btn) => {
+    root.querySelectorAll(`[data-${p}-start-unit]`).forEach((btn) => {
       btn.addEventListener('click', () => {
-        const unitId = btn.getAttribute('data-wr-start-unit');
+        const unitId = btn.getAttribute(`data-${p}-start-unit`);
         if (unitId) this.startUnit(unitId);
       });
     });
 
     // Lesson bindings
     root
-      .querySelector('#btn-wr-exit-lesson')
+      .querySelector(`#btn-${p}-exit-lesson`)
       ?.addEventListener('click', () => {
         this.resetToTrail();
         this.deps.onRequestRerender();
       });
     root
-      .querySelector('#btn-wr-lesson-menu')
+      .querySelector(`#btn-${p}-lesson-menu`)
       ?.addEventListener('click', () => {
         this.resetToTrail();
         this.deps.onExitToMainMenu?.();
       });
     root
-      .querySelector('#btn-wr-lesson-sound')
+      .querySelector(`#btn-${p}-lesson-sound`)
       ?.addEventListener('click', () => this.handleSoundToggle());
     root
-      .querySelector('#btn-wr-ai-teach')
+      .querySelector(`#btn-${p}-ai-teach`)
       ?.addEventListener('click', () => {
         void this.triggerAiTeach(true);
       });
     root
-      .querySelector('#btn-wr-demo-anim')
+      .querySelector(`#btn-${p}-demo-anim`)
       ?.addEventListener('click', () => {
         this.startStrokeDemoAnimation(true);
       });
-    root.querySelector('#btn-wr-clear')?.addEventListener('click', () => {
+    root.querySelector(`#btn-${p}-clear`)?.addEventListener('click', () => {
       if (!this.lesson) return;
       this.lesson.userStrokes = [];
       this.lesson.activeStroke = null;
@@ -924,16 +949,16 @@ export class WritingModuleController {
       this.redrawCanvas();
       this.deps.onRequestRerender();
     });
-    root.querySelector('#btn-wr-verify')?.addEventListener('click', () => {
+    root.querySelector(`#btn-${p}-verify`)?.addEventListener('click', () => {
       void this.verifyTrace();
     });
-    root.querySelector('#btn-wr-next')?.addEventListener('click', () => {
+    root.querySelector(`#btn-${p}-next`)?.addEventListener('click', () => {
       this.advanceLessonStep();
     });
 
-    root.querySelectorAll('[data-wr-motor]').forEach((btn) => {
+    root.querySelectorAll(`[data-${p}-motor]`).forEach((btn) => {
       btn.addEventListener('click', () => {
-        const lvl = btn.getAttribute('data-wr-motor') as MotorDifficulty | null;
+        const lvl = btn.getAttribute(`data-${p}-motor`) as MotorDifficulty | null;
         if (!lvl || !this.lesson) return;
         this.lesson.motorOverride = lvl;
         this.lesson.lastEval = null;
@@ -943,25 +968,25 @@ export class WritingModuleController {
 
     // Celebration bindings
     root
-      .querySelector('#btn-wr-celeb-trail')
+      .querySelector(`#btn-${p}-celeb-trail`)
       ?.addEventListener('click', () => {
         this.resetToTrail();
         this.deps.onRequestRerender();
       });
     root
-      .querySelector('#btn-wr-celeb-back')
+      .querySelector(`#btn-${p}-celeb-back`)
       ?.addEventListener('click', () => {
         this.resetToTrail();
         this.deps.onRequestRerender();
       });
     root
-      .querySelector('#btn-wr-celeb-sound')
+      .querySelector(`#btn-${p}-celeb-sound`)
       ?.addEventListener('click', () => this.handleSoundToggle());
     root
-      .querySelector('#btn-wr-celeb-next')
+      .querySelector(`#btn-${p}-celeb-next`)
       ?.addEventListener('click', (e) => {
         const nextId = (e.currentTarget as HTMLElement).getAttribute(
-          'data-wr-next-unit'
+          `data-${p}-next-unit`
         );
         if (nextId) this.startUnit(nextId);
       });
@@ -981,7 +1006,7 @@ export class WritingModuleController {
   }
 
   private startUnit(unitId: string): void {
-    const unit = WRITING_UNITS.find((u) => u.id === unitId);
+    const unit = this.config.units.find((u) => u.id === unitId);
     if (!unit || unit.challenges.length === 0) return;
 
     writingAudioEngine.stop();
@@ -1004,7 +1029,6 @@ export class WritingModuleController {
     };
     this.deps.onRequestRerender();
 
-    // Auto-start AI explanation + animated stroke demonstration when step begins
     window.setTimeout(() => {
       if (this.stage === 'lesson' && this.lesson?.unit.id === unitId) {
         this.startStrokeDemoAnimation(false);
@@ -1054,15 +1078,22 @@ export class WritingModuleController {
     const stars = Math.max(1, Math.min(3, avgStars));
 
     const prev = this.getProgress();
-    const updatedProgress = completeWritingUnit(prev, unit.id, stars);
+    const updatedProgress = completeWritingUnit(
+      prev,
+      unit.id,
+      stars,
+      this.config
+    );
 
     this.deps.onGrantRewards(unit.coinReward, unit.xpReward);
     soundService.playCoin();
     hapticService.levelUp();
 
-    const idx = WRITING_UNITS.findIndex((u) => u.id === unit.id);
+    const idx = this.config.units.findIndex((u) => u.id === unit.id);
     const nextUnit =
-      idx >= 0 && idx + 1 < WRITING_UNITS.length ? WRITING_UNITS[idx + 1] : null;
+      idx >= 0 && idx + 1 < this.config.units.length
+        ? this.config.units[idx + 1]
+        : null;
 
     this.stage = 'celebration';
     this.celebration = {
@@ -1087,6 +1118,7 @@ export class WritingModuleController {
 
   private async triggerAiTeach(forceSpeech: boolean): Promise<void> {
     if (!this.lesson) return;
+    const p = this.config.domPrefix;
     const ch = this.lesson.unit.challenges[this.lesson.cursor];
     const cacheKey = `${ch.id}:${this.lesson.motorOverride}`;
     const firstName =
@@ -1097,7 +1129,7 @@ export class WritingModuleController {
     if (cached) {
       this.lesson.coachTip = cached.coachTip;
       this.lesson.coachMood = 'happy';
-      const tipEl = document.getElementById('wr-coach-tip');
+      const tipEl = document.getElementById(`${p}-coach-tip`);
       if (tipEl) {
         tipEl.textContent = cached.coachTip;
       } else {
@@ -1110,7 +1142,9 @@ export class WritingModuleController {
     }
 
     this.lesson.isAiTeaching = true;
-    const teachBtnLoading = document.getElementById('btn-wr-ai-teach') as HTMLButtonElement | null;
+    const teachBtnLoading = document.getElementById(
+      `btn-${p}-ai-teach`
+    ) as HTMLButtonElement | null;
     if (teachBtnLoading) {
       teachBtnLoading.disabled = true;
       teachBtnLoading.textContent = '🐾 Pensando...';
@@ -1130,7 +1164,6 @@ export class WritingModuleController {
       if (aiRes.audioScript) audioScript = aiRes.audioScript;
       this.teachCache.set(cacheKey, { coachTip, audioScript });
     } catch {
-      // Seamless local fallback if AI endpoint unavailable
       this.teachCache.set(cacheKey, { coachTip, audioScript });
     }
 
@@ -1141,8 +1174,10 @@ export class WritingModuleController {
     this.lesson.coachTip = coachTip;
     this.lesson.coachMood = 'happy';
 
-    const tipEl = document.getElementById('wr-coach-tip');
-    const teachBtnDone = document.getElementById('btn-wr-ai-teach') as HTMLButtonElement | null;
+    const tipEl = document.getElementById(`${p}-coach-tip`);
+    const teachBtnDone = document.getElementById(
+      `btn-${p}-ai-teach`
+    ) as HTMLButtonElement | null;
     if (tipEl) {
       tipEl.textContent = coachTip;
     }
@@ -1160,8 +1195,9 @@ export class WritingModuleController {
   }
 
   private mountCanvas(root: HTMLElement): void {
-    const wrap = root.querySelector('#wr-canvas-wrap') as HTMLElement | null;
-    const canvas = root.querySelector('#wr-canvas') as HTMLCanvasElement | null;
+    const p = this.config.domPrefix;
+    const wrap = root.querySelector(`#${p}-canvas-wrap`) as HTMLElement | null;
+    const canvas = root.querySelector(`#${p}-canvas`) as HTMLCanvasElement | null;
     if (!wrap || !canvas) return;
 
     this.canvasEl = canvas;
@@ -1242,6 +1278,7 @@ export class WritingModuleController {
 
   private startStrokeDemoAnimation(withVoice: boolean): void {
     if (!this.lesson) return;
+    const p = this.config.domPrefix;
     if (this.demoRafId !== null) {
       window.cancelAnimationFrame(this.demoRafId);
       this.demoRafId = null;
@@ -1273,12 +1310,12 @@ export class WritingModuleController {
         this.demoRafId = null;
         this.lesson.isDemoAnimating = false;
         this.redrawCanvas();
-        const btn = document.getElementById('btn-wr-demo-anim');
+        const btn = document.getElementById(`btn-${p}-demo-anim`);
         if (btn) btn.textContent = '🎬 Ver Traçado';
       }
     };
 
-    const btn = document.getElementById('btn-wr-demo-anim');
+    const btn = document.getElementById(`btn-${p}-demo-anim`);
     if (btn) btn.textContent = '✨ Mostrando...';
     this.demoRafId = window.requestAnimationFrame(tick);
   }
@@ -1550,7 +1587,8 @@ export class WritingModuleController {
       const outcome = recordWritingStepSolved(
         this.getProgress(),
         ch,
-        earnedStars
+        earnedStars,
+        this.config
       );
       const baseCoins = verdict === 'positive' ? 8 : 4;
       const baseXp = verdict === 'positive' ? 10 : 6;
