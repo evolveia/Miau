@@ -8,6 +8,9 @@
 5. `ownedItems` is a list of `<= 50` strings (`ownedItems.size() >= 1 && ownedItems[0] is string`).
 6. `createdAt` and `ownerId` are immutable after creation; `createdAt == request.time` on create, `updatedAt == request.time` on create and update.
 7. Chat messages under `/users/{userId}/messages/{messageId}` require the parent `/users/{userId}` document to exist and belong to `request.auth.uid`, enforce `sender in ['user', 'miau']`, `text.size() >= 1 && text.size() <= 1000`, and `createdAt == request.time`.
+8. Educational track progress under `/users/{userId}/educationProgress/{trackId}` requires `trackId` in the 9 allowlisted modules, parent `/users/{userId}` ownership, `totalStars in [0, 500]`, bounded arrays (`completedUnits <= 30`, `masteredTargets <= 150`, `unlockedStickers <= 60`), immutable `ownerId`/`trackId`/`createdAt`, and `resource.data.ownerId == request.auth.uid` on `list`.
+9. Daily coin economy under `/users/{userId}/economy/daily` requires `docId == 'daily'`, valid `YYYY-MM-DD` `dateKey`, bounded integer caps (`petCoinsToday <= 500`, `ballCoinsToday <= 500`, `minigameCoinsToday <= 2000`), and parent `/users/{userId}` ownership.
+
 
 ## Dirty Dozen Payloads (Expected: PERMISSION_DENIED)
 1. Unauthenticated read/write to `/users/userA`

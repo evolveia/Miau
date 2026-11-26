@@ -201,6 +201,92 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidEducationTrackId(trackId) {
+      return trackId is string
+        && trackId.size() >= 1
+        && trackId.size() <= 48
+        && trackId in [
+          'infantil_letras',
+          'infantil_escrita',
+          'infantil_escrita_consoantes',
+          'infantil_consoantes',
+          'infantil_cores_numeros',
+          'infantil_soma_subtracao',
+          'infantil_matematica_desafios',
+          'infantil_natureza',
+          'infantil_comidas_bebidas'
+        ];
+    }
+
+    function isValidEducationTrackProgress(data, userId, trackId) {
+      return data.keys().hasAll([
+          'ownerId', 'trackId', 'completedUnits', 'unitBestStars', 'letterBestStars',
+          'totalStars', 'streakDays', 'bestStreakDays', 'lastStudyDateKey',
+          'masteredPrimary', 'masteredTargets', 'unlockedStickers',
+          'freeExploreUnlocked', 'totalLessonsCompleted', 'dailyDateKey',
+          'dailyStepsCount', 'dailyCompletedTargets', 'dailyBonusClaimedDateKey',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'trackId', 'completedUnits', 'unitBestStars', 'letterBestStars',
+          'totalStars', 'streakDays', 'bestStreakDays', 'lastStudyDateKey',
+          'masteredPrimary', 'masteredTargets', 'unlockedStickers',
+          'freeExploreUnlocked', 'totalLessonsCompleted', 'dailyDateKey',
+          'dailyStepsCount', 'dailyCompletedTargets', 'dailyBonusClaimedDateKey',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && isValidEducationTrackId(data.trackId) && data.trackId == trackId
+        && data.completedUnits is list && data.completedUnits.size() <= 30
+        && (data.completedUnits.size() == 0 || (data.completedUnits[0] is string && data.completedUnits[0].size() <= 48))
+        && data.unitBestStars is map && data.unitBestStars.size() <= 30
+        && data.letterBestStars is map && data.letterBestStars.size() <= 60
+        && data.totalStars is int && data.totalStars >= 0 && data.totalStars <= 500
+        && data.streakDays is int && data.streakDays >= 0 && data.streakDays <= 10000
+        && data.bestStreakDays is int && data.bestStreakDays >= 0 && data.bestStreakDays <= 10000
+        && data.lastStudyDateKey is string && data.lastStudyDateKey.size() <= 10
+        && (data.lastStudyDateKey == '' || data.lastStudyDateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        && data.masteredPrimary is list && data.masteredPrimary.size() <= 40
+        && (data.masteredPrimary.size() == 0 || (data.masteredPrimary[0] is string && data.masteredPrimary[0].size() <= 48))
+        && data.masteredTargets is list && data.masteredTargets.size() <= 150
+        && (data.masteredTargets.size() == 0 || (data.masteredTargets[0] is string && data.masteredTargets[0].size() <= 48))
+        && data.unlockedStickers is list && data.unlockedStickers.size() <= 60
+        && (data.unlockedStickers.size() == 0 || (data.unlockedStickers[0] is string && data.unlockedStickers[0].size() <= 64))
+        && data.freeExploreUnlocked is bool
+        && data.totalLessonsCompleted is int && data.totalLessonsCompleted >= 0 && data.totalLessonsCompleted <= 1000000
+        && data.dailyDateKey is string && data.dailyDateKey.size() <= 10
+        && (data.dailyDateKey == '' || data.dailyDateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        && data.dailyStepsCount is int && data.dailyStepsCount >= 0 && data.dailyStepsCount <= 1000
+        && data.dailyCompletedTargets is list && data.dailyCompletedTargets.size() <= 60
+        && (data.dailyCompletedTargets.size() == 0 || (data.dailyCompletedTargets[0] is string && data.dailyCompletedTargets[0].size() <= 32))
+        && data.dailyBonusClaimedDateKey is string && data.dailyBonusClaimedDateKey.size() <= 10
+        && (data.dailyBonusClaimedDateKey == '' || data.dailyBonusClaimedDateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidDailyCoinEconomy(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'dateKey', 'petCoinsToday', 'lastPetCoinAtMs',
+          'ballCoinsToday', 'lastBallCoinAtMs', 'minigameCoinsToday',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'dateKey', 'petCoinsToday', 'lastPetCoinAtMs',
+          'ballCoinsToday', 'lastBallCoinAtMs', 'minigameCoinsToday',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.dateKey is string && data.dateKey.size() == 10 && data.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.petCoinsToday is int && data.petCoinsToday >= 0 && data.petCoinsToday <= 500
+        && data.lastPetCoinAtMs is int && data.lastPetCoinAtMs >= 0 && data.lastPetCoinAtMs <= 9999999999999
+        && data.ballCoinsToday is int && data.ballCoinsToday >= 0 && data.ballCoinsToday <= 500
+        && data.lastBallCoinAtMs is int && data.lastBallCoinAtMs >= 0 && data.lastBallCoinAtMs <= 9999999999999
+        && data.minigameCoinsToday is int && data.minigameCoinsToday >= 0 && data.minigameCoinsToday <= 2000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     function isValidUserUpdateKeys() {
       return incoming().diff(existing()).affectedKeys().hasOnly([
         'petName', 'coins', 'level', 'xp',
@@ -321,6 +407,89 @@ service cloud.firestore {
         allow delete: if isValidId(userId)
           && isValidId(messageId)
           && isOwner(userId)
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+      }
+
+      match /educationProgress/{trackId} {
+        allow get: if isValidId(userId)
+          && isValidId(trackId)
+          && isValidEducationTrackId(trackId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow list: if isValidId(userId)
+          && isOwner(userId)
+          && resource.data.ownerId == request.auth.uid;
+        allow create: if isValidId(userId)
+          && isValidId(trackId)
+          && isOwner(userId)
+          && isValidEducationTrackProgress(incoming(), userId, trackId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow update: if isValidId(userId)
+          && isValidId(trackId)
+          && isOwner(userId)
+          && isValidEducationTrackProgress(incoming(), userId, trackId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().trackId == existing().trackId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'completedUnits', 'unitBestStars', 'letterBestStars',
+            'totalStars', 'streakDays', 'bestStreakDays', 'lastStudyDateKey',
+            'masteredPrimary', 'masteredTargets', 'unlockedStickers',
+            'freeExploreUnlocked', 'totalLessonsCompleted', 'dailyDateKey',
+            'dailyStepsCount', 'dailyCompletedTargets', 'dailyBonusClaimedDateKey',
+            'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow delete: if isValidId(userId)
+          && isValidId(trackId)
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+      }
+
+      match /economy/{docId} {
+        allow get: if isValidId(userId)
+          && isValidId(docId)
+          && docId == 'daily'
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow list: if false;
+        allow create: if isValidId(userId)
+          && isValidId(docId)
+          && docId == 'daily'
+          && isOwner(userId)
+          && isValidDailyCoinEconomy(incoming(), userId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow update: if isValidId(userId)
+          && isValidId(docId)
+          && docId == 'daily'
+          && isOwner(userId)
+          && isValidDailyCoinEconomy(incoming(), userId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'dateKey', 'petCoinsToday', 'lastPetCoinAtMs',
+            'ballCoinsToday', 'lastBallCoinAtMs', 'minigameCoinsToday',
+            'updatedAt'
+          ])
+          && exists(/databases/$(database)/documents/users/$(userId))
+          && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        allow delete: if isValidId(userId)
+          && isValidId(docId)
+          && docId == 'daily'
+          && isOwner(userId)
+          && exists(/databases/$(database)/documents/users/$(userId))
           && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
       }
     }

@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import * as webpush from 'web-push';
 import type { PushSubscription } from 'web-push';
 
@@ -30,8 +31,61 @@ interface StoredSubscriptionRecord {
   updatedAtMs: number;
 }
 
-const VAPID_STORE_PATH = '/tmp/miau-vapid-keys.json';
-const SUBS_STORE_PATH = '/tmp/miau-push-subs.json';
+function resolvePushStoreDir(): string {
+  const candidates = [
+    process.env.MIAU_PUSH_DATA_DIR?.trim(),
+    path.resolve(process.cwd(), '.miau-data'),
+    '/tmp/miau-push-data',
+  ].filter((v): v is string => Boolean(v));
+
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      return dir;
+    } catch {
+      // Try next candidate
+    }
+  }
+  return '/tmp';
+}
+
+const PUSH_STORE_DIR = resolvePushStoreDir();
+const VAPID_STORE_PATH = path.join(PUSH_STORE_DIR, 'vapid-keys.json');
+const SUBS_STORE_PATH = path.join(PUSH_STORE_DIR, 'push-subs.json');
+
+function writeJsonAtomic(filePath: string, data: unknown): void {
+  const tempPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  fs.writeFileSync(tempPath, JSON.stringify(data), {
+    encoding: 'utf-8',
+    mode: 0o600,
+  });
+  fs.renameSync(tempPath, filePath);
+}
+
+export function isValidPushEndpoint(rawEndpoint: unknown): rawEndpoint is string {
+  if (typeof rawEndpoint !== 'string' || rawEndpoint.length > 2048) return false;
+  try {
+    const parsed = new URL(rawEndpoint);
+    if (parsed.protocol !== 'https:') return false;
+    const host = parsed.hostname.toLowerCase();
+    if (
+      !host ||
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '::1' ||
+      host.startsWith('10.') ||
+      host.startsWith('192.168.') ||
+      host.startsWith('169.254.') ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Intervalos equivalentes ao decay loop de MiauAppUI (em ms por 1 ponto perdido)
 const DECAY_MS_PER_POINT: Record<CareNeedKey, number> = {
@@ -55,29 +109,55 @@ const subscriptions = new Map<string, StoredSubscriptionRecord>();
 function loadOrCreateVapidKeys(): VapidKeys {
   if (cachedVapidKeys) return cachedVapidKeys;
 
-  const subject = 'mailto:suporte@miau.app';
+  const subject = process.env.VAPID_SUBJECT?.trim() || 'mailto:suporte@miau.app';
+  const envPublic = process.env.VAPID_PUBLIC_KEY?.trim();
+  const envPrivate = process.env.VAPID_PRIVATE_KEY?.trim();
 
-  try {
-    if (fs.existsSync(VAPID_STORE_PATH)) {
-      const parsed = JSON.parse(
-        fs.readFileSync(VAPID_STORE_PATH, 'utf-8')
-      ) as Partial<VapidKeys>;
-      if (parsed.publicKey && parsed.privateKey) {
-        cachedVapidKeys = {
-          publicKey: parsed.publicKey,
-          privateKey: parsed.privateKey,
-          subject,
-        };
-        webpush.setVapidDetails(
-          subject,
-          cachedVapidKeys.publicKey,
-          cachedVapidKeys.privateKey
-        );
-        return cachedVapidKeys;
+  if (envPublic && envPrivate) {
+    cachedVapidKeys = {
+      publicKey: envPublic,
+      privateKey: envPrivate,
+      subject,
+    };
+    webpush.setVapidDetails(
+      subject,
+      cachedVapidKeys.publicKey,
+      cachedVapidKeys.privateKey
+    );
+    return cachedVapidKeys;
+  }
+
+  const legacyVapidPath = '/tmp/miau-vapid-keys.json';
+  for (const candidatePath of [VAPID_STORE_PATH, legacyVapidPath]) {
+    try {
+      if (fs.existsSync(candidatePath)) {
+        const parsed = JSON.parse(
+          fs.readFileSync(candidatePath, 'utf-8')
+        ) as Partial<VapidKeys>;
+        if (parsed.publicKey && parsed.privateKey) {
+          cachedVapidKeys = {
+            publicKey: parsed.publicKey,
+            privateKey: parsed.privateKey,
+            subject,
+          };
+          webpush.setVapidDetails(
+            subject,
+            cachedVapidKeys.publicKey,
+            cachedVapidKeys.privateKey
+          );
+          if (candidatePath !== VAPID_STORE_PATH) {
+            try {
+              writeJsonAtomic(VAPID_STORE_PATH, cachedVapidKeys);
+            } catch {
+              // Non-fatal
+            }
+          }
+          return cachedVapidKeys;
+        }
       }
+    } catch {
+      // Generate fresh keys below
     }
-  } catch {
-    // Generate fresh keys below
   }
 
   const generated = webpush.generateVAPIDKeys();
@@ -87,7 +167,7 @@ function loadOrCreateVapidKeys(): VapidKeys {
     subject,
   };
   try {
-    fs.writeFileSync(VAPID_STORE_PATH, JSON.stringify(cachedVapidKeys), 'utf-8');
+    writeJsonAtomic(VAPID_STORE_PATH, cachedVapidKeys);
   } catch {
     // Non-fatal in read-only filesystems
   }
@@ -101,30 +181,33 @@ function loadOrCreateVapidKeys(): VapidKeys {
 
 function loadSubscriptionsFromDisk(): void {
   if (subscriptions.size > 0) return;
-  try {
-    if (!fs.existsSync(SUBS_STORE_PATH)) return;
-    const raw = JSON.parse(
-      fs.readFileSync(SUBS_STORE_PATH, 'utf-8')
-    ) as StoredSubscriptionRecord[];
-    if (Array.isArray(raw)) {
-      for (const rec of raw) {
-        if (rec?.endpoint && rec.subscription?.endpoint) {
-          subscriptions.set(rec.endpoint, rec);
+  const legacySubsPath = '/tmp/miau-push-subs.json';
+  for (const candidatePath of [SUBS_STORE_PATH, legacySubsPath]) {
+    try {
+      if (!fs.existsSync(candidatePath)) continue;
+      const raw = JSON.parse(
+        fs.readFileSync(candidatePath, 'utf-8')
+      ) as StoredSubscriptionRecord[];
+      if (Array.isArray(raw) && raw.length > 0) {
+        for (const rec of raw) {
+          if (rec?.endpoint && rec.subscription?.endpoint) {
+            subscriptions.set(rec.endpoint, rec);
+          }
         }
+        if (candidatePath !== SUBS_STORE_PATH) {
+          saveSubscriptionsToDisk();
+        }
+        return;
       }
+    } catch {
+      // Ignore corrupted store
     }
-  } catch {
-    // Ignore corrupted temp store
   }
 }
 
 function saveSubscriptionsToDisk(): void {
   try {
-    fs.writeFileSync(
-      SUBS_STORE_PATH,
-      JSON.stringify(Array.from(subscriptions.values())),
-      'utf-8'
-    );
+    writeJsonAtomic(SUBS_STORE_PATH, Array.from(subscriptions.values()));
   } catch {
     // Non-fatal
   }
@@ -239,11 +322,11 @@ export function upsertPushSubscription(params: {
   prefs?: Partial<CareNotificationPrefsPayload>;
   stats?: Partial<PetCareStatsSnapshot>;
   appVisible?: boolean;
-}): void {
+}): boolean {
   loadOrCreateVapidKeys();
   loadSubscriptionsFromDisk();
   const endpoint = params.subscription?.endpoint;
-  if (!endpoint) return;
+  if (!isValidPushEndpoint(endpoint)) return false;
 
   const existing = subscriptions.get(endpoint);
   subscriptions.set(endpoint, {
@@ -262,6 +345,7 @@ export function upsertPushSubscription(params: {
     updatedAtMs: Date.now(),
   });
   saveSubscriptionsToDisk();
+  return true;
 }
 
 export function syncPushSubscriptionState(params: {
@@ -272,6 +356,7 @@ export function syncPushSubscriptionState(params: {
   appVisible?: boolean;
   notifiedNeed?: CareNeedKey;
 }): boolean {
+  if (!isValidPushEndpoint(params.endpoint)) return false;
   loadSubscriptionsFromDisk();
   const record = subscriptions.get(params.endpoint);
   if (!record) return false;

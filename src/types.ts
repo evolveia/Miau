@@ -56,6 +56,19 @@ export interface EducationTrackDef {
   statusLabel: string;
 }
 
+export type EducationTrackId =
+  | 'infantil_letras'
+  | 'infantil_escrita'
+  | 'infantil_escrita_consoantes'
+  | 'infantil_consoantes'
+  | 'infantil_cores_numeros'
+  | 'infantil_soma_subtracao'
+  | 'infantil_matematica_desafios'
+  | 'infantil_natureza'
+  | 'infantil_comidas_bebidas';
+
+export type ActiveLearnTrack = 'none' | EducationTrackId;
+
 export type GameId = 'fish' | 'memory' | 'escape' | 'galaxy' | 'pacmiau' | 'maze';
 
 export interface GameStatsRecord {

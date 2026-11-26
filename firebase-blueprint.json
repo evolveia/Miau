@@ -261,6 +261,110 @@
         }
       },
       "required": ["ownerId", "playerName", "petName", "totalScore", "bestStage", "coinsEarned", "updatedAt"]
+    },
+    "EducationTrackProgress": {
+      "title": "EducationTrackProgress",
+      "description": "Cloud-synced progress, stars, mastered targets, stickers, and daily goals for each educational track.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "trackId": {
+          "type": "string",
+          "enum": [
+            "infantil_letras",
+            "infantil_escrita",
+            "infantil_escrita_consoantes",
+            "infantil_consoantes",
+            "infantil_cores_numeros",
+            "infantil_soma_subtracao",
+            "infantil_matematica_desafios",
+            "infantil_natureza",
+            "infantil_comidas_bebidas"
+          ]
+        },
+        "completedUnits": { "type": "array" },
+        "unitBestStars": { "type": "object" },
+        "letterBestStars": { "type": "object" },
+        "totalStars": { "type": "integer" },
+        "streakDays": { "type": "integer" },
+        "bestStreakDays": { "type": "integer" },
+        "lastStudyDateKey": { "type": "string", "minLength": 0, "maxLength": 10 },
+        "masteredPrimary": { "type": "array" },
+        "masteredTargets": { "type": "array" },
+        "unlockedStickers": { "type": "array" },
+        "freeExploreUnlocked": { "type": "boolean" },
+        "totalLessonsCompleted": { "type": "integer" },
+        "dailyDateKey": { "type": "string", "minLength": 0, "maxLength": 10 },
+        "dailyStepsCount": { "type": "integer" },
+        "dailyCompletedTargets": { "type": "array" },
+        "dailyBonusClaimedDateKey": { "type": "string", "minLength": 0, "maxLength": 10 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "trackId",
+        "completedUnits",
+        "unitBestStars",
+        "letterBestStars",
+        "totalStars",
+        "streakDays",
+        "bestStreakDays",
+        "lastStudyDateKey",
+        "masteredPrimary",
+        "masteredTargets",
+        "unlockedStickers",
+        "freeExploreUnlocked",
+        "totalLessonsCompleted",
+        "dailyDateKey",
+        "dailyStepsCount",
+        "dailyCompletedTargets",
+        "dailyBonusClaimedDateKey",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "DailyCoinEconomy": {
+      "title": "DailyCoinEconomy",
+      "description": "Cloud-synced anti-farming daily coin caps and cooldown timestamps.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "dateKey": {
+          "type": "string",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "petCoinsToday": { "type": "integer" },
+        "lastPetCoinAtMs": { "type": "integer" },
+        "ballCoinsToday": { "type": "integer" },
+        "lastBallCoinAtMs": { "type": "integer" },
+        "minigameCoinsToday": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "dateKey",
+        "petCoinsToday",
+        "lastPetCoinAtMs",
+        "ballCoinsToday",
+        "lastBallCoinAtMs",
+        "minigameCoinsToday",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -275,6 +379,14 @@
     "/users/{userId}/messages/{messageId}": {
       "schema": { "$ref": "#/entities/ChatMessage" },
       "description": "Persisted chat messages with Miau."
+    },
+    "/users/{userId}/educationProgress/{trackId}": {
+      "schema": { "$ref": "#/entities/EducationTrackProgress" },
+      "description": "Cloud-synced progress per educational track for the user."
+    },
+    "/users/{userId}/economy/{docId}": {
+      "schema": { "$ref": "#/entities/DailyCoinEconomy" },
+      "description": "Cloud-synced daily anti-farming coin cap ledger (docId: daily)."
     },
     "/rankings/{userId}": {
       "schema": { "$ref": "#/entities/RankingEntry" },

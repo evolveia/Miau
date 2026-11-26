@@ -1,4 +1,5 @@
 import { ROUTINE_SCHEDULE, getTodayDateKey } from '../constants';
+import { notifyDailyEconomySaved } from './cloudProgressHooks';
 import type { PetStats, RoutineCategory, RoutineSlotDef } from '../types';
 
 const ECONOMY_STORAGE_PREFIX = 'miau_coin_economy_v1_';
@@ -92,14 +93,16 @@ function loadEconomyState(ownerId = 'guest'): DailyEconomyState {
 }
 
 function saveEconomyState(ownerId: string, state: DailyEconomyState): void {
+  const safeId = ownerId || 'guest';
   try {
     localStorage.setItem(
-      `${ECONOMY_STORAGE_PREFIX}${ownerId || 'guest'}`,
+      `${ECONOMY_STORAGE_PREFIX}${safeId}`,
       JSON.stringify(state)
     );
   } catch {
     // Ignore storage quota errors
   }
+  notifyDailyEconomySaved(safeId, { ...state });
 }
 
 export function claimPetCoins(

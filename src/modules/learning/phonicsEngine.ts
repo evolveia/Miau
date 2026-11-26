@@ -1,4 +1,5 @@
 import { getTodayDateKey } from '../../constants';
+import { notifyEducationProgressSaved } from '../../services/cloudProgressHooks';
 import { miauSpeechService } from '../../services/miauSpeechService';
 import { synthesizeMiauVoice } from '../../services/geminiClient';
 import { soundService } from '../../services/soundService';
@@ -114,6 +115,11 @@ export function saveEarlyLiteracyProgress(
   } catch {
     // Ignore storage quota errors
   }
+  notifyEducationProgressSaved(
+    progress.ownerId || 'guest',
+    'infantil_letras',
+    progress
+  );
 }
 
 function getPreviousDateKey(dateKey: string): string {

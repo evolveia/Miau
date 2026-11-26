@@ -1,4 +1,5 @@
 import { getTodayDateKey } from '../../constants';
+import { notifyEducationProgressSaved } from '../../services/cloudProgressHooks';
 import { phonicsAudioEngine } from '../learning/phonicsEngine';
 import {
   TRACKED_WRITING_CONSONANTS,
@@ -353,6 +354,11 @@ export function saveWritingProgress(
   } catch {
     // Ignore storage quota errors
   }
+  notifyEducationProgressSaved(
+    progress.ownerId || 'guest',
+    config.trackId,
+    progress
+  );
 }
 
 export function isWritingUnitUnlocked(

@@ -1,4 +1,5 @@
 import { getTodayDateKey } from '../../constants';
+import { notifyEducationProgressSaved } from '../../services/cloudProgressHooks';
 import {
   phonicsAudioEngine,
   type ReadingComparisonResult,
@@ -95,6 +96,11 @@ export function saveConsonantsProgress(progress: ConsonantsProgress): void {
   } catch {
     // Ignore storage errors
   }
+  notifyEducationProgressSaved(
+    progress.ownerId || 'guest',
+    'infantil_consoantes',
+    progress
+  );
 }
 
 function getPreviousDateKey(dateKey: string): string {

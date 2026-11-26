@@ -747,7 +747,7 @@ async function startServer() {
       res.status(400).json({ error: 'Inscrição push inválida.' });
       return;
     }
-    upsertPushSubscription({
+    const accepted = upsertPushSubscription({
       subscription,
       ownerId,
       petName,
@@ -755,6 +755,10 @@ async function startServer() {
       stats,
       appVisible,
     });
+    if (!accepted) {
+      res.status(400).json({ error: 'Endpoint de notificação push inválido.' });
+      return;
+    }
     res.json({ ok: true });
   });
 

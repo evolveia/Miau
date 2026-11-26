@@ -987,7 +987,7 @@ class PushNotificationService {
     if (!endpoint) return;
     const prefs = this.getPrefs();
     try {
-      await fetch('/api/push/sync', {
+      const resp = await fetch('/api/push/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1000,6 +1000,23 @@ class PushNotificationService {
         }),
         keepalive: true,
       });
+      if (resp.ok) {
+        const data = (await resp.json()) as { found?: boolean };
+        if (data.found === false && this.cachedSubscription) {
+          await fetch('/api/push/subscribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subscription: this.cachedSubscription.toJSON(),
+              ownerId: this.currentOwnerId,
+              petName,
+              prefs,
+              stats,
+              appVisible,
+            }),
+          });
+        }
+      }
     } catch {
       // Ignore offline/network sync failures
     }

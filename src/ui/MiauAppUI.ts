@@ -54,6 +54,7 @@ import {
 import { LiveVoiceSession, soundService } from '../services/soundService';
 import type {
   AchievementDef,
+  ActiveLearnTrack,
   ActiveModal,
   AppScreen,
   ChatMessage,
@@ -121,23 +122,26 @@ import {
   renderSupportModalHtml,
 } from './modals/CommunicationModals';
 import {
-  bindLearnModalEvents,
   renderLearnModalHtml,
+  bindLearnModalEvents,
 } from './modals/LearnModal';
-import { EarlyLiteracyController } from './modals/EarlyLiteracyView';
-import { ConsonantsModuleController } from '../modules/consonants/ConsonantsModule';
-import { ADICAO_SUBTRACAO_CONFIG } from '../modules/themed/adicaoSubtracaoData';
-import { ANIMAIS_NATUREZA_CONFIG } from '../modules/themed/animaisNaturezaData';
-import { COMIDAS_BEBIDAS_CONFIG } from '../modules/themed/comidasBebidasData';
-import { CORES_FORMAS_CONFIG } from '../modules/themed/coresFormasData';
-import { LOGICA_MATEMATICA_CONFIG } from '../modules/themed/logicaMatematicaData';
-import { ThemedLearningModuleController } from '../modules/themed/ThemedLearningModule';
-import type { ThemedModuleConfig } from '../modules/themed/types';
-import { WritingModuleController } from '../modules/writing/WritingModule';
 import {
-  CONSONANTS_WRITING_CONFIG,
-  loadWritingProgress,
-} from '../modules/writing/writingEngine';
+  hydrateUserCloudProgress,
+  initCloudProgressSyncListeners,
+} from '../services/cloudProgressService';
+import {
+  patchSpeechBubbleDom,
+  patchStatusBarsAndHeaderDom,
+} from '../services/hudPatchService';
+import {
+  createLearnTrackControllers,
+  type LearnTrackControllers,
+} from '../services/learnTrackFactory';
+import {
+  getRoomThemeClasses,
+  isNightRoomBackground,
+} from '../services/roomThemeService';
+import { loadWritingProgress } from '../modules/writing/writingEngine';
 import {
   bindLoginScreenEvents,
   renderLoginScreenHtml,
@@ -244,26 +248,8 @@ export class MiauAppUI {
   private pushTestPreview: { title: string; body: string } | null = null;
   private humanProfile: UserHumanProfile = createEmptyHumanProfile('guest');
   private learnPreviewLevel: SchoolingLevel | null = null;
-  private activeLearnTrack:
-    | 'none'
-    | 'infantil_letras'
-    | 'infantil_escrita'
-    | 'infantil_escrita_consoantes'
-    | 'infantil_consoantes'
-    | 'infantil_cores_numeros'
-    | 'infantil_soma_subtracao'
-    | 'infantil_matematica_desafios'
-    | 'infantil_natureza'
-    | 'infantil_comidas_bebidas' = 'none';
-  private earlyLiteracyView: EarlyLiteracyController;
-  private writingView: WritingModuleController;
-  private writingConsonantsView: WritingModuleController;
-  private consonantsView: ConsonantsModuleController;
-  private coresFormasView: ThemedLearningModuleController;
-  private somaSubtracaoView: ThemedLearningModuleController;
-  private logicaMatematicaView: ThemedLearningModuleController;
-  private animaisNaturezaView: ThemedLearningModuleController;
-  private comidasBebidasView: ThemedLearningModuleController;
+  private activeLearnTrack: ActiveLearnTrack = 'none';
+  private learnTracks: LearnTrackControllers;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
 
@@ -373,7 +359,8 @@ export class MiauAppUI {
       },
       onToast: (msg) => this.showToast(msg),
     });
-    this.earlyLiteracyView = new EarlyLiteracyController({
+    initCloudProgressSyncListeners();
+    this.learnTracks = createLearnTrackControllers({
       getOwnerId: () =>
         this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
       getHumanProfile: () => this.humanProfile,
@@ -395,126 +382,17 @@ export class MiauAppUI {
         this.activeModal = 'menu';
         this.render();
       },
-      onRequestRerender: () => {
+      onRequestTrackRerender: (trackId) => {
         if (
           this.screen === 'game' &&
           this.activeModal === 'learn' &&
-          this.activeLearnTrack === 'infantil_letras'
+          this.activeLearnTrack === trackId
         ) {
           this.render();
         }
       },
       onToast: (msg) => this.showToast(msg),
     });
-    this.writingView = new WritingModuleController({
-      getOwnerId: () =>
-        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
-      getHumanProfile: () => this.humanProfile,
-      getEquipped: () => this.profile.equipped,
-      isSoundEnabled: () => this.profile.soundEnabled,
-      onToggleSoundMute: () => this.toggleSoundMute(),
-      onGrantRewards: (coinsDelta, xpDelta) => {
-        this.ensureProfileDefaults();
-        this.addRewards(coinsDelta, xpDelta);
-        this.updateStatusBarsDOM();
-        void this.persistStats();
-      },
-      onExitToLearnHub: () => {
-        this.activeLearnTrack = 'none';
-        this.render();
-      },
-      onExitToMainMenu: () => {
-        this.activeLearnTrack = 'none';
-        this.activeModal = 'menu';
-        this.render();
-      },
-      onRequestRerender: () => {
-        if (
-          this.screen === 'game' &&
-          this.activeModal === 'learn' &&
-          this.activeLearnTrack === 'infantil_escrita'
-        ) {
-          this.render();
-        }
-      },
-      onToast: (msg) => this.showToast(msg),
-    });
-    this.writingConsonantsView = new WritingModuleController(
-      {
-        getOwnerId: () =>
-          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
-        getHumanProfile: () => this.humanProfile,
-        getEquipped: () => this.profile.equipped,
-        isSoundEnabled: () => this.profile.soundEnabled,
-        onToggleSoundMute: () => this.toggleSoundMute(),
-        onGrantRewards: (coinsDelta, xpDelta) => {
-          this.ensureProfileDefaults();
-          this.addRewards(coinsDelta, xpDelta);
-          this.updateStatusBarsDOM();
-          void this.persistStats();
-        },
-        onExitToLearnHub: () => {
-          this.activeLearnTrack = 'none';
-          this.render();
-        },
-        onExitToMainMenu: () => {
-          this.activeLearnTrack = 'none';
-          this.activeModal = 'menu';
-          this.render();
-        },
-        onRequestRerender: () => {
-          if (
-            this.screen === 'game' &&
-            this.activeModal === 'learn' &&
-            this.activeLearnTrack === 'infantil_escrita_consoantes'
-          ) {
-            this.render();
-          }
-        },
-        onToast: (msg) => this.showToast(msg),
-      },
-      CONSONANTS_WRITING_CONFIG
-    );
-    this.consonantsView = new ConsonantsModuleController({
-      getOwnerId: () =>
-        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
-      getHumanProfile: () => this.humanProfile,
-      getEquipped: () => this.profile.equipped,
-      isSoundEnabled: () => this.profile.soundEnabled,
-      onToggleSoundMute: () => this.toggleSoundMute(),
-      onGrantRewards: (coinsDelta, xpDelta) => {
-        this.ensureProfileDefaults();
-        this.addRewards(coinsDelta, xpDelta);
-        this.updateStatusBarsDOM();
-        void this.persistStats();
-      },
-      onExitToLearnHub: () => {
-        this.activeLearnTrack = 'none';
-        this.render();
-      },
-      onExitToMainMenu: () => {
-        this.activeLearnTrack = 'none';
-        this.activeModal = 'menu';
-        this.render();
-      },
-      onRequestRerender: () => {
-        if (
-          this.screen === 'game' &&
-          this.activeModal === 'learn' &&
-          this.activeLearnTrack === 'infantil_consoantes'
-        ) {
-          this.render();
-        }
-      },
-      onToast: (msg) => this.showToast(msg),
-    });
-    this.coresFormasView = this.createThemedController(CORES_FORMAS_CONFIG);
-    this.somaSubtracaoView = this.createThemedController(ADICAO_SUBTRACAO_CONFIG);
-    this.logicaMatematicaView = this.createThemedController(
-      LOGICA_MATEMATICA_CONFIG
-    );
-    this.animaisNaturezaView = this.createThemedController(ANIMAIS_NATUREZA_CONFIG);
-    this.comidasBebidasView = this.createThemedController(COMIDAS_BEBIDAS_CONFIG);
     this.loadScreenPrefs();
     pwaService.subscribe(() => {
       if (
@@ -530,55 +408,9 @@ export class MiauAppUI {
     this.initLifecycle();
   }
 
-  private createThemedController(
-    config: ThemedModuleConfig
-  ): ThemedLearningModuleController {
-    return new ThemedLearningModuleController(config, {
-      getOwnerId: () =>
-        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
-      getHumanProfile: () => this.humanProfile,
-      getEquipped: () => this.profile.equipped,
-      isSoundEnabled: () => this.profile.soundEnabled,
-      onToggleSoundMute: () => this.toggleSoundMute(),
-      onGrantRewards: (coinsDelta, xpDelta) => {
-        this.ensureProfileDefaults();
-        this.addRewards(coinsDelta, xpDelta);
-        this.updateStatusBarsDOM();
-        void this.persistStats();
-      },
-      onExitToLearnHub: () => {
-        this.activeLearnTrack = 'none';
-        this.render();
-      },
-      onExitToMainMenu: () => {
-        this.activeLearnTrack = 'none';
-        this.activeModal = 'menu';
-        this.render();
-      },
-      onRequestRerender: () => {
-        if (
-          this.screen === 'game' &&
-          this.activeModal === 'learn' &&
-          this.activeLearnTrack === config.trackId
-        ) {
-          this.render();
-        }
-      },
-      onToast: (msg) => this.showToast(msg),
-    });
-  }
-
   private resetAllLearnTracks(): void {
     this.activeLearnTrack = 'none';
-    this.earlyLiteracyView.resetToTrail();
-    this.writingView.resetToTrail();
-    this.writingConsonantsView.resetToTrail();
-    this.consonantsView.resetToTrail();
-    this.coresFormasView.resetToTrail();
-    this.somaSubtracaoView.resetToTrail();
-    this.logicaMatematicaView.resetToTrail();
-    this.animaisNaturezaView.resetToTrail();
-    this.comidasBebidasView.resetToTrail();
+    this.learnTracks.resetAll();
   }
 
   private loadScreenPrefs(): void {
@@ -683,6 +515,16 @@ export class MiauAppUI {
             this.mood = lastMiau.mood;
           }
           this.syncXR();
+          void hydrateUserCloudProgress(user.uid).then(() => {
+            if (
+              this.screen === 'game' &&
+              (this.activeModal === 'progress_report' ||
+                this.activeModal === 'learn' ||
+                this.activeModal === 'routine')
+            ) {
+              this.render();
+            }
+          });
           void pushNotificationService
             .initializeRuntime(user.uid, this.profile.petName, {
               hunger: this.profile.stats.hunger,
@@ -2329,54 +2171,12 @@ export class MiauAppUI {
 
   private updateStatusBarsDOM(): void {
     this.ensureProfileDefaults();
-    const s = this.profile.stats;
-    const map: Array<[string, number]> = [
-      ['hunger', s.hunger],
-      ['hygiene', s.hygiene],
-      ['fun', s.fun],
-      ['sleep', s.sleep],
-      ['happiness', s.happiness],
-    ];
-    map.forEach(([key, val]) => {
-      const pct = Math.round(val);
-      const isLow = pct < 30;
-      const bar = this.root.querySelector(`#bar-${key}`) as HTMLElement | null;
-      const txt = this.root.querySelector(`#pct-${key}`) as HTMLElement | null;
-      const pill = this.root.querySelector(
-        `#stat-pill-${key}`
-      ) as HTMLElement | null;
-      const icon = this.root.querySelector(
-        `#stat-icon-${key}`
-      ) as HTMLElement | null;
-      if (bar) bar.style.width = `${pct}%`;
-      if (txt) {
-        txt.textContent = `${pct}%`;
-        txt.classList.toggle('text-rose-600', isLow);
-      }
-      if (pill) pill.classList.toggle('status-alert-glow', isLow);
-      if (icon) icon.classList.toggle('status-icon-alert', isLow);
-    });
-    const coinsEl = this.root.querySelector('#miau-coins');
-    const levelEl = this.root.querySelector('#miau-level');
-    const achEl = this.root.querySelector('#achievements-count');
-    if (coinsEl) {
-      coinsEl.textContent = this.profile.coins.toLocaleString('pt-BR');
-    }
-    if (levelEl) {
-      levelEl.textContent = `Nível ${this.profile.level}`;
-    }
-    if (achEl) {
-      const count = this.profile.unlockedAchievements?.length || 0;
-      achEl.textContent = `${count}/${ACHIEVEMENTS.length}`;
-    }
+    patchStatusBarsAndHeaderDom(this.root, this.profile);
     this.syncXR();
   }
 
   private updateSpeechDOM(): void {
-    const prefixEl = this.root.querySelector('#speech-prefix');
-    const textEl = this.root.querySelector('#speech-text');
-    if (prefixEl) prefixEl.textContent = this.currentSpeech.meowPrefix;
-    if (textEl) textEl.textContent = this.currentSpeech.text;
+    patchSpeechBubbleDom(this.root, this.currentSpeech);
     this.syncXR();
   }
 
@@ -2862,132 +2662,12 @@ export class MiauAppUI {
     });
   }
 
-  private getRoomThemeClasses(): { wall: string; floor: string; showFloor: boolean; useWallpaper: boolean } {
-    if (this.isSleeping) {
-      return {
-        wall: 'from-[#281e4f] via-[#3b2d6d] to-[#4e3d8a]',
-        floor: 'from-[#372863] to-[#231847]',
-        showFloor: true,
-        useWallpaper: false,
-      };
-    }
-    switch (this.profile.equipped.background) {
-      case 'bg_night':
-        return {
-          wall: 'from-[#281d52] via-[#3d2d73] to-[#523d91]',
-          floor: 'from-[#3a2a6b] to-[#24184a]',
-          showFloor: true,
-          useWallpaper: false,
-        };
-      case 'bg_sunny':
-        return {
-          wall: 'from-[#56ccf2] via-[#8ee0ff] to-[#dff5ff]',
-          floor: 'from-[#4ade80] to-[#16a34a]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_pastel_garden':
-        return {
-          wall: 'from-[#dff7ea] via-[#fde8f5] to-[#e9d5ff]',
-          floor: 'from-[#bbf7d0] to-[#86efac]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_space':
-        return {
-          wall: 'from-[#131138] via-[#261f5e] to-[#392978]',
-          floor: 'from-[#312e81] to-[#1e1b4b]',
-          showFloor: true,
-          useWallpaper: false,
-        };
-      case 'bg_peach':
-        return {
-          wall: 'from-[#ffe4d6] via-[#fbd3e9] to-[#ebd4ff]',
-          floor: 'from-[#eab8d9] to-[#cfa3e8]',
-          showFloor: true,
-          useWallpaper: true,
-        };
-      case 'bg_jurassic':
-        return {
-          wall: 'from-[#bae6fd] via-[#d9f99d] to-[#bbf7d0]',
-          floor: 'from-[#86efac] to-[#4ade80]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_hogwarts':
-        return {
-          wall: 'from-[#1e103c] via-[#311761] to-[#4c1d95]',
-          floor: 'from-[#3b0764] to-[#1e1b4b]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_cyberpunk':
-        return {
-          wall: 'from-[#090d24] via-[#1b1042] to-[#3b0764]',
-          floor: 'from-[#1e1b4b] to-[#0f172a]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_city':
-        return {
-          wall: 'from-[#60a5fa] via-[#bae6fd] to-[#e0f2fe]',
-          floor: 'from-[#cbd5e1] to-[#94a3b8]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_marvel':
-        return {
-          wall: 'from-[#1e293b] via-[#7c2d12] to-[#ea580c]',
-          floor: 'from-[#1e3a8a] to-[#0f172a]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_dc':
-        return {
-          wall: 'from-[#020617] via-[#0f172a] to-[#1e293b]',
-          floor: 'from-[#0f172a] to-[#020617]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_halloween':
-        return {
-          wall: 'from-[#1e1b4b] via-[#3b0764] to-[#7c2d12]',
-          floor: 'from-[#3b0764] to-[#1e1b4b]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      case 'bg_natal':
-        return {
-          wall: 'from-[#0f172a] via-[#1e3a8a] to-[#38bdf8]',
-          floor: 'from-[#f8fafc] to-[#e2e8f0]',
-          showFloor: false,
-          useWallpaper: false,
-        };
-      default:
-        return {
-          wall: 'from-[#ece3ff] via-[#e2d2fc] to-[#d9c4fa]',
-          floor: 'from-[#c8aaf4] to-[#b590eb]',
-          showFloor: true,
-          useWallpaper: true,
-        };
-    }
-  }
-
   private renderGame(): void {
     this.ensureProfileDefaults();
     const s = this.profile.stats;
-    const theme = this.getRoomThemeClasses();
     const bgId = this.profile.equipped.background;
-    const isNight =
-      this.isSleeping ||
-      bgId === 'bg_night' ||
-      bgId === 'bg_space' ||
-      bgId === 'bg_hogwarts' ||
-      bgId === 'bg_cyberpunk' ||
-      bgId === 'bg_marvel' ||
-      bgId === 'bg_dc' ||
-      bgId === 'bg_halloween' ||
-      bgId === 'bg_natal';
+    const theme = getRoomThemeClasses(bgId, this.isSleeping);
+    const isNight = isNightRoomBackground(bgId, this.isSleeping);
     const petName = (this.profile.petName || 'Miau').trim() || 'Miau';
     const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
     const activeRoutineCount = this.getActiveWindowSlots().length;
@@ -3343,28 +3023,10 @@ export class MiauAppUI {
       body = this.profileModal.render();
     } else if (this.activeModal === 'learn') {
       body =
-        this.activeLearnTrack === 'infantil_letras'
-          ? this.earlyLiteracyView.render()
-          : this.activeLearnTrack === 'infantil_escrita'
-            ? this.writingView.render()
-            : this.activeLearnTrack === 'infantil_escrita_consoantes'
-              ? this.writingConsonantsView.render()
-              : this.activeLearnTrack === 'infantil_consoantes'
-                ? this.consonantsView.render()
-                : this.activeLearnTrack === 'infantil_cores_numeros'
-                  ? this.coresFormasView.render()
-                  : this.activeLearnTrack === 'infantil_soma_subtracao'
-                    ? this.somaSubtracaoView.render()
-                    : this.activeLearnTrack === 'infantil_matematica_desafios'
-                      ? this.logicaMatematicaView.render()
-                      : this.activeLearnTrack === 'infantil_natureza'
-                        ? this.animaisNaturezaView.render()
-                        : this.activeLearnTrack === 'infantil_comidas_bebidas'
-                          ? this.comidasBebidasView.render()
-                          : renderLearnModalHtml(
-                              this.humanProfile,
-                              this.learnPreviewLevel
-                            );
+        this.activeLearnTrack !== 'none' &&
+        this.learnTracks.hasTrack(this.activeLearnTrack)
+          ? this.learnTracks.renderTrack(this.activeLearnTrack)
+          : renderLearnModalHtml(this.humanProfile, this.learnPreviewLevel);
     } else if (this.activeModal === 'progress_report') {
       const ownerId =
         this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
@@ -3825,7 +3487,7 @@ export class MiauAppUI {
       .querySelector('#btn-routine-open-writing')
       ?.addEventListener('click', () => {
         this.learnPreviewLevel = null;
-        this.writingView.resetToTrail();
+        this.learnTracks.resetTrack('infantil_escrita');
         this.activeLearnTrack = 'infantil_escrita';
         this.activeModal = 'learn';
         this.render();
@@ -4097,33 +3759,9 @@ export class MiauAppUI {
 
     const openEducationTrack = (trackId: string) => {
       this.activeModal = 'learn';
-      if (trackId === 'infantil_letras') {
-        this.earlyLiteracyView.resetToTrail();
-        this.activeLearnTrack = 'infantil_letras';
-      } else if (trackId === 'infantil_escrita') {
-        this.writingView.resetToTrail();
-        this.activeLearnTrack = 'infantil_escrita';
-      } else if (trackId === 'infantil_escrita_consoantes') {
-        this.writingConsonantsView.resetToTrail();
-        this.activeLearnTrack = 'infantil_escrita_consoantes';
-      } else if (trackId === 'infantil_consoantes') {
-        this.consonantsView.resetToTrail();
-        this.activeLearnTrack = 'infantil_consoantes';
-      } else if (trackId === 'infantil_cores_numeros') {
-        this.coresFormasView.resetToTrail();
-        this.activeLearnTrack = 'infantil_cores_numeros';
-      } else if (trackId === 'infantil_soma_subtracao') {
-        this.somaSubtracaoView.resetToTrail();
-        this.activeLearnTrack = 'infantil_soma_subtracao';
-      } else if (trackId === 'infantil_matematica_desafios') {
-        this.logicaMatematicaView.resetToTrail();
-        this.activeLearnTrack = 'infantil_matematica_desafios';
-      } else if (trackId === 'infantil_natureza') {
-        this.animaisNaturezaView.resetToTrail();
-        this.activeLearnTrack = 'infantil_natureza';
-      } else if (trackId === 'infantil_comidas_bebidas') {
-        this.comidasBebidasView.resetToTrail();
-        this.activeLearnTrack = 'infantil_comidas_bebidas';
+      if (this.learnTracks.hasTrack(trackId)) {
+        this.learnTracks.resetTrack(trackId);
+        this.activeLearnTrack = trackId;
       }
       this.render();
     };
@@ -4162,24 +3800,11 @@ export class MiauAppUI {
     }
 
     if (this.activeModal === 'learn') {
-      if (this.activeLearnTrack === 'infantil_letras') {
-        this.earlyLiteracyView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_escrita') {
-        this.writingView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_escrita_consoantes') {
-        this.writingConsonantsView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_consoantes') {
-        this.consonantsView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_cores_numeros') {
-        this.coresFormasView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_soma_subtracao') {
-        this.somaSubtracaoView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_matematica_desafios') {
-        this.logicaMatematicaView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_natureza') {
-        this.animaisNaturezaView.bind(this.root);
-      } else if (this.activeLearnTrack === 'infantil_comidas_bebidas') {
-        this.comidasBebidasView.bind(this.root);
+      if (
+        this.activeLearnTrack !== 'none' &&
+        this.learnTracks.hasTrack(this.activeLearnTrack)
+      ) {
+        this.learnTracks.bindTrack(this.activeLearnTrack, this.root);
       } else {
         bindLearnModalEvents(this.root, {
           onBackToMenu: () => {
