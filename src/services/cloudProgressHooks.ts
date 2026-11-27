@@ -7,7 +7,13 @@ export type CloudSyncTrackId =
   | 'infantil_soma_subtracao'
   | 'infantil_matematica_desafios'
   | 'infantil_natureza'
-  | 'infantil_comidas_bebidas';
+  | 'infantil_comidas_bebidas'
+  | 'fund1_leitura'
+  | 'fund1_matematica'
+  | 'fund1_ciencias'
+  | 'fund2_logica'
+  | 'fund2_ciencias'
+  | 'fund2_historia';
 
 export interface DailyEconomyPayload {
   dateKey: string;

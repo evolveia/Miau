@@ -1,3 +1,7 @@
+import {
+  isWithinQuietHours,
+  loadParentalControlConfig,
+} from './parentalControlService';
 import { soundService } from './soundService';
 
 export type CareNeedKey = 'hunger' | 'hygiene' | 'sleep';
@@ -529,6 +533,22 @@ class PushNotificationService {
     }
   }
 
+  private buildServerPushPrefs(
+    ownerId = this.currentOwnerId,
+    prefs = this.getPrefs(ownerId)
+  ) {
+    const parental = loadParentalControlConfig(ownerId);
+    const tzOffsetMin =
+      typeof Date !== 'undefined' ? new Date().getTimezoneOffset() : 0;
+    return {
+      ...prefs,
+      quietHoursEnabled: parental.quietHoursEnabled,
+      quietStart: parental.quietStart,
+      quietEnd: parental.quietEnd,
+      tzOffsetMin,
+    };
+  }
+
   private async subscribePushManager(
     reg: ServiceWorkerRegistration,
     ownerId: string,
@@ -575,7 +595,7 @@ class PushNotificationService {
           subscription: sub.toJSON(),
           ownerId,
           petName,
-          prefs,
+          prefs: this.buildServerPushPrefs(ownerId, prefs),
           stats,
           appVisible: !document.hidden,
         }),
@@ -850,7 +870,12 @@ class PushNotificationService {
     stats: CareStatsInput
   ): void {
     const prefs = this.getPrefs();
-    if (!prefs.enabled || this.getPermission() !== 'granted') {
+    const parental = loadParentalControlConfig(this.currentOwnerId);
+    if (
+      !prefs.enabled ||
+      this.getPermission() !== 'granted' ||
+      isWithinQuietHours(parental)
+    ) {
       this.clearServiceWorkerFallbackReminders();
       return;
     }
@@ -927,6 +952,11 @@ class PushNotificationService {
       return null;
     }
 
+    const parental = loadParentalControlConfig(params.ownerId);
+    if (isWithinQuietHours(parental)) {
+      return null;
+    }
+
     const now = Date.now();
     const order: CareNeedKey[] = ['hunger', 'hygiene', 'sleep'];
     const pendingNeed = order.find((need) => {
@@ -985,7 +1015,7 @@ class PushNotificationService {
   ): Promise<void> {
     const endpoint = this.cachedSubscription?.endpoint;
     if (!endpoint) return;
-    const prefs = this.getPrefs();
+    const prefs = this.buildServerPushPrefs(this.currentOwnerId);
     try {
       const resp = await fetch('/api/push/sync', {
         method: 'POST',
@@ -1023,9 +1053,10 @@ class PushNotificationService {
   }
 
   public syncWithServerOnHide(petName: string, stats: CareStatsInput): void {
-    const prefs = this.getPrefs();
+    const rawPrefs = this.getPrefs();
+    const prefs = this.buildServerPushPrefs(this.currentOwnerId, rawPrefs);
     this.updateAppBadgeAndTitle(petName, stats);
-    if (prefs.enabled) {
+    if (rawPrefs.enabled) {
       void this.syncCareSnapshotToServiceWorker(petName, stats);
       if (this.getPermission() === 'granted') {
         this.scheduleServiceWorkerFallbackReminders(petName, stats);

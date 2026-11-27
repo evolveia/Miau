@@ -1,11 +1,13 @@
 import { isEasyReadEnabled } from '../../services/accessibilityService';
 import { transcribeUserAudio } from '../../services/geminiClient';
 import { hapticService } from '../../services/hapticService';
+import { recordCompletedLesson } from '../../services/parentalControlService';
 import { soundService } from '../../services/soundService';
 import type { EquippedItems, MiauMood, UserHumanProfile } from '../../types';
 import { escapeHtml } from '../../utils/html';
 import { renderMiauSvg } from '../../ui/MiauIllustration';
 import type { ReadingComparisonResult } from '../learning/phonicsEngine';
+import { bindHoldVoiceRecordButton } from '../shared/voiceHoldButton';
 import {
   CONSONANT_UNITS,
   TRACKED_CONSONANTS,
@@ -888,8 +890,8 @@ export class ConsonantsModuleController {
           </button>
           ${
             lesson.voiceStatusText
-              ? `<div class="text-xs font-bold text-[#5a3696] bg-white/90 px-3 py-1 rounded-full border border-purple-200">${escapeHtml(lesson.voiceStatusText)}</div>`
-              : ''
+              ? `<div id="cs-voice-status-badge" class="text-xs font-bold text-[#5a3696] bg-white/90 px-3 py-1 rounded-full border border-purple-200">${escapeHtml(lesson.voiceStatusText)}</div>`
+              : `<div id="cs-voice-status-badge" class="hidden text-xs font-bold text-[#5a3696] bg-white/90 px-3 py-1 rounded-full border border-purple-200"></div>`
           }
         </div>
 
@@ -898,12 +900,13 @@ export class ConsonantsModuleController {
         ${
           !lesson.stepSolved
             ? `
-              <div class="flex flex-col items-center gap-2.5 w-full">
+              <div class="flex flex-col items-center gap-2 w-full">
+                <p class="text-[11px] font-bold text-[#6b4d9e]">Segure o botão abaixo enquanto fala (ou dê 1 toque para iniciar/parar).</p>
                 <button
                   id="btn-cs-voice-record"
                   type="button"
                   ${lesson.isComparingVoice ? 'disabled' : ''}
-                  class="min-h-[48px] px-6 py-3 rounded-2xl font-extrabold text-sm sm:text-base shadow-sm active:scale-95 transition flex items-center gap-2 ${
+                  class="min-h-[48px] px-6 py-3 rounded-2xl font-extrabold text-sm sm:text-base shadow-sm active:scale-95 transition flex items-center gap-2 touch-none select-none ${
                     lesson.isComparingVoice
                       ? 'bg-purple-300 text-white cursor-wait'
                       : lesson.isRecordingVoice
@@ -919,8 +922,8 @@ export class ConsonantsModuleController {
                       : lesson.isRecordingVoice
                         ? '⏹️ Parar e Comparar'
                         : shouldRetryVoice
-                          ? '🎤 Falar Novamente'
-                          : '🎤 Falar no Microfone'
+                          ? '🎙️ Segure para Tentar de Novo'
+                          : '🎙️ Segure para Falar'
                   }
                 </button>
                 <button
@@ -1213,9 +1216,15 @@ export class ConsonantsModuleController {
       });
     });
 
-    root
-      .querySelector('#btn-cs-voice-record')
-      ?.addEventListener('click', () => void this.handleVoiceRecordToggle());
+    bindHoldVoiceRecordButton(
+      root.querySelector('#btn-cs-voice-record') as HTMLElement | null,
+      {
+        isRecording: () => Boolean(this.lesson?.isRecordingVoice),
+        isComparing: () => Boolean(this.lesson?.isComparingVoice),
+        onStartRecording: () => this.startVoiceRecording(),
+        onStopAndCompare: () => this.stopAndCompareVoice(),
+      }
+    );
     root.querySelector('#btn-cs-voice-skip')?.addEventListener('click', () => {
       if (lesson.isRecordingVoice) {
         lesson.isRecordingVoice = false;
@@ -1349,130 +1358,141 @@ export class ConsonantsModuleController {
     void consonantsAudioEngine.speak(ch.hintAudioText, { slow: true });
   }
 
-  private async handleVoiceRecordToggle(): Promise<void> {
+  private async startVoiceRecording(): Promise<boolean> {
     const lesson = this.lesson;
-    if (!lesson || lesson.stepSolved || lesson.isComparingVoice) return;
-    const ch = lesson.queue[lesson.cursor];
-
-    if (lesson.isRecordingVoice) {
-      lesson.isRecordingVoice = false;
-      lesson.isComparingVoice = true;
-      lesson.voiceStatusText = 'Ouvindo e comparando sua pronúncia...';
-      this.deps.onRequestRerender();
-      try {
-        const { audioBase64, mimeType, durationMs, peakRms } =
-          await soundService.stopRecording();
-        const expectedPhrase =
-          ch.speakTargetText || ch.speakVisualLabel || ch.keywords[0] || ch.targetKey;
-        const transcript =
-          durationMs < 240 || peakRms < 0.0025
-            ? ''
-            : await transcribeUserAudio(audioBase64, mimeType, {
-                mode: 'study',
-                expectedPhrase,
-                hintKeywords: [
-                  expectedPhrase,
-                  ...(ch.speakAcceptedVariants || []),
-                  ...ch.keywords,
-                ],
-              });
-        const comparison = evaluateConsonantReadingAttempt(transcript, ch);
-
-        lesson.isComparingVoice = false;
-        lesson.readingComparison = comparison;
-
-        if (comparison.verdict === 'positive') {
-          lesson.voiceStatusText = `Muito bem! Você leu: "${comparison.spokenDisplay}" 🌟`;
-          hapticService.coin();
-          consonantsAudioEngine.playSuccessFeedback();
-
-          const firstTryClean = !lesson.currentAttemptHasError;
-          if (!(ch.id in lesson.firstTryCleanFlags)) {
-            lesson.firstTryCleanFlags[ch.id] = firstTryClean;
-          }
-          recordConsonantSpacedOutcome(
-            this.getProgress(),
-            ch,
-            firstTryClean || (lesson.isRetryItemFlags[lesson.cursor] ?? false)
-          );
-
-          const isRetryStep = lesson.isRetryItemFlags[lesson.cursor] ?? false;
-          if (!isRetryStep) {
-            this.deps.onGrantRewards(5, 4);
-          }
-
-          lesson.stepSolved = true;
-          lesson.miauMood = 'affectionate';
-          lesson.lastFeedback = {
-            kind: 'praise',
-            text: isRetryStep
-              ? comparison.feedbackText
-              : `${comparison.feedbackText} (+🪙 5)`,
-          };
-          this.deps.onRequestRerender();
-          void consonantsAudioEngine.speak(comparison.feedbackAudioText, {
-            slow: false,
-          });
-          return;
-        }
-
-        hapticService.tap();
-        consonantsAudioEngine.playGentleHintFeedback();
-        lesson.currentAttemptHasError = true;
-        lesson.firstTryCleanFlags[ch.id] = false;
-        recordConsonantSpacedOutcome(this.getProgress(), ch, false);
-
-        if (comparison.verdict === 'medium') {
-          lesson.voiceStatusText =
-            'Quase igual! Ouça a palavra e toque em "Falar Novamente"!';
-          lesson.miauMood = 'playful';
-          lesson.lastFeedback = {
-            kind: 'medium',
-            text: comparison.feedbackText,
-          };
-        } else {
-          lesson.voiceStatusText =
-            'Vamos tentar de novo! Ouça o Miau e toque em "Falar Novamente"!';
-          lesson.miauMood = 'sleepy';
-          lesson.lastFeedback = {
-            kind: 'negative',
-            text: comparison.feedbackText,
-          };
-        }
-
-        this.deps.onRequestRerender();
-        await consonantsAudioEngine.speak(comparison.feedbackAudioText, {
-          slow: false,
-        });
-        if (
-          this.lesson === lesson &&
-          !lesson.stepSolved &&
-          !lesson.isRecordingVoice
-        ) {
-          await consonantsAudioEngine.speakTargetWord(
-            comparison.targetReplayAudioText,
-            { slow: true }
-          );
-        }
-      } catch {
-        lesson.isComparingVoice = false;
-        lesson.voiceStatusText =
-          'Não foi possível analisar o áudio agora. Tente falar de novo ou use Pular!';
-        this.deps.onRequestRerender();
-      }
-      return;
+    if (!lesson || lesson.stepSolved || lesson.isComparingVoice || lesson.isRecordingVoice) {
+      return false;
     }
-
     consonantsAudioEngine.stop();
     try {
       await soundService.startRecording();
       lesson.isRecordingVoice = true;
       lesson.voiceStatusText =
-        'Gravando... leia em voz alta e toque para comparar!';
-      this.deps.onRequestRerender();
+        'Gravando... fale em voz alta e solte (ou toque) para comparar!';
+      const badge = document.getElementById('cs-voice-status-badge');
+      if (badge) {
+        badge.textContent = lesson.voiceStatusText;
+        badge.classList.remove('hidden');
+      }
+      return true;
     } catch {
+      lesson.isRecordingVoice = false;
       lesson.voiceStatusText =
         'Microfone não liberado. Libere o microfone ou toque em Pular!';
+      this.deps.onRequestRerender();
+      return false;
+    }
+  }
+
+  private async stopAndCompareVoice(): Promise<void> {
+    const lesson = this.lesson;
+    if (!lesson || lesson.stepSolved || lesson.isComparingVoice || !lesson.isRecordingVoice) {
+      return;
+    }
+    const ch = lesson.queue[lesson.cursor];
+    lesson.isRecordingVoice = false;
+    lesson.isComparingVoice = true;
+    lesson.voiceStatusText = 'Ouvindo e comparando sua pronúncia...';
+    this.deps.onRequestRerender();
+    try {
+      const { audioBase64, mimeType, durationMs, peakRms } =
+        await soundService.stopRecording();
+      const expectedPhrase =
+        ch.speakTargetText || ch.speakVisualLabel || ch.keywords[0] || ch.targetKey;
+      const transcript =
+        durationMs < 240 || peakRms < 0.0025
+          ? ''
+          : await transcribeUserAudio(audioBase64, mimeType, {
+              mode: 'study',
+              expectedPhrase,
+              hintKeywords: [
+                expectedPhrase,
+                ...(ch.speakAcceptedVariants || []),
+                ...ch.keywords,
+              ],
+            });
+      const comparison = evaluateConsonantReadingAttempt(transcript, ch);
+
+      lesson.isComparingVoice = false;
+      lesson.readingComparison = comparison;
+
+      if (comparison.verdict === 'positive') {
+        lesson.voiceStatusText = `Muito bem! Você leu: "${comparison.spokenDisplay}" 🌟`;
+        hapticService.coin();
+        consonantsAudioEngine.playSuccessFeedback();
+
+        const firstTryClean = !lesson.currentAttemptHasError;
+        if (!(ch.id in lesson.firstTryCleanFlags)) {
+          lesson.firstTryCleanFlags[ch.id] = firstTryClean;
+        }
+        recordConsonantSpacedOutcome(
+          this.getProgress(),
+          ch,
+          firstTryClean || (lesson.isRetryItemFlags[lesson.cursor] ?? false)
+        );
+
+        const isRetryStep = lesson.isRetryItemFlags[lesson.cursor] ?? false;
+        if (!isRetryStep) {
+          this.deps.onGrantRewards(5, 4);
+        }
+
+        lesson.stepSolved = true;
+        lesson.miauMood = 'affectionate';
+        lesson.lastFeedback = {
+          kind: 'praise',
+          text: isRetryStep
+            ? comparison.feedbackText
+            : `${comparison.feedbackText} (+🪙 5)`,
+        };
+        this.deps.onRequestRerender();
+        void consonantsAudioEngine.speak(comparison.feedbackAudioText, {
+          slow: false,
+        });
+        return;
+      }
+
+      hapticService.tap();
+      consonantsAudioEngine.playGentleHintFeedback();
+      lesson.currentAttemptHasError = true;
+      lesson.firstTryCleanFlags[ch.id] = false;
+      recordConsonantSpacedOutcome(this.getProgress(), ch, false);
+
+      if (comparison.verdict === 'medium') {
+        lesson.voiceStatusText =
+          'Quase igual! Ouça a palavra e segure o microfone para tentar de novo!';
+        lesson.miauMood = 'playful';
+        lesson.lastFeedback = {
+          kind: 'medium',
+          text: comparison.feedbackText,
+        };
+      } else {
+        lesson.voiceStatusText =
+          'Vamos tentar de novo! Ouça o Miau e segure o microfone!';
+        lesson.miauMood = 'sleepy';
+        lesson.lastFeedback = {
+          kind: 'negative',
+          text: comparison.feedbackText,
+        };
+      }
+
+      this.deps.onRequestRerender();
+      await consonantsAudioEngine.speak(comparison.feedbackAudioText, {
+        slow: false,
+      });
+      if (
+        this.lesson === lesson &&
+        !lesson.stepSolved &&
+        !lesson.isRecordingVoice
+      ) {
+        await consonantsAudioEngine.speakTargetWord(
+          comparison.targetReplayAudioText,
+          { slow: true }
+        );
+      }
+    } catch {
+      lesson.isComparingVoice = false;
+      lesson.voiceStatusText =
+        'Não foi possível analisar o áudio agora. Tente falar de novo ou use Pular!';
       this.deps.onRequestRerender();
     }
   }
@@ -1547,6 +1567,7 @@ export class ConsonantsModuleController {
       };
     }
 
+    recordCompletedLesson(this.getProgress().ownerId);
     this.stage = 'celebration';
     this.lesson = null;
     hapticService.achievement();

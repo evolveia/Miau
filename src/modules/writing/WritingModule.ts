@@ -7,6 +7,7 @@ import {
   requestWritingTeach,
 } from '../../services/geminiClient';
 import { hapticService } from '../../services/hapticService';
+import { recordCompletedLesson } from '../../services/parentalControlService';
 import { soundService } from '../../services/soundService';
 import type { EquippedItems, MiauMood, UserHumanProfile } from '../../types';
 import { escapeHtml } from '../../utils/html';
@@ -1090,6 +1091,7 @@ export class WritingModuleController {
     );
 
     this.deps.onGrantRewards(unit.coinReward, unit.xpReward);
+    recordCompletedLesson(prev.ownerId);
     soundService.playCoin();
     hapticService.levelUp();
 

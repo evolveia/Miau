@@ -9,6 +9,10 @@ export interface CareNotificationPrefsPayload {
   enabled: boolean;
   threshold: number;
   needs: Record<CareNeedKey, boolean>;
+  quietHoursEnabled?: boolean;
+  quietStart?: string;
+  quietEnd?: string;
+  tzOffsetMin?: number;
 }
 
 export interface PetCareStatsSnapshot {
@@ -301,9 +305,45 @@ function sanitizeStats(raw: Partial<PetCareStatsSnapshot> | undefined): PetCareS
   };
 }
 
+const HH_MM_RX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+function sanitizeHhMm(val: unknown, fallback: string): string {
+  if (typeof val !== 'string') return fallback;
+  const trimmed = val.trim();
+  return HH_MM_RX.test(trimmed) ? trimmed : fallback;
+}
+
+export function isPushPrefsInQuietHours(
+  prefs: Partial<CareNotificationPrefsPayload> | undefined,
+  nowMs = Date.now()
+): boolean {
+  if (!prefs?.quietHoursEnabled) return false;
+  const startMatch = HH_MM_RX.exec(sanitizeHhMm(prefs.quietStart, '22:00'));
+  const endMatch = HH_MM_RX.exec(sanitizeHhMm(prefs.quietEnd, '07:00'));
+  if (!startMatch || !endMatch) return false;
+  const startMin = Number(startMatch[1]) * 60 + Number(startMatch[2]);
+  const endMin = Number(endMatch[1]) * 60 + Number(endMatch[2]);
+  if (startMin === endMin) return false;
+  const tzOffsetMin =
+    typeof prefs.tzOffsetMin === 'number' &&
+    Number.isFinite(prefs.tzOffsetMin) &&
+    Math.abs(prefs.tzOffsetMin) <= 840
+      ? Math.round(prefs.tzOffsetMin)
+      : 0;
+  const localDate = new Date(nowMs - tzOffsetMin * 60_000);
+  const curMin = localDate.getUTCHours() * 60 + localDate.getUTCMinutes();
+  if (startMin < endMin) {
+    return curMin >= startMin && curMin < endMin;
+  }
+  return curMin >= startMin || curMin < endMin;
+}
+
 function sanitizePrefs(
   raw: Partial<CareNotificationPrefsPayload> | undefined
 ): CareNotificationPrefsPayload {
+  const tzRaw = Number(raw?.tzOffsetMin);
+  const tzOffsetMin =
+    Number.isFinite(tzRaw) && Math.abs(tzRaw) <= 840 ? Math.round(tzRaw) : 0;
   return {
     enabled: raw?.enabled !== false,
     threshold: clampThreshold(raw?.threshold),
@@ -312,6 +352,10 @@ function sanitizePrefs(
       hygiene: raw?.needs?.hygiene !== false,
       sleep: raw?.needs?.sleep !== false,
     },
+    quietHoursEnabled: Boolean(raw?.quietHoursEnabled),
+    quietStart: sanitizeHhMm(raw?.quietStart, '22:00'),
+    quietEnd: sanitizeHhMm(raw?.quietEnd, '07:00'),
+    tzOffsetMin,
   };
 }
 
@@ -456,6 +500,7 @@ async function runCarePushSweep(): Promise<void> {
 
   for (const [endpoint, record] of subscriptions.entries()) {
     if (!record.prefs.enabled) continue;
+    if (isPushPrefsInQuietHours(record.prefs, now)) continue;
     // Se a aba estava visível muito recentemente (< 40s), o cliente cuida dos alertas locais sem duplicar push
     if (record.appVisible && now - record.updatedAtMs < 40_000) {
       continue;

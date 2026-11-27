@@ -3,6 +3,12 @@ import { ADICAO_SUBTRACAO_CONFIG } from '../modules/themed/adicaoSubtracaoData';
 import { ANIMAIS_NATUREZA_CONFIG } from '../modules/themed/animaisNaturezaData';
 import { COMIDAS_BEBIDAS_CONFIG } from '../modules/themed/comidasBebidasData';
 import { CORES_FORMAS_CONFIG } from '../modules/themed/coresFormasData';
+import { FUND1_CIENCIAS_CONFIG } from '../modules/themed/fund1CienciasData';
+import { FUND1_LEITURA_CONFIG } from '../modules/themed/fund1LeituraData';
+import { FUND1_MATEMATICA_CONFIG } from '../modules/themed/fund1MatematicaData';
+import { FUND2_CIENCIAS_CONFIG } from '../modules/themed/fund2CienciasData';
+import { FUND2_HISTORIA_CONFIG } from '../modules/themed/fund2HistoriaData';
+import { FUND2_LOGICA_CONFIG } from '../modules/themed/fund2LogicaData';
 import { LOGICA_MATEMATICA_CONFIG } from '../modules/themed/logicaMatematicaData';
 import { ThemedLearningModuleController } from '../modules/themed/ThemedLearningModule';
 import type { ThemedModuleConfig } from '../modules/themed/types';
@@ -78,6 +84,12 @@ export function createLearnTrackControllers(
     infantil_matematica_desafios: makeThemed(LOGICA_MATEMATICA_CONFIG),
     infantil_natureza: makeThemed(ANIMAIS_NATUREZA_CONFIG),
     infantil_comidas_bebidas: makeThemed(COMIDAS_BEBIDAS_CONFIG),
+    fund1_leitura: makeThemed(FUND1_LEITURA_CONFIG),
+    fund1_matematica: makeThemed(FUND1_MATEMATICA_CONFIG),
+    fund1_ciencias: makeThemed(FUND1_CIENCIAS_CONFIG),
+    fund2_logica: makeThemed(FUND2_LOGICA_CONFIG),
+    fund2_ciencias: makeThemed(FUND2_CIENCIAS_CONFIG),
+    fund2_historia: makeThemed(FUND2_HISTORIA_CONFIG),
   };
 
   const hasTrack = (trackId: string): trackId is ConcreteLearnTrackId =>

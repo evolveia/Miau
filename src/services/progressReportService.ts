@@ -5,6 +5,12 @@ import { ADICAO_SUBTRACAO_CONFIG } from '../modules/themed/adicaoSubtracaoData';
 import { ANIMAIS_NATUREZA_CONFIG } from '../modules/themed/animaisNaturezaData';
 import { COMIDAS_BEBIDAS_CONFIG } from '../modules/themed/comidasBebidasData';
 import { CORES_FORMAS_CONFIG } from '../modules/themed/coresFormasData';
+import { FUND1_CIENCIAS_CONFIG } from '../modules/themed/fund1CienciasData';
+import { FUND1_LEITURA_CONFIG } from '../modules/themed/fund1LeituraData';
+import { FUND1_MATEMATICA_CONFIG } from '../modules/themed/fund1MatematicaData';
+import { FUND2_CIENCIAS_CONFIG } from '../modules/themed/fund2CienciasData';
+import { FUND2_HISTORIA_CONFIG } from '../modules/themed/fund2HistoriaData';
+import { FUND2_LOGICA_CONFIG } from '../modules/themed/fund2LogicaData';
 import { LOGICA_MATEMATICA_CONFIG } from '../modules/themed/logicaMatematicaData';
 import { loadThemedProgress } from '../modules/themed/themedEngine';
 import {
@@ -70,6 +76,12 @@ export function buildEducationProgressReport(
   const logica = loadThemedProgress(LOGICA_MATEMATICA_CONFIG, safeOwner);
   const natureza = loadThemedProgress(ANIMAIS_NATUREZA_CONFIG, safeOwner);
   const comidas = loadThemedProgress(COMIDAS_BEBIDAS_CONFIG, safeOwner);
+  const f1Leitura = loadThemedProgress(FUND1_LEITURA_CONFIG, safeOwner);
+  const f1Math = loadThemedProgress(FUND1_MATEMATICA_CONFIG, safeOwner);
+  const f1Cien = loadThemedProgress(FUND1_CIENCIAS_CONFIG, safeOwner);
+  const f2Logica = loadThemedProgress(FUND2_LOGICA_CONFIG, safeOwner);
+  const f2Cien = loadThemedProgress(FUND2_CIENCIAS_CONFIG, safeOwner);
+  const f2Hist = loadThemedProgress(FUND2_HISTORIA_CONFIG, safeOwner);
 
   const calcPct = (done: number, total: number) =>
     total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
@@ -258,6 +270,126 @@ export function buildEducationProgressReport(
       masteredLabel: `${comidas.masteredTags.length}/${COMIDAS_BEBIDAS_CONFIG.masteryItems.length} grupos`,
       streakDays: comidas.streakDays,
     },
+    {
+      trackId: 'fund1_leitura',
+      title: 'Leitura Mágica e Interpretação',
+      emoji: '📖',
+      category: 'letras_escrita',
+      accentGradient: 'from-sky-400 to-indigo-500',
+      completedUnits: f1Leitura.completedUnits.length,
+      totalUnits: FUND1_LEITURA_CONFIG.units.length,
+      progressPct: calcPct(
+        f1Leitura.completedUnits.length,
+        FUND1_LEITURA_CONFIG.units.length
+      ),
+      stars: f1Leitura.totalStars,
+      maxStars: FUND1_LEITURA_CONFIG.units.length * 3,
+      lessonsCompleted: f1Leitura.totalLessonsCompleted,
+      masteredCount: f1Leitura.masteredTags.length,
+      masteredTotal: FUND1_LEITURA_CONFIG.masteryItems.length,
+      masteredLabel: `${f1Leitura.masteredTags.length}/${FUND1_LEITURA_CONFIG.masteryItems.length} leituras`,
+      streakDays: f1Leitura.streakDays,
+    },
+    {
+      trackId: 'fund1_matematica',
+      title: 'Tabuada e Desafios de Soma',
+      emoji: '🧮',
+      category: 'matematica_cores',
+      accentGradient: 'from-amber-400 to-orange-500',
+      completedUnits: f1Math.completedUnits.length,
+      totalUnits: FUND1_MATEMATICA_CONFIG.units.length,
+      progressPct: calcPct(
+        f1Math.completedUnits.length,
+        FUND1_MATEMATICA_CONFIG.units.length
+      ),
+      stars: f1Math.totalStars,
+      maxStars: FUND1_MATEMATICA_CONFIG.units.length * 3,
+      lessonsCompleted: f1Math.totalLessonsCompleted,
+      masteredCount: f1Math.masteredTags.length,
+      masteredTotal: FUND1_MATEMATICA_CONFIG.masteryItems.length,
+      masteredLabel: `${f1Math.masteredTags.length}/${FUND1_MATEMATICA_CONFIG.masteryItems.length} tabuadas`,
+      streakDays: f1Math.streakDays,
+    },
+    {
+      trackId: 'fund1_ciencias',
+      title: 'Planeta Terra e Biomas do Brasil',
+      emoji: '🌎',
+      category: 'mundo_saude',
+      accentGradient: 'from-emerald-400 to-cyan-500',
+      completedUnits: f1Cien.completedUnits.length,
+      totalUnits: FUND1_CIENCIAS_CONFIG.units.length,
+      progressPct: calcPct(
+        f1Cien.completedUnits.length,
+        FUND1_CIENCIAS_CONFIG.units.length
+      ),
+      stars: f1Cien.totalStars,
+      maxStars: FUND1_CIENCIAS_CONFIG.units.length * 3,
+      lessonsCompleted: f1Cien.totalLessonsCompleted,
+      masteredCount: f1Cien.masteredTags.length,
+      masteredTotal: FUND1_CIENCIAS_CONFIG.masteryItems.length,
+      masteredLabel: `${f1Cien.masteredTags.length}/${FUND1_CIENCIAS_CONFIG.masteryItems.length} biomas`,
+      streakDays: f1Cien.streakDays,
+    },
+    {
+      trackId: 'fund2_logica',
+      title: 'Lógica, Frações e Equações',
+      emoji: '📐',
+      category: 'matematica_cores',
+      accentGradient: 'from-violet-400 to-purple-600',
+      completedUnits: f2Logica.completedUnits.length,
+      totalUnits: FUND2_LOGICA_CONFIG.units.length,
+      progressPct: calcPct(
+        f2Logica.completedUnits.length,
+        FUND2_LOGICA_CONFIG.units.length
+      ),
+      stars: f2Logica.totalStars,
+      maxStars: FUND2_LOGICA_CONFIG.units.length * 3,
+      lessonsCompleted: f2Logica.totalLessonsCompleted,
+      masteredCount: f2Logica.masteredTags.length,
+      masteredTotal: FUND2_LOGICA_CONFIG.masteryItems.length,
+      masteredLabel: `${f2Logica.masteredTags.length}/${FUND2_LOGICA_CONFIG.masteryItems.length} conceitos`,
+      streakDays: f2Logica.streakDays,
+    },
+    {
+      trackId: 'fund2_ciencias',
+      title: 'Corpo Humano, Energia e Universo',
+      emoji: '🔬',
+      category: 'mundo_saude',
+      accentGradient: 'from-cyan-400 to-indigo-500',
+      completedUnits: f2Cien.completedUnits.length,
+      totalUnits: FUND2_CIENCIAS_CONFIG.units.length,
+      progressPct: calcPct(
+        f2Cien.completedUnits.length,
+        FUND2_CIENCIAS_CONFIG.units.length
+      ),
+      stars: f2Cien.totalStars,
+      maxStars: FUND2_CIENCIAS_CONFIG.units.length * 3,
+      lessonsCompleted: f2Cien.totalLessonsCompleted,
+      masteredCount: f2Cien.masteredTags.length,
+      masteredTotal: FUND2_CIENCIAS_CONFIG.masteryItems.length,
+      masteredLabel: `${f2Cien.masteredTags.length}/${FUND2_CIENCIAS_CONFIG.masteryItems.length} temas`,
+      streakDays: f2Cien.streakDays,
+    },
+    {
+      trackId: 'fund2_historia',
+      title: 'História, Cultura e Cidadania',
+      emoji: '🏛️',
+      category: 'mundo_saude',
+      accentGradient: 'from-amber-400 to-rose-500',
+      completedUnits: f2Hist.completedUnits.length,
+      totalUnits: FUND2_HISTORIA_CONFIG.units.length,
+      progressPct: calcPct(
+        f2Hist.completedUnits.length,
+        FUND2_HISTORIA_CONFIG.units.length
+      ),
+      stars: f2Hist.totalStars,
+      maxStars: FUND2_HISTORIA_CONFIG.units.length * 3,
+      lessonsCompleted: f2Hist.totalLessonsCompleted,
+      masteredCount: f2Hist.masteredTags.length,
+      masteredTotal: FUND2_HISTORIA_CONFIG.masteryItems.length,
+      masteredLabel: `${f2Hist.masteredTags.length}/${FUND2_HISTORIA_CONFIG.masteryItems.length} épocas`,
+      streakDays: f2Hist.streakDays,
+    },
   ];
 
   const totalCompletedUnits = modules.reduce(
@@ -289,4 +421,35 @@ export function buildEducationProgressReport(
     maxStreakDays,
     completedModulesCount,
   };
+}
+
+export function getStrongestAndWeakestModules(
+  report: EducationProgressReport
+): {
+  strongest: ModuleProgressItem[];
+  needsReinforcement: ModuleProgressItem[];
+} {
+  const attempted = report.modules.filter(
+    (m) => m.completedUnits > 0 || m.lessonsCompleted > 0 || m.stars > 0
+  );
+  if (attempted.length === 0) {
+    return {
+      strongest: [],
+      needsReinforcement: report.modules.slice(0, 3),
+    };
+  }
+  const starRatio = (m: ModuleProgressItem) =>
+    m.maxStars > 0 ? m.stars / m.maxStars : 0;
+  const strongest = [...attempted]
+    .sort((a, b) => b.progressPct - a.progressPct || starRatio(b) - starRatio(a))
+    .slice(0, 3);
+  const needsReinforcement = [...report.modules]
+    .sort((a, b) => {
+      const aScore = a.completedUnits === 0 ? 0.5 : starRatio(a);
+      const bScore = b.completedUnits === 0 ? 0.5 : starRatio(b);
+      return aScore - bScore || a.progressPct - b.progressPct;
+    })
+    .filter((m) => !strongest.some((s) => s.trackId === m.trackId) || m.progressPct < 100)
+    .slice(0, 3);
+  return { strongest, needsReinforcement };
 }

@@ -24,6 +24,12 @@ import { ADICAO_SUBTRACAO_CONFIG } from '../modules/themed/adicaoSubtracaoData';
 import { ANIMAIS_NATUREZA_CONFIG } from '../modules/themed/animaisNaturezaData';
 import { COMIDAS_BEBIDAS_CONFIG } from '../modules/themed/comidasBebidasData';
 import { CORES_FORMAS_CONFIG } from '../modules/themed/coresFormasData';
+import { FUND1_CIENCIAS_CONFIG } from '../modules/themed/fund1CienciasData';
+import { FUND1_LEITURA_CONFIG } from '../modules/themed/fund1LeituraData';
+import { FUND1_MATEMATICA_CONFIG } from '../modules/themed/fund1MatematicaData';
+import { FUND2_CIENCIAS_CONFIG } from '../modules/themed/fund2CienciasData';
+import { FUND2_HISTORIA_CONFIG } from '../modules/themed/fund2HistoriaData';
+import { FUND2_LOGICA_CONFIG } from '../modules/themed/fund2LogicaData';
 import { LOGICA_MATEMATICA_CONFIG } from '../modules/themed/logicaMatematicaData';
 import {
   loadThemedProgress,
@@ -67,6 +73,12 @@ const THEMED_CONFIG_BY_TRACK: Partial<Record<CloudSyncTrackId, ThemedModuleConfi
   infantil_matematica_desafios: LOGICA_MATEMATICA_CONFIG,
   infantil_natureza: ANIMAIS_NATUREZA_CONFIG,
   infantil_comidas_bebidas: COMIDAS_BEBIDAS_CONFIG,
+  fund1_leitura: FUND1_LEITURA_CONFIG,
+  fund1_matematica: FUND1_MATEMATICA_CONFIG,
+  fund1_ciencias: FUND1_CIENCIAS_CONFIG,
+  fund2_logica: FUND2_LOGICA_CONFIG,
+  fund2_ciencias: FUND2_CIENCIAS_CONFIG,
+  fund2_historia: FUND2_HISTORIA_CONFIG,
 };
 
 const trackDebounceTimers = new Map<string, number>();

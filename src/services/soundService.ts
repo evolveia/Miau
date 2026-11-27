@@ -654,15 +654,21 @@ export class LiveVoiceSession {
     return output;
   }
 
-  async start(userAge?: number | null): Promise<void> {
+  async start(userAge?: number | null, strictFilter = false): Promise<void> {
     this.hasErrored = false;
     this.manualStop = false;
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ageQuery =
-      typeof userAge === 'number' && Number.isFinite(userAge)
-        ? `?age=${Math.round(userAge)}`
-        : '';
-    const ws = new WebSocket(`${proto}//${window.location.host}/live${ageQuery}`);
+    const qs = new URLSearchParams();
+    if (typeof userAge === 'number' && Number.isFinite(userAge)) {
+      qs.set('age', String(Math.round(userAge)));
+    }
+    if (strictFilter) {
+      qs.set('strictFilter', '1');
+    }
+    const queryString = qs.toString();
+    const ws = new WebSocket(
+      `${proto}//${window.location.host}/live${queryString ? `?${queryString}` : ''}`
+    );
     this.ws = ws;
 
     await new Promise<void>((resolve, reject) => {

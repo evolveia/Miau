@@ -6,13 +6,13 @@ import {
   getMinorStrictSafetySettings,
   getRecommendedThinkingLevel,
   handleCorsAndMethod,
-  isMinorAge,
   isUnsafeTopicForMinor,
   parseGeminiJsonSafely,
   readJsonBody,
   runWithModelFallback,
   sendGeminiRouteError,
   sendJson,
+  shouldApplyMinorSafety,
   type VercelRequest,
   type VercelResponse,
 } from './_shared.js';
@@ -43,6 +43,7 @@ function buildMiauSystemInstruction(context?: {
   equipped?: { hat?: string; accessory?: string; background?: string };
   temporalContext?: ChatTemporalInput;
   userContext?: ChatUserInput;
+  strictFilter?: boolean;
 }): string {
   const name = context?.petName || 'Miau';
   const stats = context?.stats ?? {
@@ -84,7 +85,7 @@ function buildMiauSystemInstruction(context?: {
     }
   }
 
-  const minorRule = buildMinorSafetyInstruction(u?.age);
+  const minorRule = buildMinorSafetyInstruction(u?.age, context?.strictFilter);
   if (minorRule) {
     lines.push(minorRule);
   }
@@ -130,13 +131,14 @@ export default async function handler(
       body.userContext && typeof body.userContext === 'object'
         ? (body.userContext as ChatUserInput)
         : undefined;
+    const strictFilter = Boolean(body.strictFilter);
 
     if (!message || typeof message !== 'string') {
       sendJson(res, 400, { error: 'Mensagem inválida.' });
       return;
     }
 
-    const isMinor = isMinorAge(userContext?.age);
+    const isMinor = shouldApplyMinorSafety(userContext?.age, strictFilter);
     if (isMinor && isUnsafeTopicForMinor(message)) {
       sendJson(res, 200, {
         meowPrefix: 'Miau!',
@@ -170,6 +172,7 @@ export default async function handler(
               equipped,
               temporalContext,
               userContext,
+              strictFilter,
             }),
             ...(isMinor ? { safetySettings: getMinorStrictSafetySettings() } : {}),
             thinkingConfig: {

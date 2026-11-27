@@ -284,7 +284,13 @@
             "infantil_soma_subtracao",
             "infantil_matematica_desafios",
             "infantil_natureza",
-            "infantil_comidas_bebidas"
+            "infantil_comidas_bebidas",
+            "fund1_leitura",
+            "fund1_matematica",
+            "fund1_ciencias",
+            "fund2_logica",
+            "fund2_ciencias",
+            "fund2_historia"
           ]
         },
         "completedUnits": { "type": "array" },
@@ -365,6 +371,46 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "ParentalControlConfig": {
+      "title": "ParentalControlConfig",
+      "description": "Cloud-synced parental controls, screen time limits, quiet hours, strict AI safety toggle, and 4-digit PIN hash at /users/{userId}/private/parental.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "pinHash": { "type": "string", "minLength": 0, "maxLength": 64 },
+        "dailyScreenLimitMin": { "type": "integer" },
+        "quietHoursEnabled": { "type": "boolean" },
+        "quietStart": { "type": "string", "minLength": 5, "maxLength": 5 },
+        "quietEnd": { "type": "string", "minLength": 5, "maxLength": 5 },
+        "strictAiFilter": { "type": "boolean" },
+        "dailyMinutesByDate": { "type": "object" },
+        "dailyLessonsByDate": { "type": "object" },
+        "screenLockBypassDateKey": { "type": "string", "minLength": 0, "maxLength": 10 },
+        "screenLockBypassUntilMs": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId",
+        "pinHash",
+        "dailyScreenLimitMin",
+        "quietHoursEnabled",
+        "quietStart",
+        "quietEnd",
+        "strictAiFilter",
+        "dailyMinutesByDate",
+        "dailyLessonsByDate",
+        "screenLockBypassDateKey",
+        "screenLockBypassUntilMs",
+        "createdAt",
+        "updatedAt"
+      ]
     }
   },
   "firestore": {
@@ -374,7 +420,7 @@
     },
     "/users/{userId}/private/{docId}": {
       "schema": { "$ref": "#/entities/UserPrivateInfo" },
-      "description": "Isolated private PII metadata (info and UserHumanProfile profile) for the user."
+      "description": "Isolated private metadata (info, profile UserHumanProfile, and parental ParentalControlConfig) for the user."
     },
     "/users/{userId}/messages/{messageId}": {
       "schema": { "$ref": "#/entities/ChatMessage" },

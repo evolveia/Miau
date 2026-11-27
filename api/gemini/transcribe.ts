@@ -4,13 +4,13 @@ import {
   getAIClient,
   getRecommendedThinkingLevel,
   handleCorsAndMethod,
-  isMinorAge,
   isUnsafeTopicForMinor,
   normalizeAudioMimeType,
   readJsonBody,
   runWithModelFallback,
   sendGeminiRouteError,
   sendJson,
+  shouldApplyMinorSafety,
   type VercelRequest,
   type VercelResponse,
 } from './_shared.js';
@@ -38,6 +38,7 @@ export default async function handler(
       typeof rawUserAge === 'number' && Number.isFinite(rawUserAge)
         ? rawUserAge
         : null;
+    const strictFilter = Boolean(body.strictFilter);
 
     if (!rawAudio || typeof rawAudio !== 'string') {
       sendJson(res, 400, { error: 'Áudio inválido.' });
@@ -92,7 +93,7 @@ export default async function handler(
 
     const safetyBlocked =
       mode === 'conversation' &&
-      isMinorAge(userAge) &&
+      shouldApplyMinorSafety(userAge, strictFilter) &&
       isUnsafeTopicForMinor(cleanedTranscript);
 
     sendJson(res, 200, {

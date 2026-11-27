@@ -46,6 +46,10 @@ import type {
   UserPetProfile,
 } from '../types';
 import { sanitizeImageDataUrl } from '../utils/html';
+import {
+  normalizeParentalControlConfig,
+  type ParentalControlConfig,
+} from './parentalControlService';
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
@@ -1153,4 +1157,86 @@ export async function deletePrivateUserProfile(uid: string): Promise<void> {
   } catch (error) {
     handleFirestoreError(error, OperationType.DELETE, path);
   }
+}
+
+export async function loadParentalControlCloud(
+  uid: string
+): Promise<ParentalControlConfig | null> {
+  const path = `users/${uid}/private/parental`;
+  const ref = doc(db, 'users', uid, 'private', 'parental');
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return null;
+    const d = snap.data() as Record<string, unknown>;
+    return normalizeParentalControlConfig(uid, {
+      ...(d as Partial<ParentalControlConfig>),
+      updatedAtMs:
+        (d.updatedAt as { toMillis?: () => number } | undefined)?.toMillis?.() ??
+        Date.now(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+}
+
+export async function saveParentalControlCloud(
+  uid: string,
+  config: ParentalControlConfig
+): Promise<ParentalControlConfig> {
+  const path = `users/${uid}/private/parental`;
+  const ref = doc(db, 'users', uid, 'private', 'parental');
+  const norm = normalizeParentalControlConfig(uid, config);
+
+  let exists = false;
+  try {
+    const snap = await getDoc(ref);
+    exists = snap.exists();
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+  }
+
+  if (!exists) {
+    try {
+      await setDoc(ref, {
+        ownerId: uid,
+        pinHash: norm.pinHash,
+        dailyScreenLimitMin: norm.dailyScreenLimitMin,
+        quietHoursEnabled: norm.quietHoursEnabled,
+        quietStart: norm.quietStart,
+        quietEnd: norm.quietEnd,
+        strictAiFilter: norm.strictAiFilter,
+        dailyMinutesByDate: norm.dailyMinutesByDate,
+        dailyLessonsByDate: norm.dailyLessonsByDate,
+        screenLockBypassDateKey: norm.screenLockBypassDateKey,
+        screenLockBypassUntilMs: norm.screenLockBypassUntilMs,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, path);
+    }
+  } else {
+    try {
+      await updateDoc(ref, {
+        pinHash: norm.pinHash,
+        dailyScreenLimitMin: norm.dailyScreenLimitMin,
+        quietHoursEnabled: norm.quietHoursEnabled,
+        quietStart: norm.quietStart,
+        quietEnd: norm.quietEnd,
+        strictAiFilter: norm.strictAiFilter,
+        dailyMinutesByDate: norm.dailyMinutesByDate,
+        dailyLessonsByDate: norm.dailyLessonsByDate,
+        screenLockBypassDateKey: norm.screenLockBypassDateKey,
+        screenLockBypassUntilMs: norm.screenLockBypassUntilMs,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
+  }
+
+  return {
+    ...norm,
+    updatedAtMs: Date.now(),
+  };
 }

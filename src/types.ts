@@ -38,7 +38,9 @@ export type ActiveModal =
   | 'menu'
   | 'profile'
   | 'learn'
+  | 'smart_review'
   | 'progress_report'
+  | 'parental'
   | 'support'
   | 'ar'
   | 'settings'
@@ -81,7 +83,13 @@ export type EducationTrackId =
   | 'infantil_soma_subtracao'
   | 'infantil_matematica_desafios'
   | 'infantil_natureza'
-  | 'infantil_comidas_bebidas';
+  | 'infantil_comidas_bebidas'
+  | 'fund1_leitura'
+  | 'fund1_matematica'
+  | 'fund1_ciencias'
+  | 'fund2_logica'
+  | 'fund2_ciencias'
+  | 'fund2_historia';
 
 export type ActiveLearnTrack = 'none' | EducationTrackId;
 

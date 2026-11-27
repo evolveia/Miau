@@ -214,7 +214,13 @@ service cloud.firestore {
           'infantil_soma_subtracao',
           'infantil_matematica_desafios',
           'infantil_natureza',
-          'infantil_comidas_bebidas'
+          'infantil_comidas_bebidas',
+          'fund1_leitura',
+          'fund1_matematica',
+          'fund1_ciencias',
+          'fund2_logica',
+          'fund2_ciencias',
+          'fund2_historia'
         ];
     }
 
@@ -287,6 +293,35 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
+    function isValidParentalConfig(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'pinHash', 'dailyScreenLimitMin', 'quietHoursEnabled',
+          'quietStart', 'quietEnd', 'strictAiFilter', 'dailyMinutesByDate',
+          'dailyLessonsByDate', 'screenLockBypassDateKey',
+          'screenLockBypassUntilMs', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'pinHash', 'dailyScreenLimitMin', 'quietHoursEnabled',
+          'quietStart', 'quietEnd', 'strictAiFilter', 'dailyMinutesByDate',
+          'dailyLessonsByDate', 'screenLockBypassDateKey',
+          'screenLockBypassUntilMs', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
+        && data.pinHash is string && data.pinHash.size() <= 64
+        && data.dailyScreenLimitMin is int && data.dailyScreenLimitMin >= 0 && data.dailyScreenLimitMin <= 480
+        && data.quietHoursEnabled is bool
+        && data.quietStart is string && data.quietStart.size() == 5 && data.quietStart.matches('^[0-2][0-9]:[0-5][0-9]$')
+        && data.quietEnd is string && data.quietEnd.size() == 5 && data.quietEnd.matches('^[0-2][0-9]:[0-5][0-9]$')
+        && data.strictAiFilter is bool
+        && data.dailyMinutesByDate is map && data.dailyMinutesByDate.size() <= 14
+        && data.dailyLessonsByDate is map && data.dailyLessonsByDate.size() <= 14
+        && data.screenLockBypassDateKey is string && data.screenLockBypassDateKey.size() <= 10
+        && (data.screenLockBypassDateKey == '' || data.screenLockBypassDateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$'))
+        && data.screenLockBypassUntilMs is int && data.screenLockBypassUntilMs >= 0 && data.screenLockBypassUntilMs <= 9999999999999
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
     function isValidUserUpdateKeys() {
       return incoming().diff(existing()).affectedKeys().hasOnly([
         'petName', 'coins', 'level', 'xp',
@@ -352,7 +387,7 @@ service cloud.firestore {
       match /private/{docId} {
         allow get: if isValidId(userId)
           && isValidId(docId)
-          && (docId == 'info' || docId == 'profile')
+          && (docId == 'info' || docId == 'profile' || docId == 'parental')
           && isOwner(userId);
         allow list: if false;
         allow create: if isValidId(userId)
@@ -363,6 +398,7 @@ service cloud.firestore {
           && (
             (docId == 'info' && isValidPrivateInfo(incoming(), userId))
             || (docId == 'profile' && isValidUserHumanProfile(incoming(), userId))
+            || (docId == 'parental' && isValidParentalConfig(incoming(), userId))
           );
         allow update: if isValidId(userId)
           && isValidId(docId)
@@ -381,10 +417,20 @@ service cloud.firestore {
               && isValidUserHumanProfile(incoming(), userId)
               && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'birthDate', 'schooling', 'state', 'country', 'photoDataUrl', 'updatedAt'])
             )
+            || (
+              docId == 'parental'
+              && isValidParentalConfig(incoming(), userId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'pinHash', 'dailyScreenLimitMin', 'quietHoursEnabled',
+                'quietStart', 'quietEnd', 'strictAiFilter', 'dailyMinutesByDate',
+                'dailyLessonsByDate', 'screenLockBypassDateKey',
+                'screenLockBypassUntilMs', 'updatedAt'
+              ])
+            )
           );
         allow delete: if isValidId(userId)
           && isValidId(docId)
-          && (docId == 'info' || docId == 'profile')
+          && (docId == 'info' || docId == 'profile' || docId == 'parental')
           && isOwner(userId);
       }
 

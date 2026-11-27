@@ -21,7 +21,6 @@ import {
   getMinorStrictSafetySettings,
   getRecommendedThinkingLevel,
   isCapabilityTemporarilyExhausted,
-  isMinorAge,
   isQuotaOrRecoverableModelError,
   isUnsafeTopicForMinor,
   markCapabilityDegraded,
@@ -31,6 +30,7 @@ import {
   runWithModelFallback,
   sendGeminiRouteError,
   setCachedTtsWav,
+  shouldApplyMinorSafety,
   startSuperiorModelRecoveryMonitor,
 } from './api/gemini/_shared.ts';
 import {
@@ -104,6 +104,7 @@ function buildMiauSystemInstruction(context?: {
   equipped?: { hat?: string; accessory?: string; background?: string };
   temporalContext?: ChatTemporalInput;
   userContext?: ChatUserInput;
+  strictFilter?: boolean;
 }): string {
   const name = context?.petName || 'Miau';
   const stats = context?.stats ?? {
@@ -144,7 +145,7 @@ function buildMiauSystemInstruction(context?: {
     }
   }
 
-  const minorRule = buildMinorSafetyInstruction(u?.age);
+  const minorRule = buildMinorSafetyInstruction(u?.age, context?.strictFilter);
   if (minorRule) {
     lines.push(minorRule);
   }
@@ -193,13 +194,15 @@ async function startServer() {
         petName,
         temporalContext,
         userContext,
+        strictFilter: rawStrictFilter,
       } = req.body ?? {};
       if (!message || typeof message !== 'string') {
         res.status(400).json({ error: 'Mensagem inválida.' });
         return;
       }
 
-      const isMinor = isMinorAge(userContext?.age);
+      const strictFilter = Boolean(rawStrictFilter);
+      const isMinor = shouldApplyMinorSafety(userContext?.age, strictFilter);
       if (isMinor && isUnsafeTopicForMinor(message)) {
         res.json({
           meowPrefix: 'Miau!',
@@ -233,6 +236,7 @@ async function startServer() {
                 equipped,
                 temporalContext,
                 userContext,
+                strictFilter,
               }),
               ...(isMinor
                 ? { safetySettings: getMinorStrictSafetySettings() }
@@ -448,6 +452,7 @@ async function startServer() {
         expectedPhrase = '',
         hintKeywords,
         userAge: rawUserAge,
+        strictFilter: rawStrictFilter,
       } = req.body ?? {};
       if (!rawAudio || typeof rawAudio !== 'string') {
         res.status(400).json({ error: 'Áudio inválido.' });
@@ -509,7 +514,7 @@ async function startServer() {
 
       const safetyBlocked =
         resolvedMode === 'conversation' &&
-        isMinorAge(userAge) &&
+        shouldApplyMinorSafety(userAge, Boolean(rawStrictFilter)) &&
         isUnsafeTopicForMinor(cleanedTranscript);
 
       res.json({
@@ -880,10 +885,11 @@ async function startServer() {
       ageParam !== null && ageParam !== '' && Number.isFinite(Number(ageParam))
         ? Number(ageParam)
         : null;
-    const isMinorLive = isMinorAge(parsedAge);
+    const strictFilterLive = reqUrl.searchParams.get('strictFilter') === '1';
+    const isMinorLive = shouldApplyMinorSafety(parsedAge, strictFilterLive);
     const liveSystemInstruction = [
       'Você é o Miau, um gatinho virtual e melhor amigo próximo do tutor, que fala em Português do Brasil. Demonstre interesse genuíno em saber como o tutor está se sentindo, pergunte sobre o dia dele com carinho e responda de forma leve, acolhedora e natural, começando às vezes com um "Miau!" ou "Purrr~" simpático.',
-      buildMinorSafetyInstruction(parsedAge),
+      buildMinorSafetyInstruction(parsedAge, strictFilterLive),
     ]
       .filter(Boolean)
       .join('\n');

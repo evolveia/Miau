@@ -177,3 +177,23 @@ export function createMathCompareSvgUrl(
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 130"><rect width="240" height="130" rx="22" fill="#f5f3ff" stroke="${ringColor}" stroke-width="3"/><rect x="12" y="12" width="82" height="72" rx="14" fill="#ffffff" stroke="#c4b5fd" stroke-width="2"/>${leftItems}<text x="53" y="80" font-family="sans-serif" font-size="11" font-weight="bold" fill="#4c1d95" text-anchor="middle">${safeLeft}</text><circle cx="120" cy="48" r="16" fill="#fef3c7" stroke="${ringColor}" stroke-width="2.5"/><text x="120" y="54" font-family="sans-serif" font-size="18" font-weight="bold" fill="${ringColor}" text-anchor="middle">${safeCenter}</text><rect x="146" y="12" width="82" height="72" rx="14" fill="#ffffff" stroke="#c4b5fd" stroke-width="2"/>${rightItems}<text x="187" y="80" font-family="sans-serif" font-size="11" font-weight="bold" fill="#4c1d95" text-anchor="middle">${safeRight}</text><rect x="28" y="94" width="184" height="24" rx="12" fill="${ringColor}"/><text x="120" y="110" font-family="sans-serif" font-size="12" font-weight="bold" fill="#ffffff" text-anchor="middle">${safeBadge}</text></svg>`;
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
+
+export function createSymbolicEquationSvgUrl(
+  leftText: string,
+  operator: string,
+  rightText: string,
+  resultText: string,
+  bgColor = '#fef3c7',
+  accentColor = '#d97706'
+): string {
+  const esc = (s: string) => s.replace(/[<>&"']/g, '');
+  const left = esc(leftText);
+  const op = esc(operator);
+  const right = esc(rightText);
+  const res = esc(resultText);
+  const eqSign = op === '=' ? '→' : '=';
+  const fontSize = (s: string) => (s.length <= 2 ? 22 : s.length <= 4 ? 17 : 13);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 120"><rect width="240" height="120" rx="22" fill="${bgColor}" stroke="${accentColor}" stroke-width="3"/><rect x="12" y="24" width="52" height="62" rx="14" fill="#ffffff" stroke="${accentColor}" stroke-width="2"/><text x="38" y="62" font-family="sans-serif" font-size="${fontSize(left)}" font-weight="bold" fill="#1e1b4b" text-anchor="middle">${left}</text><circle cx="80" cy="55" r="12" fill="${accentColor}"/><text x="80" y="61" font-family="sans-serif" font-size="16" font-weight="bold" fill="#ffffff" text-anchor="middle">${op}</text><rect x="96" y="24" width="52" height="62" rx="14" fill="#ffffff" stroke="${accentColor}" stroke-width="2"/><text x="122" y="62" font-family="sans-serif" font-size="${fontSize(right)}" font-weight="bold" fill="#1e1b4b" text-anchor="middle">${right}</text><text x="162" y="61" font-family="sans-serif" font-size="18" font-weight="bold" fill="${accentColor}" text-anchor="middle">${eqSign}</text><rect x="176" y="24" width="52" height="62" rx="14" fill="#ffffff" stroke="${accentColor}" stroke-width="3"/><text x="202" y="62" font-family="sans-serif" font-size="${fontSize(res)}" font-weight="bold" fill="${accentColor}" text-anchor="middle">${res}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+

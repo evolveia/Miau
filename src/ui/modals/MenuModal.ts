@@ -148,6 +148,15 @@ export function renderMenuModalHtml(params: MenuModalRenderParams): string {
         <span class="text-[11px] font-extrabold bg-purple-100 text-[#6e45a5] px-2.5 py-0.5 rounded-full shrink-0">${params.visibleHudCount === 4 ? 'Completo' : params.visibleHudCount === 0 ? 'Limpo' : `${params.visibleHudCount}/4 itens`}</span>
       </button>
 
+      <button id="btn-menu-parental" class="w-full py-2.5 px-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-[#3b1f6e] font-bold text-sm flex items-center gap-3 text-left hover:bg-indigo-100/70 transition">
+        <span class="w-9 h-9 rounded-xl bg-indigo-200/80 flex items-center justify-center text-lg shrink-0">🛡️</span>
+        <div class="flex-1 min-w-0 text-left">
+          <div class="font-bold leading-tight">Área dos Responsáveis</div>
+          <div class="text-[11px] font-semibold text-[#5b468f]">Tempo de tela, resumo semanal, silêncio e PIN</div>
+        </div>
+        <span class="text-[11px] font-extrabold bg-indigo-200/80 text-indigo-900 px-2.5 py-0.5 rounded-full shrink-0">Pais</span>
+      </button>
+
       ${
         !pwaService.isInstalled
           ? `<button id="btn-menu-install" class="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-fuchsia-500 to-purple-600 text-white font-display font-bold text-sm shadow-md flex items-center gap-3 text-left hover:brightness-110 transition">

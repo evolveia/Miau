@@ -17,11 +17,13 @@ import {
 import {
   loadMessages,
   loadOrCreatePetProfile,
+  loadParentalControlCloud,
   loadTopRankings,
   logoutUser,
   registerWithEmail,
   resetPassword,
   saveMessage,
+  saveParentalControlCloud,
   saveSettings,
   saveShopAction,
   saveStatsProgress,
@@ -37,8 +39,8 @@ import {
 } from '../services/geminiClient';
 import {
   MINOR_REFUSAL_TEXT,
-  isMinorAgeClient,
   isUnsafeTopicForMinorClient,
+  shouldApplyMinorSafety,
 } from '../data/minorSafety';
 import { hapticService } from '../services/hapticService';
 import { miauSpeechService } from '../services/miauSpeechService';
@@ -115,7 +117,29 @@ import {
   claimMinigameCoins,
   claimPetCoins,
 } from '../services/coinEconomyService';
-import { buildEducationProgressReport } from '../services/progressReportService';
+import {
+  buildEducationProgressReport,
+  getStrongestAndWeakestModules,
+} from '../services/progressReportService';
+import {
+  buildSmartReviewSession,
+  markSmartReviewCompleted,
+} from '../services/smartReviewService';
+import {
+  clearParentalPin,
+  generateAdultMathChallenge,
+  getScreenLimitStatus,
+  loadParentalControlConfig,
+  mergeParentalControlConfigs,
+  recordActiveSeconds,
+  recordCompletedLesson,
+  registerParentalSaveListener,
+  saveParentalControlConfig,
+  setParentalPin,
+  unlockScreenLimitTemporarily,
+  verifyParentalPin,
+  type ParentalControlConfig,
+} from '../services/parentalControlService';
 import { renderRoomScenerySvg } from './RoomScenery';
 import {
   createEmptyHumanProfile,
@@ -180,6 +204,18 @@ import {
   renderProgressReportModalHtml,
   type ProgressReportFilter,
 } from './modals/ProgressReportModal';
+import {
+  bindSmartReviewModalEvents,
+  createInitialSmartReviewState,
+  renderSmartReviewModalHtml,
+  type SmartReviewModalState,
+} from './modals/SmartReviewModal';
+import {
+  bindParentalDashboardModalEvents,
+  createInitialParentalDashboardState,
+  renderParentalDashboardModalHtml,
+  type ParentalDashboardState,
+} from './modals/ParentalDashboardModal';
 import { UserProfileModalController } from './modals/UserProfileModal';
 
 const LOCAL_DEMO_KEY = 'miau_demo_profile_v1';
@@ -292,6 +328,14 @@ export class MiauAppUI {
   private onboardingActive = false;
   private onboardingStep: OnboardingStep = 1;
   private onboardingStep2Done = false;
+  private smartReviewState: SmartReviewModalState | null = null;
+  private parentalConfig: ParentalControlConfig = loadParentalControlConfig('guest');
+  private parentalDashboardState: ParentalDashboardState =
+    createInitialParentalDashboardState();
+  private parentalScreenLockChallenge = generateAdultMathChallenge();
+  private parentalScreenLockError = '';
+  private screenTimeTimer: number | null = null;
+  private pendingParentalUnlockMinutes = 30;
 
   constructor(
     container: HTMLElement,
@@ -400,6 +444,18 @@ export class MiauAppUI {
       onToast: (msg) => this.showToast(msg),
     });
     initCloudProgressSyncListeners();
+    registerParentalSaveListener((ownerId, cfg) => {
+      const currentOwner =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      if (ownerId === currentOwner) {
+        this.parentalConfig = cfg;
+      }
+      if (this.firebaseUser && ownerId === this.firebaseUser.uid) {
+        void saveParentalControlCloud(ownerId, cfg).catch((err) => {
+          console.warn('Falha ao sincronizar controle parental na nuvem:', err);
+        });
+      }
+    });
     this.learnTracks = createLearnTrackControllers({
       getOwnerId: () =>
         this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest'),
@@ -569,11 +625,36 @@ export class MiauAppUI {
           this.profile = await loadOrCreatePetProfile(user);
           this.ensureProfileDefaults();
           soundService.setEnabled(this.profile.soundEnabled);
-          const [msgs, humanProf] = await Promise.all([
+          const [msgs, humanProf, cloudParental] = await Promise.all([
             loadMessages(user.uid),
             loadUserHumanProfile(user, user.uid),
+            loadParentalControlCloud(user.uid).catch((err) => {
+              console.warn('Falha ao carregar controle parental da nuvem:', err);
+              return null;
+            }),
           ]);
           this.humanProfile = humanProf;
+          const localParental = loadParentalControlConfig(user.uid);
+          const mergedParental = mergeParentalControlConfigs(
+            localParental,
+            cloudParental
+          );
+          this.parentalConfig = saveParentalControlConfig(mergedParental, {
+            notifyListener: false,
+          });
+          if (
+            !cloudParental ||
+            (localParental.updatedAtMs || 0) > (cloudParental.updatedAtMs || 0)
+          ) {
+            void saveParentalControlCloud(user.uid, this.parentalConfig).catch(
+              (err) => {
+                console.warn(
+                  'Falha ao enviar controle parental inicial para a nuvem:',
+                  err
+                );
+              }
+            );
+          }
           this.messages =
             msgs.length > 0
               ? msgs
@@ -604,7 +685,8 @@ export class MiauAppUI {
               this.screen === 'game' &&
               (this.activeModal === 'progress_report' ||
                 this.activeModal === 'learn' ||
-                this.activeModal === 'routine')
+                this.activeModal === 'routine' ||
+                this.activeModal === 'parental')
             ) {
               this.render();
             }
@@ -623,6 +705,7 @@ export class MiauAppUI {
         } catch (err) {
           console.error('Erro ao carregar perfil no Firestore:', err);
           this.humanProfile = await loadUserHumanProfile(null, user.uid);
+          this.parentalConfig = loadParentalControlConfig(user.uid);
           this.showToast('Conectado! Usando cache local enquanto sincroniza.');
         }
         if (this.screen === 'login') {
@@ -634,13 +717,15 @@ export class MiauAppUI {
           this.screen === 'game' &&
           (this.activeModal === 'menu' ||
             this.activeModal === 'profile' ||
-            this.activeModal === 'learn')
+            this.activeModal === 'learn' ||
+            this.activeModal === 'parental')
         ) {
           this.render();
         }
       } else if (!this.isDemoSession) {
         this.profileModal.disposeCameraStream();
         this.humanProfile = createEmptyHumanProfile('guest');
+        this.parentalConfig = loadParentalControlConfig('guest');
         this.learnPreviewLevel = null;
         if (preloaderFinished) {
           this.screen = 'login';
@@ -718,6 +803,21 @@ export class MiauAppUI {
     this.proactiveTimer = window.setInterval(() => {
       this.evaluateProactiveInteraction();
     }, 5000);
+
+    this.screenTimeTimer = window.setInterval(() => {
+      if (this.screen !== 'game' || document.hidden) return;
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      const wasLocked = getScreenLimitStatus(this.parentalConfig).locked;
+      const res = recordActiveSeconds(ownerId, 30);
+      this.parentalConfig = res.config;
+      const nowLocked = getScreenLimitStatus(this.parentalConfig).locked;
+      if (!wasLocked && nowLocked && this.activeModal !== 'parental') {
+        this.parentalScreenLockChallenge = generateAdultMathChallenge();
+        this.parentalScreenLockError = '';
+        this.render();
+      }
+    }, 30000);
   }
 
   private getPeriodGreetingStorageKey(): string {
@@ -1426,6 +1526,7 @@ export class MiauAppUI {
       }
     }
     this.ensureProfileDefaults();
+    this.parentalConfig = loadParentalControlConfig('demo');
     this.humanProfile = createEmptyHumanProfile('demo');
     void loadUserHumanProfile(null, 'demo').then((hp) => {
       this.humanProfile = hp;
@@ -2001,9 +2102,12 @@ export class MiauAppUI {
     );
     this.refreshChatModalIfOpen();
 
-    // Proteção instantânea (<1ms) para menores de 18 anos antes de chamar a rede
+    // Proteção instantânea (<1ms) para menores de 18 anos ou Filtro Estrito antes de chamar a rede
     if (
-      isMinorAgeClient(contextSnapshot.user.age) &&
+      shouldApplyMinorSafety(
+        contextSnapshot.user.age,
+        this.parentalConfig.strictAiFilter
+      ) &&
       isUnsafeTopicForMinorClient(trimmed)
     ) {
       this.currentSpeech = {
@@ -2040,6 +2144,7 @@ export class MiauAppUI {
         petName: this.profile.petName,
         temporalContext: contextSnapshot.temporal,
         userContext: contextSnapshot.user,
+        strictFilter: this.parentalConfig.strictAiFilter,
       });
 
       this.currentSpeech = {
@@ -2533,6 +2638,7 @@ export class MiauAppUI {
       res = await transcribeUserAudioDetailed(rec.audioBase64, rec.mimeType, {
         mode: 'conversation',
         userAge,
+        strictFilter: this.parentalConfig.strictAiFilter,
       });
     } catch (err) {
       await this.persistMessage(
@@ -2771,6 +2877,10 @@ export class MiauAppUI {
     const activeRoutineCount = this.getActiveWindowSlots().length;
     const activeRoomDef = getHouseRoomDef(this.activeRoom);
     const effectiveEffect = this.getEffectiveMiauEffect();
+    const screenLimit = getScreenLimitStatus(this.parentalConfig);
+    const showScreenLockOverlay =
+      screenLimit.locked && this.activeModal !== 'parental';
+    const hasParentalPin = Boolean(this.parentalConfig.pinHash);
 
     this.root.innerHTML = `
       <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#dfd0ff] via-[#cbb1fb] to-[#b896f5] md:p-4">
@@ -2937,6 +3047,69 @@ export class MiauAppUI {
               : ''
           }
           ${this.showInstallGuideModal ? renderInstallGuideModalHtml() : ''}
+          ${
+            showScreenLockOverlay
+              ? `
+                <div id="parental-screen-lock-overlay" class="fixed inset-0 z-40 flex items-center justify-center bg-indigo-950/80 backdrop-blur-md p-4">
+                  <div class="w-full max-w-sm rounded-3xl p-5 bg-white border-2 border-purple-200 shadow-2xl text-center flex flex-col gap-3.5">
+                    <div class="w-16 h-16 mx-auto rounded-2xl bg-amber-100 border border-amber-200 flex items-center justify-center text-3xl">⏰</div>
+                    <div>
+                      <h2 class="font-display text-xl font-bold text-[#3b1f6e]">Tempo de tela de hoje concluído!</h2>
+                      <p class="text-xs font-semibold text-[#6b4d9e] mt-1">
+                        O ${escapeHtml(petName)} descansou após ${screenLimit.usedMinutes} min de diversão e estudo (limite: ${screenLimit.limitMinutes} min).
+                      </p>
+                    </div>
+                    <form id="parental-lock-form" class="flex flex-col gap-2.5 text-left">
+                      <label class="text-[11px] font-extrabold text-[#4c2a85] text-center">
+                        ${
+                          hasParentalPin
+                            ? 'Responsável: digite o PIN de 4 dígitos para liberar'
+                            : `Responsável: ${escapeHtml(this.parentalScreenLockChallenge.question)}`
+                        }
+                      </label>
+                      <input
+                        id="parental-lock-input"
+                        type="${hasParentalPin ? 'password' : 'text'}"
+                        inputmode="numeric"
+                        maxlength="${hasParentalPin ? 4 : 6}"
+                        autocomplete="off"
+                        placeholder="${hasParentalPin ? 'PIN (4 dígitos)' : 'Resposta'}"
+                        class="w-full rounded-2xl border-2 border-purple-200 bg-purple-50/70 px-4 py-2.5 text-center font-display text-base font-bold text-[#3b1f6e]"
+                      />
+                      ${
+                        this.parentalScreenLockError
+                          ? `<p class="text-xs font-extrabold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-1.5 text-center">${escapeHtml(this.parentalScreenLockError)}</p>`
+                          : ''
+                      }
+                      <div class="grid grid-cols-2 gap-2 pt-1">
+                        <button
+                          type="submit"
+                          data-lock-extra="30"
+                          class="min-h-[42px] py-2 px-3 rounded-xl bg-[#6e45a5] hover:bg-[#5c3691] text-white font-extrabold text-xs shadow-sm transition"
+                        >
+                          +30 min extras
+                        </button>
+                        <button
+                          type="submit"
+                          data-lock-extra="0"
+                          class="min-h-[42px] py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-sm transition"
+                        >
+                          Liberar por hoje
+                        </button>
+                      </div>
+                    </form>
+                    <button
+                      id="btn-lock-open-parental"
+                      type="button"
+                      class="text-xs font-extrabold text-[#6e45a5] hover:underline"
+                    >
+                      🛡️ Abrir Área dos Responsáveis
+                    </button>
+                  </div>
+                </div>
+              `
+              : ''
+          }
         </div>
       </div>
     `;
@@ -3045,6 +3218,22 @@ export class MiauAppUI {
           webPushActive: pushNotificationService.hasActiveWebPushSubscription(),
         },
         pushTestPreview: this.pushTestPreview,
+      });
+    } else if (this.activeModal === 'smart_review' && this.smartReviewState) {
+      body = renderSmartReviewModalHtml({
+        state: this.smartReviewState,
+        equipped: this.profile.equipped,
+        petName: this.profile.petName,
+      });
+    } else if (this.activeModal === 'parental') {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      body = renderParentalDashboardModalHtml({
+        state: this.parentalDashboardState,
+        config: this.parentalConfig,
+        report: buildEducationProgressReport(ownerId),
+        isFirebaseAccount: Boolean(this.firebaseUser),
+        petName: this.profile.petName,
       });
     } else if (this.activeModal === 'support') {
       body = renderSupportModalHtml(
@@ -3953,7 +4142,10 @@ export class MiauAppUI {
           const liveUserAge = buildConversationContextSnapshot(
             this.humanProfile
           ).user.age;
-          await session.start(liveUserAge);
+          await session.start(
+            liveUserAge,
+            this.parentalConfig.strictAiFilter
+          );
         } catch (err) {
           hadLiveError = true;
           this.liveSession = null;
@@ -4054,6 +4246,17 @@ export class MiauAppUI {
             this.activeModal = 'progress_report';
             this.render();
           },
+          onOpenSmartReview: () => {
+            const ownerId =
+              this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+            const session = buildSmartReviewSession({
+              ownerId,
+              schooling: this.humanProfile.schooling,
+            });
+            this.smartReviewState = createInitialSmartReviewState(session);
+            this.activeModal = 'smart_review';
+            this.render();
+          },
           onSelectPreviewLevel: (level) => {
             this.learnPreviewLevel = level;
             this.render();
@@ -4061,6 +4264,97 @@ export class MiauAppUI {
           onOpenTrack: openEducationTrack,
         });
       }
+    }
+
+    if (this.activeModal === 'smart_review' && this.smartReviewState) {
+      const srState = this.smartReviewState;
+      bindSmartReviewModalEvents(this.root, srState, {
+        onBack: () => {
+          this.activeModal = 'learn';
+          this.render();
+        },
+        onRerender: () => {
+          if (this.screen === 'game' && this.activeModal === 'smart_review') {
+            this.render();
+          }
+        },
+        onCompleteSession: (score, total) => {
+          const ownerId =
+            this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+          const res = markSmartReviewCompleted(ownerId, score, total);
+          this.parentalConfig = recordCompletedLesson(ownerId);
+          this.ensureProfileDefaults();
+          this.addRewards(res.coinsReward, res.xpReward);
+          this.updateStatusBarsDOM();
+          void this.persistStats();
+          return res;
+        },
+        onRestartSession: () => {
+          const ownerId =
+            this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+          const session = buildSmartReviewSession({
+            ownerId,
+            schooling: this.humanProfile.schooling,
+          });
+          this.smartReviewState = createInitialSmartReviewState(session);
+          this.render();
+        },
+      });
+    }
+
+    if (this.activeModal === 'parental') {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      bindParentalDashboardModalEvents(
+        this.root,
+        this.parentalDashboardState,
+        this.parentalConfig,
+        {
+          onBack: () => {
+            this.activeModal = 'menu';
+            this.render();
+          },
+          onRerender: () => {
+            if (this.screen === 'game' && this.activeModal === 'parental') {
+              this.render();
+            }
+          },
+          onOpenTrack: (trackId) => {
+            openEducationTrack(trackId);
+          },
+          onUpdateConfig: (next, opts) => {
+            this.parentalConfig = saveParentalControlConfig(next);
+            if (opts?.syncPush) {
+              const statsSnap = {
+                hunger: this.profile.stats.hunger,
+                hygiene: this.profile.stats.hygiene,
+                sleep: this.profile.stats.sleep,
+                isSleeping: this.isSleeping,
+              };
+              pushNotificationService.scheduleServiceWorkerFallbackReminders(
+                this.profile.petName,
+                statsSnap
+              );
+              void pushNotificationService.syncWithServer(
+                this.profile.petName,
+                statsSnap,
+                true
+              );
+            }
+            if (opts?.toast) this.showToast(opts.toast);
+            this.render();
+          },
+          onSetPin: (rawPin) => {
+            const res = setParentalPin(ownerId, rawPin);
+            this.parentalConfig = res.config;
+            return res;
+          },
+          onClearPin: () => {
+            this.parentalConfig = clearParentalPin(ownerId);
+            return this.parentalConfig;
+          },
+        }
+      );
     }
 
     this.root
@@ -4088,6 +4382,67 @@ export class MiauAppUI {
       ?.addEventListener('click', () => {
         this.activeModal = 'settings';
         void this.refreshCameraPermissionState();
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-menu-parental')
+      ?.addEventListener('click', () => {
+        this.parentalDashboardState = createInitialParentalDashboardState();
+        this.activeModal = 'parental';
+        this.render();
+      });
+
+    this.root.querySelectorAll('[data-lock-extra]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const extra = Number(btn.getAttribute('data-lock-extra') || 30);
+        this.pendingParentalUnlockMinutes = Number.isFinite(extra) ? extra : 30;
+      });
+    });
+
+    this.root
+      .querySelector('#btn-lock-open-parental')
+      ?.addEventListener('click', () => {
+        this.parentalDashboardState = createInitialParentalDashboardState();
+        this.activeModal = 'parental';
+        this.render();
+      });
+
+    this.root
+      .querySelector('#parental-lock-form')
+      ?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const input = this.root.querySelector(
+          '#parental-lock-input'
+        ) as HTMLInputElement | null;
+        const val = (input?.value || '').trim();
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        const hasPin = Boolean(this.parentalConfig.pinHash);
+        const valid = hasPin
+          ? verifyParentalPin(val, this.parentalConfig.pinHash)
+          : Boolean(val) &&
+            Number(val) === this.parentalScreenLockChallenge.answer;
+
+        if (!valid) {
+          this.parentalScreenLockError = hasPin
+            ? 'PIN incorreto. Tente novamente.'
+            : 'Resposta incorreta. Confira a conta e tente novamente.';
+          if (!hasPin) {
+            this.parentalScreenLockChallenge = generateAdultMathChallenge();
+          }
+          this.render();
+          return;
+        }
+
+        const extra = this.pendingParentalUnlockMinutes;
+        this.parentalConfig = unlockScreenLimitTemporarily(ownerId, extra);
+        this.parentalScreenLockError = '';
+        this.showToast(
+          extra > 0
+            ? `Tempo de tela liberado por mais ${extra} min!`
+            : 'Tempo de tela liberado por hoje!'
+        );
         this.render();
       });
 
@@ -4495,6 +4850,9 @@ export class MiauAppUI {
       this.alertedLowNeeds.clear();
       this.lastNeedAlertAt = 0;
       this.humanProfile = createEmptyHumanProfile('guest');
+      this.smartReviewState = null;
+      this.parentalConfig = loadParentalControlConfig('guest');
+      this.parentalDashboardState = createInitialParentalDashboardState();
       this.learnPreviewLevel = null;
       this.resetAllLearnTracks();
       if (this.firebaseUser) {

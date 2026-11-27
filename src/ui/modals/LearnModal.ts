@@ -10,6 +10,12 @@ import { ADICAO_SUBTRACAO_CONFIG } from '../../modules/themed/adicaoSubtracaoDat
 import { ANIMAIS_NATUREZA_CONFIG } from '../../modules/themed/animaisNaturezaData';
 import { COMIDAS_BEBIDAS_CONFIG } from '../../modules/themed/comidasBebidasData';
 import { CORES_FORMAS_CONFIG } from '../../modules/themed/coresFormasData';
+import { FUND1_CIENCIAS_CONFIG } from '../../modules/themed/fund1CienciasData';
+import { FUND1_LEITURA_CONFIG } from '../../modules/themed/fund1LeituraData';
+import { FUND1_MATEMATICA_CONFIG } from '../../modules/themed/fund1MatematicaData';
+import { FUND2_CIENCIAS_CONFIG } from '../../modules/themed/fund2CienciasData';
+import { FUND2_HISTORIA_CONFIG } from '../../modules/themed/fund2HistoriaData';
+import { FUND2_LOGICA_CONFIG } from '../../modules/themed/fund2LogicaData';
 import { LOGICA_MATEMATICA_CONFIG } from '../../modules/themed/logicaMatematicaData';
 import { loadThemedProgress } from '../../modules/themed/themedEngine';
 import {
@@ -21,6 +27,7 @@ import {
   loadWritingProgress,
 } from '../../modules/writing/writingEngine';
 import { loadEarlyLiteracyProgress } from '../../services/phonicsEngineService';
+import { getSmartReviewDailyState } from '../../services/smartReviewService';
 import { calculateAgeFromBirthDate } from '../../services/userProfileService';
 import type { SchoolingLevel, UserHumanProfile } from '../../types';
 import { escapeHtml } from '../../utils/html';
@@ -29,6 +36,7 @@ export interface LearnModalCallbacks {
   onBackToMenu: () => void;
   onGoToProfile: () => void;
   onOpenProgressReport: () => void;
+  onOpenSmartReview: () => void;
   onSelectPreviewLevel: (level: SchoolingLevel) => void;
   onOpenTrack?: (trackId: string) => void;
 }
@@ -65,6 +73,13 @@ export function renderLearnModalHtml(
   );
   const naturezaProgress = loadThemedProgress(ANIMAIS_NATUREZA_CONFIG, ownerId);
   const comidasProgress = loadThemedProgress(COMIDAS_BEBIDAS_CONFIG, ownerId);
+  const f1LeituraProgress = loadThemedProgress(FUND1_LEITURA_CONFIG, ownerId);
+  const f1MathProgress = loadThemedProgress(FUND1_MATEMATICA_CONFIG, ownerId);
+  const f1CienciasProgress = loadThemedProgress(FUND1_CIENCIAS_CONFIG, ownerId);
+  const f2LogicaProgress = loadThemedProgress(FUND2_LOGICA_CONFIG, ownerId);
+  const f2CienciasProgress = loadThemedProgress(FUND2_CIENCIAS_CONFIG, ownerId);
+  const f2HistoriaProgress = loadThemedProgress(FUND2_HISTORIA_CONFIG, ownerId);
+  const smartReviewState = getSmartReviewDailyState(ownerId);
 
   return `
     <div class="flex items-center justify-between gap-2 mb-3 text-left shrink-0">
@@ -122,6 +137,31 @@ export function renderLearnModalHtml(
                  Você ainda não salvou sua escolaridade no Perfil do Usuário. Mostrando sugestão inicial abaixo!
                </div>`
         }
+      </div>
+
+      <!-- Treino do Dia com o Miau (Revisão Inteligente) -->
+      <div class="rounded-2xl p-3.5 bg-gradient-to-r from-amber-50 via-rose-50 to-purple-50 border-2 border-amber-300 shadow-sm flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <div class="w-12 h-12 rounded-2xl bg-white border border-amber-200 flex items-center justify-center text-2xl shadow-xs shrink-0">🧠</div>
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5 flex-wrap">
+              <span class="font-display text-sm sm:text-base font-bold text-[#3b1f6e]">Treino do Dia com o Miau</span>
+              <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full ${smartReviewState.completed ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-200 text-amber-950'}">
+                ${smartReviewState.completed ? '✅ Feito hoje' : '🪙 +35 Bônus'}
+              </span>
+            </div>
+            <p class="text-[11px] font-semibold text-[#5e4294] leading-snug mt-0.5">
+              Revisão inteligente focada em unidades com &lt;3★ ou +5 dias sem praticar.
+            </p>
+          </div>
+        </div>
+        <button
+          id="btn-learn-smart-review"
+          type="button"
+          class="min-h-[42px] w-full sm:w-auto px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-105 active:scale-95 text-white font-extrabold text-xs sm:text-sm shadow-sm transition shrink-0"
+        >
+          ${smartReviewState.completed ? '🔁 Praticar de Novo' : '✨ Começar Treino'}
+        </button>
       </div>
 
       <!-- Schooling Level Selector (Preview / Explore) -->
@@ -214,6 +254,42 @@ export function renderLearnModalHtml(
                 totalUnits = COMIDAS_BEBIDAS_CONFIG.units.length;
                 totalStars = comidasProgress.totalStars;
                 break;
+              case 'fund1_leitura':
+                isActiveTrack = true;
+                completedUnits = f1LeituraProgress.completedUnits.length;
+                totalUnits = FUND1_LEITURA_CONFIG.units.length;
+                totalStars = f1LeituraProgress.totalStars;
+                break;
+              case 'fund1_matematica':
+                isActiveTrack = true;
+                completedUnits = f1MathProgress.completedUnits.length;
+                totalUnits = FUND1_MATEMATICA_CONFIG.units.length;
+                totalStars = f1MathProgress.totalStars;
+                break;
+              case 'fund1_ciencias':
+                isActiveTrack = true;
+                completedUnits = f1CienciasProgress.completedUnits.length;
+                totalUnits = FUND1_CIENCIAS_CONFIG.units.length;
+                totalStars = f1CienciasProgress.totalStars;
+                break;
+              case 'fund2_logica':
+                isActiveTrack = true;
+                completedUnits = f2LogicaProgress.completedUnits.length;
+                totalUnits = FUND2_LOGICA_CONFIG.units.length;
+                totalStars = f2LogicaProgress.totalStars;
+                break;
+              case 'fund2_ciencias':
+                isActiveTrack = true;
+                completedUnits = f2CienciasProgress.completedUnits.length;
+                totalUnits = FUND2_CIENCIAS_CONFIG.units.length;
+                totalStars = f2CienciasProgress.totalStars;
+                break;
+              case 'fund2_historia':
+                isActiveTrack = true;
+                completedUnits = f2HistoriaProgress.completedUnits.length;
+                totalUnits = FUND2_HISTORIA_CONFIG.units.length;
+                totalStars = f2HistoriaProgress.totalStars;
+                break;
             }
 
             const metadataLine = track.tags.join(' · ');
@@ -284,6 +360,9 @@ export function bindLearnModalEvents(
   root
     .querySelector('#btn-learn-progress-report')
     ?.addEventListener('click', () => callbacks.onOpenProgressReport());
+  root
+    .querySelector('#btn-learn-smart-review')
+    ?.addEventListener('click', () => callbacks.onOpenSmartReview());
   root
     .querySelector('#btn-learn-edit-profile')
     ?.addEventListener('click', () => callbacks.onGoToProfile());

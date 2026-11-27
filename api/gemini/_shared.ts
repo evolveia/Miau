@@ -708,6 +708,13 @@ export function isMinorAge(age?: number | null): boolean {
   return typeof age === 'number' && Number.isFinite(age) && age >= 0 && age < 18;
 }
 
+export function shouldApplyMinorSafety(
+  age?: number | null,
+  strictFilter = false
+): boolean {
+  return Boolean(strictFilter) || isMinorAge(age);
+}
+
 function normalizeSafetyText(raw: string): string {
   return raw
     .toLowerCase()
@@ -758,10 +765,16 @@ export function getMinorStrictSafetySettings() {
   ];
 }
 
-export function buildMinorSafetyInstruction(age?: number | null): string {
-  if (!isMinorAge(age)) return '';
+export function buildMinorSafetyInstruction(
+  age?: number | null,
+  strictFilter = false
+): string {
+  if (!shouldApplyMinorSafety(age, strictFilter)) return '';
+  const header = isMinorAge(age)
+    ? `PROTEÇÃO OBRIGATÓRIA DE MENOR DE IDADE (${age} anos):`
+    : `FILTRO ESTRITO ATIVADO PELOS RESPONSÁVEIS:`;
   return [
-    `PROTEÇÃO OBRIGATÓRIA DE MENOR DE IDADE (${age} anos):`,
+    header,
     `- JAMAIS trate, explique, exemplifique, brinque ou responda sobre assuntos perigosos, ilícitos, violência, armas, drogas, bebidas alcoólicas, automutilação, temas inapropriados, sexuais, linguagem pejorativa, preconceito, discriminação ou racismo.`,
     `- Se o usuário mencionar, perguntar ou insinuar qualquer um desses assuntos, NÃO elabore nada e responda EXCLUSIVAMENTE com a frase exata: "${MINOR_REFUSAL_TEXT}"`,
   ].join('\n');

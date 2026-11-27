@@ -4,6 +4,13 @@ export function isMinorAgeClient(age?: number | null): boolean {
   return typeof age === 'number' && Number.isFinite(age) && age >= 0 && age < 18;
 }
 
+export function shouldApplyMinorSafety(
+  age?: number | null,
+  strictFilter = false
+): boolean {
+  return Boolean(strictFilter) || isMinorAgeClient(age);
+}
+
 function normalizeClientSafetyText(raw: string): string {
   return raw
     .toLowerCase()

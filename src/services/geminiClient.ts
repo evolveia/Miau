@@ -172,6 +172,7 @@ export async function askMiau(params: {
   petName: string;
   temporalContext?: ChatTemporalContext;
   userContext?: ChatUserContext;
+  strictFilter?: boolean;
 }): Promise<MiauChatResponse> {
   let res: Response;
   try {
@@ -189,6 +190,7 @@ export async function askMiau(params: {
         petName: params.petName,
         temporalContext: params.temporalContext,
         userContext: params.userContext,
+        strictFilter: Boolean(params.strictFilter),
       }),
     });
   } catch {
@@ -309,6 +311,7 @@ export interface TranscribeCalibrationOptions {
   expectedPhrase?: string;
   hintKeywords?: string[];
   userAge?: number | null;
+  strictFilter?: boolean;
 }
 
 export interface TranscribeDetailedResult {
@@ -337,6 +340,7 @@ export async function transcribeUserAudioDetailed(
           expectedPhrase: calibration?.expectedPhrase,
           hintKeywords: calibration?.hintKeywords,
           userAge: calibration?.userAge ?? null,
+          strictFilter: Boolean(calibration?.strictFilter),
         }),
       },
       1,

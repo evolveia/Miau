@@ -98,9 +98,9 @@ describe('Etapa 1 - Room Theme Service', () => {
 });
 
 describe('Etapa 1 - Cloud Progress Normalization & Merge', () => {
-  test('covers all 9 educational tracks in registry', () => {
-    assert.equal(VALID_CLOUD_EDUCATION_TRACKS.length, 9);
-    assert.equal(new Set(VALID_CLOUD_EDUCATION_TRACKS).size, 9);
+  test('covers all 15 educational tracks in registry', () => {
+    assert.equal(VALID_CLOUD_EDUCATION_TRACKS.length, 15);
+    assert.equal(new Set(VALID_CLOUD_EDUCATION_TRACKS).size, 15);
   });
 
   test('normalizes legacy fields, clamps stars, and sanitizes date keys', () => {
@@ -351,7 +351,7 @@ describe('Etapa 1 - Anti-Farming Daily Coin Economy', () => {
 });
 
 describe('Etapa 1 - Progress Report Aggregation & Cloud Save Hook', () => {
-  test('aggregates 9 modules and emits cloud hook on local saves', () => {
+  test('aggregates 15 modules and emits cloud hook on local saves', () => {
     const owner = 'test-report-owner';
     const capturedTracks: CloudSyncTrackId[] = [];
 
@@ -362,7 +362,7 @@ describe('Etapa 1 - Progress Report Aggregation & Cloud Save Hook', () => {
     });
 
     const emptyReport = buildEducationProgressReport(owner);
-    assert.equal(emptyReport.modules.length, 9);
+    assert.equal(emptyReport.modules.length, 15);
     assert.equal(emptyReport.totalCompletedUnits, 0);
     assert.equal(emptyReport.overallPct, 0);
 
