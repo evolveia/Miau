@@ -161,6 +161,11 @@ import {
   getRoomThemeClasses,
   isNightRoomBackground,
 } from '../services/roomThemeService';
+import {
+  renderCollapsibleBottomNavHtml,
+  renderCollapsibleSpeechAndChatHtml,
+  renderCollapsibleStatusSectionHtml,
+} from '../services/roomHudLayoutService';
 import { loadWritingProgress } from '../modules/writing/writingEngine';
 import {
   bindLoginScreenEvents,
@@ -191,6 +196,10 @@ const DEFAULT_SCREEN_PREFS: ScreenVisibilityPrefs = {
   showSpeechAndChat: true,
   showCoinsBadge: true,
   easyReadMode: false,
+  collapseStatusPanel: false,
+  collapseSpeechBox: false,
+  collapseChatBox: false,
+  collapseBottomNav: false,
 };
 
 export interface MiauUIXRBridge {
@@ -2818,48 +2827,20 @@ export class MiauAppUI {
               : ''
           }
 
-          <!-- Status Bars & Quick Badges (Configurable Visibility) -->
-          ${
-            this.screenPrefs.showStatusBars || this.screenPrefs.showStatusBadges
-              ? `<section class="relative z-20 px-3.5 pt-1">
-                  ${
-                    this.screenPrefs.showStatusBars
-                      ? `<div class="grid grid-cols-2 gap-1.5">
-                          ${this.renderStatPill('hunger', 'Fome', s.hunger, '🐟', 'from-amber-400 to-orange-500', 'bg-orange-300')}
-                          ${this.renderStatPill('hygiene', 'Higiene', s.hygiene, '🧼', 'from-cyan-400 to-emerald-400', 'bg-teal-300')}
-                          ${this.renderStatPill('fun', 'Diversão', s.fun, '🧶', 'from-fuchsia-400 to-pink-500', 'bg-fuchsia-300')}
-                          ${this.renderStatPill('sleep', 'Sono', s.sleep, '🌙', 'from-indigo-400 to-purple-500', 'bg-indigo-300')}
-                          ${this.renderStatPill('happiness', 'Felicidade', s.happiness ?? 75, '💖', 'from-rose-400 to-pink-500', 'bg-rose-300', true)}
-                        </div>`
-                      : ''
-                  }
-                  ${
-                    this.screenPrefs.showStatusBadges
-                      ? `<div class="flex justify-between items-center gap-1.5 ${this.screenPrefs.showStatusBars ? 'mt-2' : ''}">
-                          <div class="flex items-center gap-1.5">
-                            <button id="btn-achievements" type="button" class="glass-pill px-2.5 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
-                              <span>🏆</span>
-                              <span id="achievements-count">${(this.profile.unlockedAchievements || []).length}/${ACHIEVEMENTS.length}</span>
-                            </button>
-                            <button id="btn-routine" type="button" class="glass-pill px-2.5 py-1 rounded-full text-xs font-extrabold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition ${activeRoutineCount > 0 ? 'ring-2 ring-amber-400' : ''}">
-                              <span>📅</span>
-                              <span>${routineDone}/${ROUTINE_SCHEDULE.length}</span>
-                            </button>
-                          </div>
-                          <div class="flex items-center gap-1.5">
-                            <button id="btn-sleep-toggle" class="glass-pill px-2.5 py-1 rounded-full text-xs font-bold text-[#4c2a85] flex items-center gap-1 hover:scale-105 transition">
-                              ${this.isSleeping ? '☀️ Acordar' : '🌙 Soneca'}
-                            </button>
-                            <div id="miau-level" class="glass-pill px-3 py-1 rounded-full text-xs font-extrabold text-[#3b1f6e]">
-                              Nível ${this.profile.level}
-                            </div>
-                          </div>
-                        </div>`
-                      : ''
-                  }
-                </section>`
-              : ''
-          }
+          <!-- Status Bars & Quick Badges (Collapsible & Configurable Visibility) -->
+          ${renderCollapsibleStatusSectionHtml({
+            showStatusBars: this.screenPrefs.showStatusBars,
+            showStatusBadges: this.screenPrefs.showStatusBadges,
+            collapsed: this.screenPrefs.collapseStatusPanel,
+            stats: s,
+            unlockedCount: (this.profile.unlockedAchievements || []).length,
+            totalAchievements: ACHIEVEMENTS.length,
+            routineDone,
+            routineTotal: ROUTINE_SCHEDULE.length,
+            activeRoutineCount,
+            isSleeping: this.isSleeping,
+            level: this.profile.level,
+          })}
 
           <!-- House Room Stage, Themed Scenery, Room Props & Miau -->
           <main id="miau-stage" class="relative flex-1 flex flex-col items-center justify-center overflow-hidden ${activeRoomDef.backdropTintClass}">
@@ -2918,75 +2899,24 @@ export class MiauAppUI {
             </div>
           </main>
 
-          <!-- AI Speech Bubble + Input Area -->
-          ${
-            this.screenPrefs.showSpeechAndChat
-              ? `<section class="relative z-20 px-3.5 pb-2 flex flex-col gap-2.5">
-                  <!-- Speech Bubble -->
-                  <div id="speech-bubble-card" class="relative glass-card rounded-[24px] p-3 flex items-center gap-3 cursor-pointer hover:brightness-[1.02] transition">
-                    <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-purple-200 bg-purple-100 shrink-0 shadow-sm">
-                      <img src="${MIAU_AVATAR_URL}" alt="${escapeHtml(petName)}" referrerpolicy="no-referrer" class="w-full h-full object-cover" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <div id="speech-prefix" class="font-display text-sm font-bold text-[#2d1b4e]">${escapeHtml(this.currentSpeech.meowPrefix)}</div>
-                      <div id="speech-text" class="text-sm font-semibold text-[#473173] leading-snug break-words">${escapeHtml(this.currentSpeech.text)}</div>
-                    </div>
-                    <button
-                      id="btn-speaker"
-                      type="button"
-                      aria-label="Ouvir voz de ${escapeHtml(petName)}"
-                      class="w-11 h-11 rounded-full bg-gradient-to-br from-[#7d52bd] to-[#5d3798] text-white flex items-center justify-center shrink-0 shadow-md hover:scale-105 active:scale-95 transition"
-                    >
-                      <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M3 10v4h4l5 5V5L7 10H3zm13.5 2c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
-                      </svg>
-                    </button>
-                  </div>
+          <!-- AI Speech Bubble + Input Area (Collapsible) -->
+          ${renderCollapsibleSpeechAndChatHtml({
+            showSpeechAndChat: this.screenPrefs.showSpeechAndChat,
+            collapseSpeechBox: this.screenPrefs.collapseSpeechBox,
+            collapseChatBox: this.screenPrefs.collapseChatBox,
+            petName,
+            meowPrefix: this.currentSpeech.meowPrefix,
+            speechText: this.currentSpeech.text,
+            avatarUrl: MIAU_AVATAR_URL,
+            isRecordingMic: this.isRecordingMic,
+          })}
 
-                  <!-- Chat Input Pill -->
-                  <form id="quick-chat-form" class="glass-pill rounded-full p-1.5 pl-4 flex items-center gap-2">
-                    <input
-                      id="quick-chat-input"
-                      type="text"
-                      placeholder="${this.isRecordingMic ? '🔴 Gravando... solte para enviar!' : `Fale com ${escapeHtml(petName)}...`}"
-                      class="flex-1 bg-transparent text-sm font-semibold text-[#3b1f6e] placeholder-[#8f79b5] focus:outline-none min-w-0"
-                    />
-                    <button
-                      id="btn-mic"
-                      type="button"
-                      style="touch-action:none"
-                      title="Segure para gravar e solte para enviar"
-                      aria-label="${this.isRecordingMic ? 'Solte para enviar áudio' : `Segure para gravar voz para ${escapeHtml(petName)}`}"
-                      class="w-9 h-9 rounded-full select-none ${this.isRecordingMic ? 'bg-rose-500 animate-pulse scale-110' : 'bg-[#7b52b8]'} text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
-                    >
-                      <svg class="w-4 h-4 pointer-events-none" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/>
-                      </svg>
-                    </button>
-                    <button
-                      type="submit"
-                      aria-label="Enviar mensagem"
-                      class="w-9 h-9 rounded-full bg-gradient-to-br from-[#8c64cc] to-[#633ea1] text-white flex items-center justify-center shadow hover:brightness-110 transition shrink-0"
-                    >
-                      <svg class="w-4 h-4 translate-x-0.5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-                      </svg>
-                    </button>
-                  </form>
-                </section>`
-              : ''
-          }
-
-          <!-- Bottom Navigation Bar -->
-          <nav class="relative z-20 px-3 pb-3 pt-1">
-            <div class="glass-card rounded-[28px] px-2 py-2.5 grid grid-cols-5 gap-1">
-              ${this.renderNavBtn('feed', 'Alimentar', 'from-amber-400 to-orange-500', '🐟')}
-              ${this.renderNavBtn('clean', 'Limpar', 'from-cyan-400 to-sky-500', '✨')}
-              ${this.renderNavBtn('games', 'Jogos', 'from-emerald-400 to-green-500', '🎮')}
-              ${this.renderNavBtn('customize', 'Personalizar', 'from-pink-400 to-fuchsia-500', '👗')}
-              ${this.renderNavBtn('chat', 'Conversar', 'from-violet-400 to-purple-600', '💬')}
-            </div>
-          </nav>
+          <!-- Bottom Navigation Bar (Collapsible) -->
+          ${renderCollapsibleBottomNavHtml({
+            collapsed: this.screenPrefs.collapseBottomNav,
+            activeModal: this.activeModal,
+            isCleaningMode: this.isCleaningMode,
+          })}
 
           <!-- Toast Notification -->
           <div
@@ -3012,59 +2942,6 @@ export class MiauAppUI {
     `;
 
     this.bindGameEvents();
-  }
-
-  private renderStatPill(
-    key: string,
-    label: string,
-    value: number,
-    emoji: string,
-    barGrad: string,
-    badgeBg: string,
-    fullSpan = false
-  ): string {
-    const pct = Math.round(value);
-    const isLow = pct < 30;
-    return `
-      <button
-        id="stat-pill-${key}"
-        data-stat="${key}"
-        type="button"
-        class="glass-pill rounded-full px-2 py-1 flex items-center gap-2 text-left cursor-pointer hover:scale-[1.02] active:scale-[0.98] transition-transform ${fullSpan ? 'col-span-2' : ''} ${isLow ? 'status-alert-glow' : ''}"
-      >
-        <div id="stat-icon-${key}" class="w-7 h-7 rounded-full ${badgeBg} border-2 border-white flex items-center justify-center text-sm shadow-sm shrink-0 ${isLow ? 'status-icon-alert' : ''}">${emoji}</div>
-        <div class="flex-1 min-w-0 pr-1">
-          <div class="flex items-center justify-between text-[11px] font-extrabold text-[#3b1f6e] leading-tight mb-0.5">
-            <span>${label}</span>
-            <span id="pct-${key}" class="${isLow ? 'text-rose-600' : ''}">${pct}%</span>
-          </div>
-          <div class="w-full h-1.5 bg-purple-100 rounded-full overflow-hidden">
-            <div id="bar-${key}" class="h-full rounded-full bg-gradient-to-r ${barGrad} transition-all duration-300" style="width: ${pct}%"></div>
-          </div>
-        </div>
-      </button>
-    `;
-  }
-
-  private renderNavBtn(
-    modal: ActiveModal,
-    label: string,
-    grad: string,
-    emoji: string
-  ): string {
-    const active = this.activeModal === modal || (modal === 'clean' && this.isCleaningMode);
-    return `
-      <button
-        data-nav="${modal}"
-        type="button"
-        class="flex flex-col items-center gap-1 group"
-      >
-        <div class="w-12 h-12 rounded-2xl bg-gradient-to-b ${grad} border-2 border-white shadow-md flex items-center justify-center text-2xl transition-transform group-hover:scale-105 group-active:scale-95 ${active ? 'ring-3 ring-purple-500 scale-105' : ''}">
-          ${emoji}
-        </div>
-        <span class="text-[11px] font-extrabold text-[#3b1f6e] tracking-tight">${label}</span>
-      </button>
-    `;
   }
 
   private renderModal(): string {
@@ -3499,10 +3376,49 @@ export class MiauAppUI {
       .querySelector('#speech-bubble-card')
       ?.addEventListener('click', (e) => {
         const target = e.target as HTMLElement | null;
-        if (target?.closest('#btn-speaker')) return;
+        if (target?.closest('#btn-speaker, #btn-toggle-speech-box')) return;
         soundService.unlockAudio();
         hapticService.tap();
         this.openConversarModal();
+      });
+
+    // Collapsible HUD panel toggles (free up space for the room & pet)
+    this.root
+      .querySelector('#btn-toggle-status-panel')
+      ?.addEventListener('click', () => {
+        this.screenPrefs.collapseStatusPanel =
+          !this.screenPrefs.collapseStatusPanel;
+        hapticService.tap();
+        this.saveScreenPrefs();
+        this.render();
+      });
+    this.root
+      .querySelector('#btn-toggle-speech-box')
+      ?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.screenPrefs.collapseSpeechBox =
+          !this.screenPrefs.collapseSpeechBox;
+        hapticService.tap();
+        this.saveScreenPrefs();
+        this.render();
+      });
+    this.root
+      .querySelector('#btn-toggle-chat-box')
+      ?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.screenPrefs.collapseChatBox = !this.screenPrefs.collapseChatBox;
+        hapticService.tap();
+        this.saveScreenPrefs();
+        this.render();
+      });
+    this.root
+      .querySelector('#btn-toggle-bottom-nav')
+      ?.addEventListener('click', () => {
+        this.screenPrefs.collapseBottomNav =
+          !this.screenPrefs.collapseBottomNav;
+        hapticService.tap();
+        this.saveScreenPrefs();
+        this.render();
       });
 
     // Quick chat form
@@ -4357,6 +4273,10 @@ export class MiauAppUI {
           showSpeechAndChat: true,
           showCoinsBadge: true,
           easyReadMode: this.screenPrefs.easyReadMode,
+          collapseStatusPanel: false,
+          collapseSpeechBox: false,
+          collapseChatBox: false,
+          collapseBottomNav: false,
         };
         this.saveScreenPrefs();
         this.render();
@@ -4366,11 +4286,15 @@ export class MiauAppUI {
       .querySelector('#btn-preset-clean')
       ?.addEventListener('click', () => {
         this.screenPrefs = {
-          showStatusBars: false,
-          showStatusBadges: false,
-          showSpeechAndChat: false,
+          showStatusBars: true,
+          showStatusBadges: true,
+          showSpeechAndChat: true,
           showCoinsBadge: true,
           easyReadMode: this.screenPrefs.easyReadMode,
+          collapseStatusPanel: true,
+          collapseSpeechBox: true,
+          collapseChatBox: true,
+          collapseBottomNav: true,
         };
         this.saveScreenPrefs();
         this.render();

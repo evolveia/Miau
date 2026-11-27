@@ -32,6 +32,16 @@ export function patchStatusBarsAndHeaderDom(
     }
     if (pill) pill.classList.toggle('status-alert-glow', isLow);
     if (icon) icon.classList.toggle('status-icon-alert', isLow);
+
+    const compactTxt = root.querySelector(`#compact-pct-${key}`) as HTMLElement | null;
+    const compactPill = root.querySelector(`#compact-stat-${key}`) as HTMLElement | null;
+    if (compactTxt) {
+      compactTxt.textContent = `${pct}%`;
+      compactTxt.classList.toggle('text-rose-600', isLow);
+    }
+    if (compactPill) {
+      compactPill.classList.toggle('status-alert-glow', isLow);
+    }
   }
 
   const petName = (profile.petName || 'Miau').trim() || 'Miau';
@@ -63,6 +73,10 @@ export function patchSpeechBubbleDom(
 ): void {
   const prefixEl = root.querySelector('#speech-prefix');
   const textEl = root.querySelector('#speech-text');
+  const compactTextEl = root.querySelector('#speech-text-compact');
   if (prefixEl) prefixEl.textContent = speech.meowPrefix;
   if (textEl) textEl.textContent = speech.text;
+  if (compactTextEl) {
+    compactTextEl.textContent = `${speech.meowPrefix} ${speech.text}`.trim();
+  }
 }

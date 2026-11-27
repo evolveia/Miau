@@ -146,6 +146,10 @@ export interface ScreenVisibilityPrefs {
   showSpeechAndChat: boolean;
   showCoinsBadge: boolean;
   easyReadMode: boolean;
+  collapseStatusPanel: boolean;
+  collapseSpeechBox: boolean;
+  collapseChatBox: boolean;
+  collapseBottomNav: boolean;
 }
 
 export interface PetStats {

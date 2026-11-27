@@ -411,6 +411,14 @@ export function renderSettingsModalHtml(params: {
         ${renderToggleRow(params.screenPrefs, 'showSpeechAndChat', '💬 Balão de Fala e Chat', 'Caixa de conversa rápida na Sala')}
         ${renderToggleRow(params.screenPrefs, 'showCoinsBadge', '🪙 Moedas no Cabeçalho', 'Mostrar saldo de moedas no topo')}
 
+        <div class="pt-1.5 mt-0.5 border-t border-purple-100 flex flex-col gap-1">
+          <span class="text-[10px] font-extrabold uppercase tracking-wide text-[#7a60a8]">Painéis Recolhidos (Mais Espaço na Sala)</span>
+          ${renderToggleRow(params.screenPrefs, 'collapseStatusPanel', '📦 Recolher Painel de Status', 'Mostra barras em formato pílula compacta')}
+          ${renderToggleRow(params.screenPrefs, 'collapseSpeechBox', '💭 Recolher Mensagem do Miau', 'Compacta o balão de fala em uma faixa fina')}
+          ${renderToggleRow(params.screenPrefs, 'collapseChatBox', '🎙️ Recolher Caixa de Conversa', 'Compacta o campo de texto mantendo o microfone')}
+          ${renderToggleRow(params.screenPrefs, 'collapseBottomNav', '🐾 Recolher Menu do Rodapé', 'Recolhe as 5 opções em um botão compacto')}
+        </div>
+
         <div class="pt-1 border-t border-purple-100 flex items-center justify-between gap-2">
           <div class="min-w-0">
             <div class="text-xs font-bold text-[#3b1f6e]">🎓 Tour Guiado de Primeiro Acesso</div>

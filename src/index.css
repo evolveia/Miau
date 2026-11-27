@@ -497,70 +497,202 @@ body.xr-mode-active #XRButtonWrapper {
 /* Etapa 2.4: Synchronized Dark / Night Contrast for Modals */
 .miau-night-modal {
   background: linear-gradient(180deg, #1b1338 0%, #24194a 55%, #2f205f 100%) !important;
-  color: #f3ecff !important;
-}
-
-.miau-night-modal .bg-white,
-.miau-night-modal .bg-white\/95,
-.miau-night-modal .bg-white\/90,
-.miau-night-modal .bg-white\/85,
-.miau-night-modal .bg-white\/80,
-.miau-night-modal .bg-white\/75,
-.miau-night-modal .bg-white\/60,
-.miau-night-modal .bg-white\/45,
-.miau-night-modal .glass-card,
-.miau-night-modal .glass-pill {
-  background: rgba(41, 29, 82, 0.92) !important;
-  border-color: rgba(167, 139, 250, 0.35) !important;
   color: #f5f0ff !important;
 }
 
-.miau-night-modal .bg-purple-50,
-.miau-night-modal .bg-purple-50\/70,
-.miau-night-modal .bg-purple-100,
-.miau-night-modal .bg-purple-100\/80,
-.miau-night-modal .bg-purple-100\/90,
-.miau-night-modal .bg-indigo-50,
-.miau-night-modal .bg-indigo-100,
-.miau-night-modal .bg-sky-50,
-.miau-night-modal .bg-sky-100,
-.miau-night-modal .bg-amber-50,
-.miau-night-modal .bg-amber-100,
-.miau-night-modal .bg-pink-50,
-.miau-night-modal .bg-emerald-50,
-.miau-night-modal .from-indigo-50,
-.miau-night-modal .from-purple-50,
-.miau-night-modal .from-amber-50,
-.miau-night-modal .from-sky-50 {
+/* Neutral white / glass / light-purple cards & buttons (preserve img illustrations & translucent white/20 overlays) */
+.miau-night-modal .bg-white:not(img):not([id$="-canvas-wrap"]),
+.miau-night-modal .bg-white\/95:not(img),
+.miau-night-modal .bg-white\/90:not(img),
+.miau-night-modal .bg-white\/85:not(img),
+.miau-night-modal .bg-white\/80:not(img),
+.miau-night-modal .bg-white\/75:not(img),
+.miau-night-modal .bg-white\/60:not(img),
+.miau-night-modal .bg-white\/45:not(img),
+.miau-night-modal .glass-card,
+.miau-night-modal .glass-pill,
+.miau-night-modal [class*="bg-[#efe7ff]"],
+.miau-night-modal [class*="bg-[#efeaf8]"],
+.miau-night-modal [class*="bg-[#f4effb]"],
+.miau-night-modal [class*="from-white"]:not([id$="-canvas-wrap"]),
+.miau-night-modal [class*="from-[#eef6ff]"]:not([id$="-canvas-wrap"]),
+.miau-night-modal [class*="from-[#fff9eb]"]:not([id$="-canvas-wrap"]),
+.miau-night-modal [class*="bg-purple-50"],
+.miau-night-modal [class*="bg-purple-100"],
+.miau-night-modal [class*="bg-purple-200"],
+.miau-night-modal [class*="bg-indigo-50"],
+.miau-night-modal [class*="bg-indigo-100"],
+.miau-night-modal [class*="bg-indigo-200"],
+.miau-night-modal [class*="bg-violet-100"],
+.miau-night-modal [class*="bg-fuchsia-100"],
+.miau-night-modal [class*="bg-slate-50"],
+.miau-night-modal [class*="bg-slate-100"],
+.miau-night-modal [class*="from-purple-50"],
+.miau-night-modal [class*="from-purple-100"],
+.miau-night-modal [class*="from-indigo-50"],
+.miau-night-modal [class*="from-indigo-100"],
+.miau-night-modal [class*="from-violet-100"],
+.miau-night-modal [class*="from-fuchsia-50"],
+.miau-night-modal [class*="from-slate-100"] {
   background-image: none !important;
-  background-color: rgba(54, 40, 107, 0.9) !important;
-  border-color: rgba(167, 139, 250, 0.35) !important;
+  background-color: rgba(43, 30, 86, 0.94) !important;
+  border-color: rgba(167, 139, 250, 0.42) !important;
+  color: #f5f0ff !important;
 }
 
-.miau-night-modal .text-\[\#3b1f6e\],
+/* Muted switch track / disabled badge */
+.miau-night-modal .bg-slate-300 {
+  background-color: rgba(71, 61, 112, 0.95) !important;
+  color: #e2e8f0 !important;
+}
+
+/* Semantic dark emerald/teal surfaces in night mode */
+.miau-night-modal [class*="bg-emerald-50"],
+.miau-night-modal [class*="bg-emerald-100"],
+.miau-night-modal [class*="bg-emerald-200"],
+.miau-night-modal [class*="bg-teal-50"],
+.miau-night-modal [class*="bg-teal-100"],
+.miau-night-modal [class*="bg-lime-50"],
+.miau-night-modal [class*="bg-lime-100"],
+.miau-night-modal [class*="from-emerald-50"],
+.miau-night-modal [class*="from-emerald-100"],
+.miau-night-modal [class*="from-teal-100"],
+.miau-night-modal [class*="from-lime-100"] {
+  background-image: none !important;
+  background-color: rgba(16, 82, 62, 0.92) !important;
+  border-color: rgba(52, 211, 153, 0.65) !important;
+  color: #ecfdf5 !important;
+}
+
+/* Semantic dark sky/cyan surfaces in night mode */
+.miau-night-modal [class*="bg-sky-50"],
+.miau-night-modal [class*="bg-sky-100"],
+.miau-night-modal [class*="bg-sky-200"],
+.miau-night-modal [class*="bg-cyan-50"],
+.miau-night-modal [class*="bg-cyan-100"],
+.miau-night-modal [class*="from-sky-50"],
+.miau-night-modal [class*="from-sky-100"],
+.miau-night-modal [class*="from-cyan-100"] {
+  background-image: none !important;
+  background-color: rgba(25, 56, 94, 0.92) !important;
+  border-color: rgba(56, 189, 248, 0.55) !important;
+  color: #e0f2fe !important;
+}
+
+/* Semantic dark amber/orange/yellow surfaces in night mode */
+.miau-night-modal [class*="bg-amber-50"],
+.miau-night-modal [class*="bg-amber-100"],
+.miau-night-modal [class*="bg-amber-200"],
+.miau-night-modal [class*="bg-yellow-50"],
+.miau-night-modal [class*="bg-yellow-100"],
+.miau-night-modal [class*="bg-orange-50"],
+.miau-night-modal [class*="bg-orange-100"],
+.miau-night-modal [class*="from-amber-50"],
+.miau-night-modal [class*="from-amber-100"],
+.miau-night-modal [class*="from-yellow-100"],
+.miau-night-modal [class*="from-orange-100"] {
+  background-image: none !important;
+  background-color: rgba(74, 52, 24, 0.92) !important;
+  border-color: rgba(251, 191, 36, 0.55) !important;
+  color: #fef3c7 !important;
+}
+
+/* Semantic dark rose/pink surfaces in night mode */
+.miau-night-modal [class*="bg-rose-50"],
+.miau-night-modal [class*="bg-rose-100"],
+.miau-night-modal [class*="bg-rose-200"],
+.miau-night-modal [class*="bg-pink-50"],
+.miau-night-modal [class*="bg-pink-100"],
+.miau-night-modal [class*="from-pink-50"],
+.miau-night-modal [class*="from-pink-100"],
+.miau-night-modal [class*="from-rose-100"] {
+  background-image: none !important;
+  background-color: rgba(78, 29, 62, 0.92) !important;
+  border-color: rgba(251, 113, 133, 0.55) !important;
+  color: #ffe4e6 !important;
+}
+
+/* Keep tracing paper bright inside WritingModule */
+.miau-night-modal [id$="-canvas-wrap"] {
+  background: linear-gradient(180deg, #fdfaff 0%, #ffffff 55%, #f8f3ff 100%) !important;
+  border-color: rgba(167, 139, 250, 0.65) !important;
+}
+
+/* High-contrast light typography for all dark/medium text classes */
 .miau-night-modal .text-\[\#2d1b4e\],
+.miau-night-modal .text-\[\#3b1f6e\],
 .miau-night-modal .text-\[\#4c2a85\],
 .miau-night-modal .text-\[\#4e3580\],
 .miau-night-modal .text-\[\#5a3696\],
 .miau-night-modal .text-\[\#5b468f\],
 .miau-night-modal .text-\[\#5e4294\],
-.miau-night-modal .text-purple-800,
-.miau-night-modal .text-indigo-700,
-.miau-night-modal .text-indigo-800,
-.miau-night-modal .text-sky-900,
-.miau-night-modal .text-amber-800,
-.miau-night-modal .text-amber-900,
-.miau-night-modal .text-amber-950,
-.miau-night-modal .text-emerald-700,
-.miau-night-modal .text-emerald-800,
-.miau-night-modal .text-emerald-950,
-.miau-night-modal .text-orange-800 {
-  color: #f3ecff !important;
+.miau-night-modal .text-\[\#6e45a5\],
+.miau-night-modal .text-\[\#7a52b8\],
+.miau-night-modal [class*="text-purple-700"],
+.miau-night-modal [class*="text-purple-800"],
+.miau-night-modal [class*="text-purple-900"],
+.miau-night-modal [class*="text-indigo-700"],
+.miau-night-modal [class*="text-indigo-800"],
+.miau-night-modal [class*="text-indigo-900"],
+.miau-night-modal [class*="text-slate-700"] {
+  color: #f5f0ff !important;
 }
 
 .miau-night-modal .text-\[\#6b4d9e\],
-.miau-night-modal .text-\[\#7a60a8\] {
-  color: #d3c4fb !important;
+.miau-night-modal .text-\[\#7a60a8\],
+.miau-night-modal [class*="text-\[\#5b468f\]"],
+.miau-night-modal [class*="text-purple-400"],
+.miau-night-modal [class*="text-purple-300"],
+.miau-night-modal [class*="text-slate-400"],
+.miau-night-modal [class*="text-slate-500"] {
+  color: #dcd0ff !important;
+}
+
+.miau-night-modal [class*="text-\[\#4f46e5\]"] {
+  color: #a5b4fc !important;
+}
+
+.miau-night-modal [class*="text-emerald-600"],
+.miau-night-modal [class*="text-emerald-700"],
+.miau-night-modal [class*="text-emerald-800"],
+.miau-night-modal [class*="text-emerald-900"],
+.miau-night-modal [class*="text-emerald-950"],
+.miau-night-modal [class*="text-teal-900"] {
+  color: #a7f3d0 !important;
+}
+
+.miau-night-modal [class*="text-sky-700"],
+.miau-night-modal [class*="text-sky-800"],
+.miau-night-modal [class*="text-sky-900"],
+.miau-night-modal [class*="text-cyan-700"],
+.miau-night-modal [class*="text-cyan-800"],
+.miau-night-modal [class*="text-cyan-900"] {
+  color: #bae6fd !important;
+}
+
+.miau-night-modal [class*="text-amber-500"],
+.miau-night-modal [class*="text-amber-600"],
+.miau-night-modal [class*="text-amber-700"],
+.miau-night-modal [class*="text-amber-800"],
+.miau-night-modal [class*="text-amber-900"],
+.miau-night-modal [class*="text-amber-950"],
+.miau-night-modal [class*="text-orange-700"],
+.miau-night-modal [class*="text-orange-800"],
+.miau-night-modal [class*="text-orange-900"],
+.miau-night-modal [class*="text-yellow-900"] {
+  color: #fde68a !important;
+}
+
+.miau-night-modal [class*="text-rose-500"],
+.miau-night-modal [class*="text-rose-600"],
+.miau-night-modal [class*="text-rose-700"],
+.miau-night-modal [class*="text-rose-800"],
+.miau-night-modal [class*="text-rose-900"],
+.miau-night-modal [class*="text-rose-950"],
+.miau-night-modal [class*="text-pink-700"],
+.miau-night-modal [class*="text-pink-800"],
+.miau-night-modal [class*="text-pink-900"] {
+  color: #fecdd3 !important;
 }
 
 .miau-night-modal input,
@@ -574,4 +706,5 @@ body.xr-mode-active #XRButtonWrapper {
 .miau-night-modal .miau-scroll::-webkit-scrollbar-thumb {
   background: rgba(196, 181, 253, 0.45);
 }
+
 

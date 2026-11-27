@@ -46,6 +46,11 @@ import {
   setEasyReadEnabled,
   shouldUseNightModalTheme,
 } from '../src/services/accessibilityService';
+import {
+  renderCollapsibleBottomNavHtml,
+  renderCollapsibleSpeechAndChatHtml,
+  renderCollapsibleStatusSectionHtml,
+} from '../src/services/roomHudLayoutService';
 import { renderMiauSvg } from '../src/ui/MiauIllustration';
 import type { HouseRoomId } from '../src/types';
 
@@ -275,3 +280,133 @@ describe('Etapa 2.4 - Child Accessibility & Coherent Night Mode', () => {
     assert.equal(shouldUseNightModalTheme('bg_sunny', false), false);
   });
 });
+
+describe('Collapsible HUD Panels (Status, Speech/Chat, Bottom Menu)', () => {
+  const sampleStats = {
+    hunger: 82,
+    hygiene: 22,
+    fun: 64,
+    sleep: 90,
+    happiness: 78,
+  };
+
+  test('renders expanded and collapsed status panel with compact pills', () => {
+    const expanded = renderCollapsibleStatusSectionHtml({
+      showStatusBars: true,
+      showStatusBadges: true,
+      collapsed: false,
+      stats: sampleStats,
+      unlockedCount: 3,
+      totalAchievements: 10,
+      routineDone: 2,
+      routineTotal: 4,
+      activeRoutineCount: 1,
+      isSleeping: false,
+      level: 5,
+    });
+    assert.match(expanded, /id="stat-pill-hunger"/);
+    assert.match(expanded, /id="stat-pill-happiness"/);
+    assert.match(expanded, /id="btn-toggle-status-panel"/);
+    assert.match(expanded, /aria-expanded="true"/);
+
+    const collapsed = renderCollapsibleStatusSectionHtml({
+      showStatusBars: true,
+      showStatusBadges: true,
+      collapsed: true,
+      stats: sampleStats,
+      unlockedCount: 3,
+      totalAchievements: 10,
+      routineDone: 2,
+      routineTotal: 4,
+      activeRoutineCount: 1,
+      isSleeping: false,
+      level: 5,
+    });
+    assert.match(collapsed, /id="status-collapsed-bar"/);
+    assert.match(collapsed, /id="compact-pct-hygiene" class="text-rose-600">22%</);
+    assert.match(collapsed, /aria-expanded="false"/);
+  });
+
+  test('renders speech and chat boxes independently or combined when collapsed', () => {
+    const bothExpanded = renderCollapsibleSpeechAndChatHtml({
+      showSpeechAndChat: true,
+      collapseSpeechBox: false,
+      collapseChatBox: false,
+      petName: 'Miau',
+      meowPrefix: 'Purrr~',
+      speechText: 'Vamos brincar!',
+      avatarUrl: '/avatar.png',
+      isRecordingMic: false,
+    });
+    assert.match(bothExpanded, /id="speech-bubble-card"/);
+    assert.match(bothExpanded, /id="quick-chat-form"/);
+    assert.match(bothExpanded, /id="btn-toggle-speech-box"/);
+    assert.match(bothExpanded, /id="btn-toggle-chat-box"/);
+
+    const speechOnlyCollapsed = renderCollapsibleSpeechAndChatHtml({
+      showSpeechAndChat: true,
+      collapseSpeechBox: true,
+      collapseChatBox: false,
+      petName: 'Miau',
+      meowPrefix: 'Purrr~',
+      speechText: 'Vamos brincar!',
+      avatarUrl: '/avatar.png',
+      isRecordingMic: false,
+    });
+    assert.match(speechOnlyCollapsed, /id="speech-collapsed-pill"/);
+    assert.match(speechOnlyCollapsed, /id="speech-text-compact"/);
+    assert.match(speechOnlyCollapsed, /id="quick-chat-form"/);
+
+    const chatOnlyCollapsed = renderCollapsibleSpeechAndChatHtml({
+      showSpeechAndChat: true,
+      collapseSpeechBox: false,
+      collapseChatBox: true,
+      petName: 'Miau',
+      meowPrefix: 'Purrr~',
+      speechText: 'Vamos brincar!',
+      avatarUrl: '/avatar.png',
+      isRecordingMic: true,
+    });
+    assert.match(chatOnlyCollapsed, /id="speech-bubble-card"/);
+    assert.match(chatOnlyCollapsed, /id="chat-collapsed-pill"/);
+    assert.match(chatOnlyCollapsed, /id="btn-mic"/);
+
+    const bothCollapsed = renderCollapsibleSpeechAndChatHtml({
+      showSpeechAndChat: true,
+      collapseSpeechBox: true,
+      collapseChatBox: true,
+      petName: 'Pipoca',
+      meowPrefix: 'Miau!',
+      speechText: 'Olá!',
+      avatarUrl: '/avatar.png',
+      isRecordingMic: false,
+    });
+    assert.doesNotMatch(bothCollapsed, /id="speech-bubble-card"/);
+    assert.doesNotMatch(bothCollapsed, /id="quick-chat-form"/);
+    assert.match(bothCollapsed, /Fala de Pipoca/);
+    assert.match(bothCollapsed, /id="btn-speaker"/);
+  });
+
+  test('renders bottom 5-option menu in expanded and collapsed states', () => {
+    const expanded = renderCollapsibleBottomNavHtml({
+      collapsed: false,
+      activeModal: 'none',
+      isCleaningMode: false,
+    });
+    assert.match(expanded, /data-nav="feed"/);
+    assert.match(expanded, /data-nav="chat"/);
+    assert.match(expanded, /id="btn-toggle-bottom-nav"/);
+    assert.match(expanded, /aria-expanded="true"/);
+
+    const collapsed = renderCollapsibleBottomNavHtml({
+      collapsed: true,
+      activeModal: 'none',
+      isCleaningMode: false,
+    });
+    assert.doesNotMatch(collapsed, /data-nav="feed"/);
+    assert.match(collapsed, /id="btn-toggle-bottom-nav"/);
+    assert.match(collapsed, /aria-expanded="false"/);
+    assert.match(collapsed, /Ações do Miau/);
+  });
+});
+
