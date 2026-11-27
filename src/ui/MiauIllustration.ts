@@ -1,24 +1,47 @@
-import type { EquippedItems, MiauMood } from '../types';
+import type { EquippedItems, MiauMood, MiauVisualEffect } from '../types';
 
 export function renderMiauSvg(
   mood: MiauMood,
   equipped: EquippedItems,
-  isSleeping: boolean
+  isSleeping: boolean,
+  effect: MiauVisualEffect = 'none'
 ): string {
   const effectiveMood: MiauMood = isSleeping ? 'sleepy' : mood;
+  const resolvedEffect: MiauVisualEffect =
+    effect !== 'none'
+      ? effect
+      : effectiveMood === 'eating'
+        ? 'chewing'
+        : effectiveMood === 'bathing'
+          ? 'bath_foam'
+          : 'none';
 
   const eyesSvg =
-    effectiveMood === 'sleepy'
+    resolvedEffect === 'celebrating'
       ? `
+        <g class="animate-miau-bounce">
+          <path d="M126 146 Q137 131 148 146" fill="none" stroke="#1b1024" stroke-width="5.5" stroke-linecap="round"/>
+          <path d="M192 146 Q203 131 214 146" fill="none" stroke="#1b1024" stroke-width="5.5" stroke-linecap="round"/>
+          <polygon points="137,125 140,131 146,131 141,135 143,141 137,137 131,141 133,135 128,131 134,131" fill="#facc15" stroke="#1b1024" stroke-width="1.5"/>
+          <polygon points="203,125 206,131 212,131 207,135 209,141 203,137 197,141 199,135 194,131 200,131" fill="#facc15" stroke="#1b1024" stroke-width="1.5"/>
+        </g>
+      `
+      : resolvedEffect === 'yawning' || effectiveMood === 'sleepy'
+        ? `
         <path d="M126 146 Q137 156 148 146" fill="none" stroke="#1b1024" stroke-width="5.5" stroke-linecap="round"/>
         <path d="M192 146 Q203 156 214 146" fill="none" stroke="#1b1024" stroke-width="5.5" stroke-linecap="round"/>
       `
-      : effectiveMood === 'affectionate'
-        ? `
+        : resolvedEffect === 'bath_shake'
+          ? `
+        <path d="M125 138 L146 146 L125 153" fill="none" stroke="#1b1024" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M215 138 L194 146 L215 153" fill="none" stroke="#1b1024" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/>
+      `
+          : effectiveMood === 'affectionate' || resolvedEffect === 'bath_foam'
+            ? `
         <path d="M126 148 Q137 134 148 148" fill="none" stroke="#1b1024" stroke-width="5.5" stroke-linecap="round"/>
         <path d="M192 148 Q203 134 214 148" fill="none" stroke="#1b1024" stroke-width="5.5" stroke-linecap="round"/>
       `
-        : `
+            : `
         <g class="animate-eye-blink">
           <circle cx="137" cy="144" r="12" fill="#1b1024"/>
           <circle cx="133" cy="139" r="4.2" fill="#ffffff"/>
@@ -33,7 +56,19 @@ export function renderMiauSvg(
     <path d="M163 184 Q170 177 177 184 Q170 194 163 184 Z" fill="#f28b95"/>
   `;
 
-  if (effectiveMood === 'hungry') {
+  if (resolvedEffect === 'yawning') {
+    mouthSvg = `
+      <ellipse cx="170" cy="180" rx="13" ry="15" fill="#6d232b" stroke="#1b1024" stroke-width="4"/>
+      <ellipse cx="170" cy="187" rx="8" ry="6" fill="#f28b95"/>
+    `;
+  } else if (resolvedEffect === 'chewing' || effectiveMood === 'eating') {
+    mouthSvg = `
+      <g class="animate-miau-chew">
+        <path d="M154 167 Q170 178 186 167" fill="none" stroke="#1b1024" stroke-width="4.5" stroke-linecap="round"/>
+        <ellipse cx="170" cy="180" rx="9" ry="7.5" fill="#f28b95" stroke="#1b1024" stroke-width="3.5"/>
+      </g>
+    `;
+  } else if (effectiveMood === 'hungry') {
     mouthSvg = `
       <path d="M156 167 Q163 174 170 166 Q177 174 184 167" fill="none" stroke="#1b1024" stroke-width="4.5" stroke-linecap="round"/>
       <ellipse cx="170" cy="180" rx="7" ry="6" fill="#6d232b" stroke="#1b1024" stroke-width="3.5"/>
@@ -42,10 +77,67 @@ export function renderMiauSvg(
     mouthSvg = `
       <path d="M159 169 Q170 175 181 169" fill="none" stroke="#1b1024" stroke-width="4.5" stroke-linecap="round"/>
     `;
-  } else if (effectiveMood === 'eating') {
-    mouthSvg = `
-      <path d="M154 167 Q170 178 186 167" fill="none" stroke="#1b1024" stroke-width="4.5" stroke-linecap="round"/>
-      <circle cx="170" cy="180" r="8" fill="#f28b95" stroke="#1b1024" stroke-width="3.5"/>
+  }
+
+  let effectOverlaySvg = '';
+  let bodyAnimClass = 'animate-miau-breathe';
+  if (resolvedEffect === 'chewing') {
+    effectOverlaySvg = `
+      <g class="animate-crumb-fall">
+        <circle cx="152" cy="192" r="3.4" fill="#f59e0b" stroke="#1b1024" stroke-width="1.6"/>
+        <circle cx="188" cy="195" r="2.8" fill="#fbbf24" stroke="#1b1024" stroke-width="1.4"/>
+        <polygon points="164,199 169,197 167,203" fill="#f97316"/>
+        <circle cx="178" cy="204" r="2.5" fill="#fde047"/>
+      </g>
+    `;
+  } else if (resolvedEffect === 'bath_foam') {
+    effectOverlaySvg = `
+      <g opacity="0.95">
+        <circle cx="116" cy="204" r="14" fill="#ecfeff" stroke="#67e8f9" stroke-width="3"/>
+        <circle cx="134" cy="196" r="11" fill="#ffffff" stroke="#67e8f9" stroke-width="2.5"/>
+        <circle cx="212" cy="206" r="13" fill="#ecfeff" stroke="#67e8f9" stroke-width="3"/>
+        <circle cx="195" cy="196" r="10" fill="#ffffff" stroke="#67e8f9" stroke-width="2.5"/>
+        <circle cx="152" cy="96" r="9" fill="#ffffff" stroke="#67e8f9" stroke-width="2.5"/>
+        <circle cx="166" cy="90" r="11" fill="#ecfeff" stroke="#67e8f9" stroke-width="2.5"/>
+        <circle cx="182" cy="97" r="8" fill="#ffffff" stroke="#67e8f9" stroke-width="2.5"/>
+      </g>
+    `;
+  } else if (resolvedEffect === 'bath_shake') {
+    bodyAnimClass = 'animate-miau-shake';
+    effectOverlaySvg = `
+      <g>
+        <path d="M68 122 Q56 130 68 136 Q76 130 68 122 Z" fill="#38bdf8" stroke="#0284c7" stroke-width="2" class="animate-droplet-fly" style="--drop-x:-18px;--drop-y:-10px"/>
+        <path d="M272 124 Q284 132 272 138 Q264 132 272 124 Z" fill="#38bdf8" stroke="#0284c7" stroke-width="2" class="animate-droplet-fly" style="--drop-x:18px;--drop-y:-12px"/>
+        <path d="M84 82 Q74 90 84 96 Q92 90 84 82 Z" fill="#7dd3fc" stroke="#0284c7" stroke-width="2" class="animate-droplet-fly" style="--drop-x:-14px;--drop-y:-16px"/>
+        <path d="M256 84 Q266 92 256 98 Q248 92 256 84 Z" fill="#7dd3fc" stroke="#0284c7" stroke-width="2" class="animate-droplet-fly" style="--drop-x:14px;--drop-y:-16px"/>
+      </g>
+    `;
+  } else if (resolvedEffect === 'yawning') {
+    bodyAnimClass = 'animate-miau-yawn';
+    effectOverlaySvg = `
+      <g class="animate-float-up" fill="#818cf8" font-family="Fredoka, sans-serif" font-weight="700">
+        <text x="242" y="96" font-size="22">Z</text>
+        <text x="260" y="78" font-size="17">z</text>
+      </g>
+    `;
+  } else if (resolvedEffect === 'celebrating') {
+    bodyAnimClass = 'animate-miau-celebrate';
+    effectOverlaySvg = `
+      <g class="animate-twinkle">
+        <polygon points="74,98 78,108 88,108 80,114 83,124 74,118 65,124 68,114 60,108 70,108" fill="#facc15" stroke="#1b1024" stroke-width="2"/>
+        <polygon points="266,94 270,104 280,104 272,110 275,120 266,114 257,120 260,110 252,104 262,104" fill="#f472b6" stroke="#1b1024" stroke-width="2"/>
+        <circle cx="102" cy="70" r="5" fill="#38bdf8"/>
+        <circle cx="238" cy="68" r="5" fill="#a855f7"/>
+      </g>
+    `;
+  } else if (resolvedEffect === 'scratching') {
+    bodyAnimClass = 'animate-miau-scratch';
+    effectOverlaySvg = `
+      <g stroke="#f97316" stroke-width="4" stroke-linecap="round">
+        <line x1="60" y1="184" x2="78" y2="206"/>
+        <line x1="70" y1="176" x2="88" y2="198"/>
+        <line x1="80" y1="168" x2="98" y2="190"/>
+      </g>
     `;
   }
 
@@ -395,7 +487,7 @@ export function renderMiauSvg(
         </clipPath>
       </defs>
 
-      <g class="animate-miau-breathe">
+      <g class="${bodyAnimClass}">
         <g clip-path="url(#miau-body-clip)">
           <!-- Base white coat -->
           <rect x="60" y="60" width="225" height="215" fill="#ffffff"/>
@@ -442,6 +534,8 @@ export function renderMiauSvg(
         ${accSvg}
         ${hatSvg}
       </g>
+      <!-- Visual Effects Overlay -->
+      ${effectOverlaySvg}
     </svg>
   `;
 }

@@ -51,6 +51,24 @@ import {
   type CareNeedKey,
   type NotificationActionType,
 } from '../services/pushNotificationService';
+import {
+  setEasyReadEnabled,
+  shouldUseNightModalTheme,
+  syncEasyReadBodyClass,
+} from '../services/accessibilityService';
+import {
+  advanceBathFoamProgress,
+  getHouseRoomDef,
+  renderRoomInteractiveOverlayHtml,
+  renderRoomSwitcherHtml,
+} from '../services/interactiveRoomsService';
+import {
+  hasCompletedOnboarding,
+  markOnboardingCompleted,
+  renderOnboardingOverlayHtml,
+  resetOnboarding,
+  type OnboardingStep,
+} from '../services/onboardingService';
 import { LiveVoiceSession, soundService } from '../services/soundService';
 import type {
   AchievementDef,
@@ -60,7 +78,9 @@ import type {
   ChatMessage,
   GameId,
   GameMatchHistoryItem,
+  HouseRoomId,
   MiauMood,
+  MiauVisualEffect,
   RankingEntry,
   RoutineCategory,
   RoutineSlotDef,
@@ -170,6 +190,7 @@ const DEFAULT_SCREEN_PREFS: ScreenVisibilityPrefs = {
   showStatusBadges: true,
   showSpeechAndChat: true,
   showCoinsBadge: true,
+  easyReadMode: false,
 };
 
 export interface MiauUIXRBridge {
@@ -252,6 +273,16 @@ export class MiauAppUI {
   private learnTracks: LearnTrackControllers;
   private profileModal: UserProfileModalController;
   private ballController: InteractiveBallController | null = null;
+  private activeRoom: HouseRoomId = 'living';
+  private activeMiauEffect: MiauVisualEffect = 'none';
+  private miauEffectTimer: number | null = null;
+  private kitchenFridgeOpen = false;
+  private bathFoamPct = 0;
+  private lastBathPointer: { x: number; y: number } | null = null;
+  private lastBathFeedbackAt = 0;
+  private onboardingActive = false;
+  private onboardingStep: OnboardingStep = 1;
+  private onboardingStep2Done = false;
 
   constructor(
     container: HTMLElement,
@@ -423,6 +454,7 @@ export class MiauAppUI {
     } catch {
       this.screenPrefs = { ...DEFAULT_SCREEN_PREFS };
     }
+    syncEasyReadBodyClass(this.screenPrefs.easyReadMode);
   }
 
   private saveScreenPrefs(): void {
@@ -430,6 +462,49 @@ export class MiauAppUI {
       localStorage.setItem(SCREEN_PREFS_KEY, JSON.stringify(this.screenPrefs));
     } catch {
       // Ignore storage quota errors
+    }
+    syncEasyReadBodyClass(this.screenPrefs.easyReadMode);
+  }
+
+  private getEffectiveMiauEffect(): MiauVisualEffect {
+    if (
+      this.activeRoom === 'bathroom' &&
+      this.bathFoamPct >= 20 &&
+      this.activeMiauEffect === 'none'
+    ) {
+      return 'bath_foam';
+    }
+    return this.activeMiauEffect;
+  }
+
+  private setTemporaryMiauEffect(
+    effect: MiauVisualEffect,
+    durationMs = 1700
+  ): void {
+    if (this.miauEffectTimer !== null) {
+      clearTimeout(this.miauEffectTimer);
+      this.miauEffectTimer = null;
+    }
+    this.activeMiauEffect = effect;
+    this.updateCharacterSvgDOM();
+    if (effect !== 'none' && durationMs > 0) {
+      this.miauEffectTimer = window.setTimeout(() => {
+        this.miauEffectTimer = null;
+        if (this.activeMiauEffect === effect) {
+          this.activeMiauEffect = 'none';
+          this.updateCharacterSvgDOM();
+        }
+      }, durationMs);
+    }
+  }
+
+  private maybeActivateFirstTimeOnboarding(ownerId: string): void {
+    if (!hasCompletedOnboarding(ownerId)) {
+      this.onboardingActive = true;
+      this.onboardingStep = 1;
+      this.onboardingStep2Done = false;
+    } else {
+      this.onboardingActive = false;
     }
   }
 
@@ -542,6 +617,7 @@ export class MiauAppUI {
           this.showToast('Conectado! Usando cache local enquanto sincroniza.');
         }
         if (this.screen === 'login') {
+          this.maybeActivateFirstTimeOnboarding(user.uid);
           this.screen = 'game';
           this.render();
           void this.requestCameraPermissionOnStart();
@@ -564,6 +640,9 @@ export class MiauAppUI {
       }
       authResolved = true;
       const wasPreloader = this.screen === 'preloader';
+      if (user && wasPreloader) {
+        this.maybeActivateFirstTimeOnboarding(user.uid);
+      }
       tryAdvanceFromPreloader();
       if (wasPreloader && this.screen === 'game') {
         void this.requestCameraPermissionOnStart();
@@ -1094,6 +1173,7 @@ export class MiauAppUI {
       soundService.playCoin();
       hapticService.achievement();
       this.spawnFloatingParticle('🏆');
+      this.setTemporaryMiauEffect('celebrating', 1800);
       const totalBonus = unlockedNow.reduce((acc, a) => acc + a.coinReward, 0);
       const label =
         unlockedNow.length === 1
@@ -1122,12 +1202,16 @@ export class MiauAppUI {
   private handleNotificationDeepLink(action: NotificationActionType): void {
     if (this.screen !== 'game') return;
     if (action === 'feed') {
-      this.activeModal = 'feed';
+      this.activeRoom = 'kitchen';
+      this.kitchenFridgeOpen = true;
+      this.activeModal = 'none';
       this.render();
     } else if (action === 'clean') {
-      this.activeModal = 'clean';
+      this.activeRoom = 'bathroom';
+      this.activeModal = 'none';
       this.render();
     } else if (action === 'sleep') {
+      this.activeRoom = 'bedroom';
       this.activeModal = 'none';
       if (!this.isSleeping) {
         this.toggleSleep();
@@ -1374,6 +1458,7 @@ export class MiauAppUI {
         },
       ];
     }
+    this.maybeActivateFirstTimeOnboarding('demo');
     this.screen = 'game';
     this.syncXR();
     this.render();
@@ -1480,6 +1565,7 @@ export class MiauAppUI {
     soundService.playCrunch();
     hapticService.chomp();
     this.mood = 'eating';
+    this.setTemporaryMiauEffect('chewing', 1700);
     this.triggerMiauReaction('jump');
     this.spawnFloatingParticle('🐟');
     if (!claimedRoutine) {
@@ -1644,6 +1730,7 @@ export class MiauAppUI {
         }
       }, 2200);
     } else {
+      soundService.stopLullaby();
       soundService.playMeow(1.1);
       hapticService.play();
       this.currentSpeech = {
@@ -2186,7 +2273,8 @@ export class MiauAppUI {
       svgWrap.innerHTML = renderMiauSvg(
         this.mood,
         this.profile.equipped,
-        this.isSleeping
+        this.isSleeping,
+        this.getEffectiveMiauEffect()
       );
     }
   }
@@ -2664,6 +2752,7 @@ export class MiauAppUI {
 
   private renderGame(): void {
     this.ensureProfileDefaults();
+    syncEasyReadBodyClass(this.screenPrefs.easyReadMode);
     const s = this.profile.stats;
     const bgId = this.profile.equipped.background;
     const theme = getRoomThemeClasses(bgId, this.isSleeping);
@@ -2671,6 +2760,8 @@ export class MiauAppUI {
     const petName = (this.profile.petName || 'Miau').trim() || 'Miau';
     const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
     const activeRoutineCount = this.getActiveWindowSlots().length;
+    const activeRoomDef = getHouseRoomDef(this.activeRoom);
+    const effectiveEffect = this.getEffectiveMiauEffect();
 
     this.root.innerHTML = `
       <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#dfd0ff] via-[#cbb1fb] to-[#b896f5] md:p-4">
@@ -2681,7 +2772,7 @@ export class MiauAppUI {
           <div class="pointer-events-none absolute inset-0 transition-opacity duration-500 bg-indigo-950/35 z-10 ${this.isSleeping ? 'opacity-100' : 'opacity-0'}"></div>
 
           <!-- Top Header -->
-          <header class="relative z-20 px-4 pt-3.5 pb-2 flex items-center justify-between gap-2">
+          <header class="relative z-20 px-4 pt-3.5 pb-1.5 flex items-center justify-between gap-2">
             <button id="btn-menu" aria-label="Abrir menu" class="w-10 h-10 rounded-full bg-white/60 backdrop-blur border border-white/80 flex items-center justify-center text-[#3b1f6e] shadow-sm hover:scale-105 transition shrink-0">
               <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
                 <path stroke-linecap="round" d="M4 7h16M4 12h16M4 17h16"/>
@@ -2690,7 +2781,7 @@ export class MiauAppUI {
 
             <div class="min-w-0 flex-1 text-center px-1">
               <h1 id="hud-pet-name" class="font-display text-xl sm:text-2xl font-bold ${isNight ? 'text-white' : 'text-[#2d1b4e]'} tracking-tight truncate">🐾 ${escapeHtml(petName)}</h1>
-              <p class="text-[10px] font-extrabold uppercase tracking-wider ${isNight ? 'text-purple-200/85' : 'text-[#5b468f]/85'} leading-none mt-0.5">Sala de Estar</p>
+              <p id="hud-room-name" class="text-[10px] font-extrabold uppercase tracking-wider ${isNight ? 'text-purple-200/85' : 'text-[#5b468f]/85'} leading-none mt-0.5">${activeRoomDef.emoji} ${escapeHtml(activeRoomDef.label)}</p>
             </div>
 
             <div class="flex items-center gap-1.5 shrink-0">
@@ -2715,6 +2806,9 @@ export class MiauAppUI {
               }
             </div>
           </header>
+
+          <!-- Interactive House Room Switcher -->
+          ${renderRoomSwitcherHtml(this.activeRoom, isNight)}
 
           ${
             !pwaService.isOnline
@@ -2767,8 +2861,8 @@ export class MiauAppUI {
               : ''
           }
 
-          <!-- Living Room Floor, Themed Scenery & Miau Stage -->
-          <main id="miau-stage" class="relative flex-1 flex flex-col items-center justify-center overflow-hidden">
+          <!-- House Room Stage, Themed Scenery, Room Props & Miau -->
+          <main id="miau-stage" class="relative flex-1 flex flex-col items-center justify-center overflow-hidden ${activeRoomDef.backdropTintClass}">
             ${
               theme.showFloor
                 ? `<div class="absolute inset-x-0 bottom-0 h-[44%] bg-gradient-to-b ${theme.floor} border-t border-white/35"></div>`
@@ -2778,13 +2872,26 @@ export class MiauAppUI {
               ${renderRoomScenerySvg(this.profile.equipped.background, this.isSleeping)}
             </div>
 
+            <!-- Room-Specific Interactive Props & Controls -->
+            ${renderRoomInteractiveOverlayHtml({
+              activeRoom: this.activeRoom,
+              petName,
+              isSleeping: this.isSleeping,
+              isNight,
+              fridgeOpen: this.kitchenFridgeOpen,
+              bathFoamPct: this.bathFoamPct,
+              lullabyPlaying: soundService.isLullabyPlaying(),
+              coins: this.profile.coins,
+            })}
+
             <!-- Cleaning / Push Opt-in Banner -->
             ${
-              this.isCleaningMode
+              this.isCleaningMode && this.activeRoom !== 'bathroom'
                 ? `<div class="absolute top-2 z-20 glass-pill px-4 py-1.5 rounded-full text-xs font-extrabold text-cyan-800 animate-bounce">
-                     🫧 Toque no Miau para ensaboar e limpar!
+                     🫧 Esfregue ou toque no Miau para ensaboar!
                    </div>`
-                : (this.profile.stats.hunger < 35 ||
+                : this.activeRoom !== 'bathroom' &&
+                    (this.profile.stats.hunger < 35 ||
                       this.profile.stats.hygiene < 35 ||
                       this.profile.stats.sleep < 35) &&
                     pushNotificationService.shouldOfferRoomPrompt()
@@ -2801,11 +2908,12 @@ export class MiauAppUI {
               id="miau-character-wrap"
               role="button"
               tabindex="0"
-              aria-label="Fazer carinho em ${escapeHtml(petName)}"
+              aria-label="${this.activeRoom === 'bathroom' ? `Esfregar sabonete em ${escapeHtml(petName)}` : `Fazer carinho em ${escapeHtml(petName)}`}"
+              style="${this.activeRoom === 'bathroom' || this.isCleaningMode ? 'touch-action:none;' : ''}"
               class="relative z-10 w-[235px] h-[210px] sm:w-[260px] sm:h-[230px] cursor-pointer active:scale-95 transition-transform"
             >
               <div id="miau-svg-container" class="w-full h-full">
-                ${renderMiauSvg(this.mood, this.profile.equipped, this.isSleeping)}
+                ${renderMiauSvg(this.mood, this.profile.equipped, this.isSleeping, effectiveEffect)}
               </div>
             </div>
           </main>
@@ -2888,6 +2996,16 @@ export class MiauAppUI {
 
           <!-- Active Drawer / Modal -->
           ${this.activeModal !== 'none' ? this.renderModal() : ''}
+          ${
+            this.onboardingActive && this.activeModal === 'none'
+              ? renderOnboardingOverlayHtml({
+                  step: this.onboardingStep,
+                  petName,
+                  step2ActionDone: this.onboardingStep2Done,
+                  isNight,
+                })
+              : ''
+          }
           ${this.showInstallGuideModal ? renderInstallGuideModalHtml() : ''}
         </div>
       </div>
@@ -3058,8 +3176,12 @@ export class MiauAppUI {
       );
     }
 
+    const useNightModal = shouldUseNightModalTheme(
+      this.profile.equipped.background,
+      this.isSleeping
+    );
     return `
-      <div id="modal-fullscreen" class="fixed inset-0 z-30 flex flex-col bg-gradient-to-b from-[#ede4ff] via-[#e4d5fc] to-[#d9c4fa] overflow-hidden">
+      <div id="modal-fullscreen" class="fixed inset-0 z-30 flex flex-col bg-gradient-to-b from-[#ede4ff] via-[#e4d5fc] to-[#d9c4fa] overflow-hidden ${useNightModal ? 'miau-night-modal' : ''}">
         <div class="w-full max-w-4xl mx-auto h-full flex flex-col p-4 md:p-6 min-h-0">
           ${body}
         </div>
@@ -3117,7 +3239,8 @@ export class MiauAppUI {
       this.screen === 'game' &&
       this.activeModal === 'none' &&
       !this.isSleeping &&
-      !this.isCleaningMode
+      !this.isCleaningMode &&
+      (this.activeRoom === 'living' || this.activeRoom === 'playroom')
     ) {
       const stageEl = this.root.querySelector('#miau-stage') as HTMLElement | null;
       const charWrapEl = this.root.querySelector('#miau-character-wrap') as HTMLElement | null;
@@ -3128,9 +3251,201 @@ export class MiauAppUI {
       }
     }
 
-    // Pet Miau or rub bubbles in cleaning mode
+    // House room switcher
+    this.root.querySelectorAll('[data-room-switch]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nextRoom = btn.getAttribute('data-room-switch') as HouseRoomId | null;
+        if (!nextRoom || nextRoom === this.activeRoom) return;
+        this.activeRoom = nextRoom;
+        this.kitchenFridgeOpen = false;
+        this.isCleaningMode = false;
+        hapticService.tap();
+        this.render();
+      });
+    });
+
+    // Kitchen interactive props (fridge & bowl)
+    this.root.querySelector('#btn-room-fridge')?.addEventListener('click', () => {
+      hapticService.tap();
+      this.kitchenFridgeOpen = !this.kitchenFridgeOpen;
+      this.render();
+    });
+    this.root.querySelector('#btn-room-close-fridge')?.addEventListener('click', () => {
+      this.kitchenFridgeOpen = false;
+      this.render();
+    });
+    this.root.querySelector('#btn-room-all-foods')?.addEventListener('click', () => {
+      this.kitchenFridgeOpen = false;
+      this.activeModal = 'feed';
+      this.render();
+    });
+    this.root.querySelector('#btn-room-bowl')?.addEventListener('click', () => {
+      this.kitchenFridgeOpen = false;
+      this.handleQuickFeed();
+    });
+
+    // Bathroom interactive props (soap scrub + showerhead rinse)
+    const updateFoamDom = (nextPct: number) => {
+      const prevHasFoam = this.bathFoamPct >= 20;
+      this.bathFoamPct = nextPct;
+      const pctEl = this.root.querySelector('#bath-foam-pct');
+      const barEl = this.root.querySelector('#bath-foam-bar') as HTMLElement | null;
+      if (pctEl) pctEl.textContent = `${Math.round(nextPct)}%`;
+      if (barEl) barEl.style.width = `${Math.round(nextPct)}%`;
+      if (!prevHasFoam && nextPct >= 20) {
+        this.updateCharacterSvgDOM();
+      }
+    };
+
+    const applyBathScrubDelta = (deltaPx: number) => {
+      const nextPct = advanceBathFoamProgress(this.bathFoamPct, deltaPx);
+      updateFoamDom(nextPct);
+      const now = performance.now();
+      if (now - this.lastBathFeedbackAt >= 180) {
+        this.lastBathFeedbackAt = now;
+        soundService.playBubble();
+        hapticService.bubbles();
+        this.spawnFloatingParticle('🫧');
+        this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 3);
+        this.profile.stats.happiness = Math.min(100, this.profile.stats.happiness + 1);
+        this.updateStatusBarsDOM();
+      }
+    };
+
+    this.root.querySelector('#btn-room-soap')?.addEventListener('click', () => {
+      applyBathScrubDelta(120);
+      this.triggerMiauReaction('bounce');
+      if (this.bathFoamPct >= 80) {
+        this.showToast('Agora toque no 🚿 Chuveirinho para enxaguar!');
+      }
+    });
+
+    this.root.querySelector('#btn-room-showerhead')?.addEventListener('click', () => {
+      this.ensureProfileDefaults();
+      const neededBath = this.profile.stats.hygiene < 94 || this.bathFoamPct >= 20;
+      const foamBonus = this.bathFoamPct >= 40 ? 15 : 8;
+      this.bathFoamPct = 0;
+      this.isCleaningMode = false;
+      soundService.playShakeDrops();
+      hapticService.coin();
+      this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 30 + foamBonus);
+      this.profile.stats.happiness = Math.min(100, this.profile.stats.happiness + 12);
+      this.profile.progress.cleanCount += 1;
+      this.addRewards(neededBath ? 14 : 0, 12);
+      const claimedRoutine = this.claimRoutineSlot('bath');
+      this.evaluateAchievements();
+      this.mood = 'happy';
+      this.currentSpeech = claimedRoutine
+        ? {
+            meowPrefix: 'Brrr! 🚿⏰',
+            text: `(Banho completo no horário! Sacudi as gotinhas! +${claimedRoutine.bonusCoins} moedas!)`,
+          }
+        : {
+            meowPrefix: 'Brrr! 🚿✨',
+            text: '(Chuveirinho gostoso! Sacudi toda a água e estou cheiroso!)',
+          };
+      this.render();
+      this.setTemporaryMiauEffect('bath_shake', 1900);
+      this.spawnFloatingParticle('💧');
+      this.spawnFloatingParticle('✨');
+      this.speakCurrentCaption();
+      void this.persistStats();
+    });
+
+    // Bedroom interactive props (lamp & lullaby)
+    this.root.querySelector('#btn-room-lamp')?.addEventListener('click', () => {
+      hapticService.tap();
+      if (!this.isSleeping) {
+        this.setTemporaryMiauEffect('yawning', 600);
+        window.setTimeout(() => {
+          if (!this.isSleeping) {
+            this.activeMiauEffect = 'none';
+            this.toggleSleep();
+          }
+        }, 420);
+      } else {
+        this.toggleSleep();
+      }
+    });
+    this.root.querySelector('#btn-room-lullaby')?.addEventListener('click', () => {
+      hapticService.tap();
+      if (soundService.isLullabyPlaying()) {
+        soundService.stopLullaby();
+        this.showToast('Música de ninar pausada.');
+      } else {
+        soundService.unlockAudio();
+        soundService.startLullaby();
+        this.spawnFloatingParticle('🎶');
+        this.showToast('🎶 Tocando música de ninar suave...');
+      }
+      this.render();
+    });
+
+    // Playroom interactive props (scratcher & toybox)
+    this.root.querySelector('#btn-room-scratcher')?.addEventListener('click', () => {
+      if (this.isSleeping) this.toggleSleep();
+      this.ensureProfileDefaults();
+      soundService.playScratch();
+      hapticService.play();
+      this.profile.stats.fun = Math.min(100, this.profile.stats.fun + 14);
+      this.profile.stats.happiness = Math.min(100, this.profile.stats.happiness + 10);
+      const claim = claimBallCoins(this.profile.ownerId || 'guest', 6);
+      this.addRewards(claim.coinsGranted, 6);
+      this.evaluateAchievements();
+      this.mood = 'playful';
+      this.currentSpeech = {
+        meowPrefix: 'Scratch! 🐾',
+        text:
+          claim.coinsGranted > 0
+            ? `(Adoro o arranhador! Minhas garras ficaram afiadas! +🪙 ${claim.coinsGranted})`
+            : '(Que arranhador gostoso! Estude no Vamos Aprender para ganhar mais moedas!)',
+      };
+      this.updateStatusBarsDOM();
+      this.updateSpeechDOM();
+      this.setTemporaryMiauEffect('scratching', 1500);
+      this.spawnFloatingParticle('🐾');
+      this.speakCurrentCaption();
+      void this.persistStats();
+    });
+    this.root.querySelector('#btn-room-toybox')?.addEventListener('click', () => {
+      hapticService.tap();
+      this.activeModal = 'games';
+      this.render();
+    });
+
+    // Pet Miau or rub soap bubbles in bathroom / cleaning mode
     const miauWrap = this.root.querySelector('#miau-character-wrap');
+    miauWrap?.addEventListener('pointerdown', (e) => {
+      if (this.activeRoom !== 'bathroom' && !this.isCleaningMode) return;
+      const pe = e as PointerEvent;
+      this.lastBathPointer = { x: pe.clientX, y: pe.clientY };
+    });
+    miauWrap?.addEventListener('pointermove', (e) => {
+      if (this.activeRoom !== 'bathroom' && !this.isCleaningMode) return;
+      if (!this.lastBathPointer) return;
+      const pe = e as PointerEvent;
+      const dist = Math.hypot(
+        pe.clientX - this.lastBathPointer.x,
+        pe.clientY - this.lastBathPointer.y
+      );
+      if (dist >= 12) {
+        this.lastBathPointer = { x: pe.clientX, y: pe.clientY };
+        applyBathScrubDelta(dist);
+      }
+    });
+    const clearBathPointer = () => {
+      this.lastBathPointer = null;
+    };
+    miauWrap?.addEventListener('pointerup', clearBathPointer);
+    miauWrap?.addEventListener('pointercancel', clearBathPointer);
+
     miauWrap?.addEventListener('click', () => {
+      if (this.activeRoom === 'bathroom') {
+        applyBathScrubDelta(75);
+        this.triggerMiauReaction('bounce');
+        void this.persistStats();
+        return;
+      }
       if (this.isCleaningMode) {
         this.ensureProfileDefaults();
         const neededWash = this.profile.stats.hygiene < 98;
@@ -3161,7 +3476,7 @@ export class MiauAppUI {
                 text: '(Obrigado pelo banho de espuma! Estou limpinho e reluzente!)',
               };
           this.render();
-          this.triggerMiauReaction('spin');
+          this.setTemporaryMiauEffect('bath_shake', 1800);
           this.speakCurrentCaption();
         }
         void this.persistStats();
@@ -3308,6 +3623,7 @@ export class MiauAppUI {
         this.evaluateAchievements();
         soundService.playCrunch();
         hapticService.chomp();
+        this.kitchenFridgeOpen = false;
         this.mood = 'eating';
         this.currentSpeech = claimedRoutine
           ? {
@@ -3320,6 +3636,7 @@ export class MiauAppUI {
             };
         this.activeModal = 'none';
         this.render();
+        this.setTemporaryMiauEffect('chewing', 1700);
         this.triggerMiauReaction(
           food.id === 'food_salmon' || food.id === 'food_catnip'
             ? 'spin'
@@ -3341,7 +3658,8 @@ export class MiauAppUI {
     this.root.querySelector('#btn-instant-bath')?.addEventListener('click', () => {
       this.ensureProfileDefaults();
       const neededBath = this.profile.stats.hygiene < 92;
-      soundService.playBubble();
+      this.bathFoamPct = 0;
+      soundService.playShakeDrops();
       hapticService.bubbles();
       this.profile.stats.hygiene = Math.min(100, this.profile.stats.hygiene + 35);
       this.profile.stats.happiness = Math.min(
@@ -3363,7 +3681,7 @@ export class MiauAppUI {
           };
       this.activeModal = 'none';
       this.render();
-      this.triggerMiauReaction('spin');
+      this.setTemporaryMiauEffect('bath_shake', 1900);
       this.spawnFloatingParticle('🫧');
       this.spawnFloatingParticle('✨');
       this.speakCurrentCaption();
@@ -3929,10 +4247,106 @@ export class MiauAppUI {
         ) as keyof ScreenVisibilityPrefs | null;
         if (!key) return;
         this.screenPrefs[key] = !this.screenPrefs[key];
+        if (key === 'easyReadMode') {
+          setEasyReadEnabled(this.screenPrefs.easyReadMode);
+        }
         this.saveScreenPrefs();
         this.render();
       });
     });
+
+    this.root
+      .querySelector('#btn-settings-replay-onboarding')
+      ?.addEventListener('click', () => {
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        resetOnboarding(ownerId);
+        this.onboardingActive = true;
+        this.onboardingStep = 1;
+        this.onboardingStep2Done = false;
+        this.activeModal = 'none';
+        hapticService.tap();
+        this.render();
+      });
+
+    // Onboarding overlay events
+    this.root
+      .querySelector('#onboarding-name-form')
+      ?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = this.root.querySelector(
+          '#onboarding-pet-name-input'
+        ) as HTMLInputElement | null;
+        const cleanName = (input?.value || 'Miau')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 32);
+        if (!cleanName) {
+          this.showToast('Digite um nome válido para o seu bichinho!');
+          input?.focus();
+          return;
+        }
+        this.profile.petName = cleanName;
+        this.syncXR();
+        soundService.playCoin();
+        hapticService.coin();
+        void this.persistSettings();
+        this.onboardingStep = 2;
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-onboarding-pet')
+      ?.addEventListener('click', () => {
+        this.onboardingStep2Done = true;
+        this.handlePetInteraction();
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-onboarding-treat')
+      ?.addEventListener('click', () => {
+        this.onboardingStep2Done = true;
+        this.handleQuickFeed();
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-onboarding-next-2')
+      ?.addEventListener('click', () => {
+        hapticService.tap();
+        this.onboardingStep = 3;
+        this.render();
+      });
+
+    this.root
+      .querySelector('#btn-onboarding-open-learn')
+      ?.addEventListener('click', () => {
+        const ownerId =
+          this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+        markOnboardingCompleted(ownerId);
+        this.onboardingActive = false;
+        this.learnPreviewLevel = null;
+        this.resetAllLearnTracks();
+        this.activeModal = 'learn';
+        hapticService.tap();
+        this.render();
+      });
+
+    const closeOnboarding = () => {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      markOnboardingCompleted(ownerId);
+      this.onboardingActive = false;
+      hapticService.tap();
+      this.render();
+    };
+    this.root
+      .querySelector('#btn-onboarding-finish')
+      ?.addEventListener('click', closeOnboarding);
+    this.root
+      .querySelector('#btn-onboarding-skip')
+      ?.addEventListener('click', closeOnboarding);
 
     this.root
       .querySelector('#btn-preset-full')
@@ -3942,6 +4356,7 @@ export class MiauAppUI {
           showStatusBadges: true,
           showSpeechAndChat: true,
           showCoinsBadge: true,
+          easyReadMode: this.screenPrefs.easyReadMode,
         };
         this.saveScreenPrefs();
         this.render();
@@ -3955,6 +4370,7 @@ export class MiauAppUI {
           showStatusBadges: false,
           showSpeechAndChat: false,
           showCoinsBadge: true,
+          easyReadMode: this.screenPrefs.easyReadMode,
         };
         this.saveScreenPrefs();
         this.render();
@@ -4138,6 +4554,14 @@ export class MiauAppUI {
     this.root.querySelector('#btn-logout')?.addEventListener('click', async () => {
       this.ballController?.dispose();
       this.ballController = null;
+      soundService.stopLullaby();
+      if (this.miauEffectTimer !== null) {
+        clearTimeout(this.miauEffectTimer);
+        this.miauEffectTimer = null;
+      }
+      this.activeMiauEffect = 'none';
+      this.onboardingActive = false;
+      this.activeRoom = 'living';
       miauSpeechService.cancel();
       this.profileModal.disposeCameraStream();
       this.liveSession?.stop();

@@ -1,4 +1,8 @@
 import {
+  getEasyReadAudioSpeed,
+  isEasyReadEnabled,
+} from '../../services/accessibilityService';
+import {
   requestWritingEvaluation,
   requestWritingTeach,
 } from '../../services/geminiClient';
@@ -614,7 +618,7 @@ export class WritingModuleController {
         </div>
       </div>
 
-      <div class="flex items-center justify-between gap-2 mb-2 text-[11px] font-extrabold shrink-0 flex-wrap px-1">
+      <div class="easy-read-hide flex items-center justify-between gap-2 mb-2 text-[11px] font-extrabold shrink-0 flex-wrap px-1">
         <span class="${dailyDone ? 'text-emerald-800' : 'text-amber-800'}">
           📅 Meta hoje: ${dailySteps}/${dailyGoal} ${dailyDone ? '✓' : ''}
         </span>
@@ -818,7 +822,7 @@ export class WritingModuleController {
       <div class="flex-1 min-h-0 flex flex-col items-center justify-center p-2 text-center">
         <div class="rounded-3xl p-5 bg-white/95 border-2 border-[#a882e3] shadow-lg max-w-sm w-full flex flex-col items-center gap-3">
           <div class="w-20 h-20">
-            ${renderMiauSvg('affectionate', this.deps.getEquipped(), false)}
+            ${renderMiauSvg('affectionate', this.deps.getEquipped(), false, 'celebrating')}
           </div>
           <div class="text-2xl text-amber-500 tracking-widest leading-none">
             ${'★'.repeat(celeb.stars)}${'☆'.repeat(3 - celeb.stars)}
@@ -1126,6 +1130,7 @@ export class WritingModuleController {
       'pequeno(a)';
 
     const cached = this.teachCache.get(cacheKey);
+    const speakSlow = getEasyReadAudioSpeed(true);
     if (cached) {
       this.lesson.coachTip = cached.coachTip;
       this.lesson.coachMood = 'happy';
@@ -1135,8 +1140,8 @@ export class WritingModuleController {
       } else {
         this.deps.onRequestRerender();
       }
-      if (forceSpeech || this.deps.isSoundEnabled()) {
-        void writingAudioEngine.speak(cached.audioScript, { slow: true });
+      if (forceSpeech || this.deps.isSoundEnabled() || isEasyReadEnabled()) {
+        void writingAudioEngine.speak(cached.audioScript, { slow: speakSlow });
       }
       return;
     }
@@ -1189,8 +1194,8 @@ export class WritingModuleController {
       this.deps.onRequestRerender();
     }
 
-    if (this.deps.isSoundEnabled()) {
-      void writingAudioEngine.speak(audioScript, { slow: true });
+    if (this.deps.isSoundEnabled() || isEasyReadEnabled()) {
+      void writingAudioEngine.speak(audioScript, { slow: speakSlow });
     }
   }
 
@@ -1233,6 +1238,9 @@ export class WritingModuleController {
       };
     };
 
+    let lastHapticPt: CanvasPoint | null = null;
+    let lastHapticAt = 0;
+
     canvas.addEventListener('pointerdown', (e: PointerEvent) => {
       if (!this.lesson || this.lesson.isEvaluating) return;
       e.preventDefault();
@@ -1245,6 +1253,9 @@ export class WritingModuleController {
       }
       canvas.setPointerCapture?.(e.pointerId);
       const pt = getCanvasPoint(e);
+      lastHapticPt = pt;
+      lastHapticAt = performance.now();
+      hapticService.tap();
       this.lesson.activeStroke = [pt];
       this.lesson.userStrokes.push(this.lesson.activeStroke);
       this.redrawCanvas();
@@ -1258,6 +1269,16 @@ export class WritingModuleController {
       const last = stroke[stroke.length - 1];
       if (!last || Math.hypot(pt.x - last.x, pt.y - last.y) >= 2.2) {
         stroke.push(pt);
+        const now = performance.now();
+        if (
+          lastHapticPt &&
+          Math.hypot(pt.x - lastHapticPt.x, pt.y - lastHapticPt.y) >= 52 &&
+          now - lastHapticAt >= 90
+        ) {
+          lastHapticPt = pt;
+          lastHapticAt = now;
+          hapticService.tap();
+        }
         this.redrawCanvas();
       }
     });
@@ -1265,6 +1286,7 @@ export class WritingModuleController {
     const endStroke = (e: PointerEvent) => {
       if (!this.lesson || !this.lesson.activeStroke) return;
       e.preventDefault();
+      lastHapticPt = null;
       this.lesson.activeStroke = null;
       if (canvas.hasPointerCapture?.(e.pointerId)) {
         canvas.releasePointerCapture(e.pointerId);

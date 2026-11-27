@@ -1,3 +1,4 @@
+import { isEasyReadEnabled } from '../../services/accessibilityService';
 import { transcribeUserAudio } from '../../services/geminiClient';
 import { hapticService } from '../../services/hapticService';
 import { soundService } from '../../services/soundService';
@@ -538,7 +539,7 @@ export class LearningModuleController {
               </span>
               ${
                 ch.storyContext
-                  ? `<span class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">${escapeHtml(ch.storyContext)}</span>`
+                  ? `<span class="easy-read-hide text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800">${escapeHtml(ch.storyContext)}</span>`
                   : ''
               }
               ${
@@ -988,7 +989,7 @@ export class LearningModuleController {
       <div class="flex-1 min-h-0 flex flex-col items-center justify-center overflow-y-auto miau-scroll p-2 text-center">
         <div class="rounded-2xl p-4 sm:p-5 bg-white/95 border border-amber-200 shadow-md max-w-sm w-full flex flex-col items-center gap-2.5">
           <div class="w-16 h-16">
-            ${renderMiauSvg('affectionate', this.deps.getEquipped(), false)}
+            ${renderMiauSvg('affectionate', this.deps.getEquipped(), false, 'celebrating')}
           </div>
           <div class="text-2xl tracking-widest text-amber-400 leading-none">
             ${'★'.repeat(cel.stars)}${'☆'.repeat(3 - cel.stars)}
@@ -1319,8 +1320,9 @@ export class LearningModuleController {
     const lesson = this.lesson;
     if (!lesson) return;
     const ch = lesson.queue[lesson.cursor];
-    const text = slow ? ch.audioSlowText : ch.audioNormalText;
-    await phonicsAudioEngine.speak(text, { slow });
+    const useSlow = slow || isEasyReadEnabled();
+    const text = useSlow ? ch.audioSlowText : ch.audioNormalText;
+    await phonicsAudioEngine.speak(text, { slow: useSlow });
   }
 
   private handleWordBlockChoice(letter: string): void {

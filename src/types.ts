@@ -7,6 +7,22 @@ export type MiauMood =
   | 'eating'
   | 'bathing';
 
+export type MiauVisualEffect =
+  | 'none'
+  | 'chewing'
+  | 'bath_foam'
+  | 'bath_shake'
+  | 'yawning'
+  | 'celebrating'
+  | 'scratching';
+
+export type HouseRoomId =
+  | 'living'
+  | 'kitchen'
+  | 'bathroom'
+  | 'bedroom'
+  | 'playroom';
+
 export type AppScreen = 'preloader' | 'login' | 'game';
 
 export type ActiveModal =
@@ -129,6 +145,7 @@ export interface ScreenVisibilityPrefs {
   showStatusBadges: boolean;
   showSpeechAndChat: boolean;
   showCoinsBadge: boolean;
+  easyReadMode: boolean;
 }
 
 export interface PetStats {

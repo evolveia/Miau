@@ -332,3 +332,246 @@ body.xr-mode-active #XRButtonWrapper {
   background: rgba(139, 92, 246, 0.35);
   border-radius: 9999px;
 }
+
+/* Etapa 2.2: Dedicated Miau state micro-animations */
+@keyframes miau-chew {
+  0%, 100% {
+    transform: translateY(0px) scale(1, 1);
+  }
+  50% {
+    transform: translateY(2px) scale(1.06, 0.9);
+  }
+}
+
+@keyframes crumb-fall {
+  0% {
+    opacity: 0;
+    transform: translate(0px, -4px) scale(0.7);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(0px, 2px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(6px, 22px) scale(0.6);
+  }
+}
+
+@keyframes miau-shake {
+  0%, 100% {
+    transform: rotate(0deg) translateX(0px);
+  }
+  15% {
+    transform: rotate(-7deg) translateX(-6px);
+  }
+  30% {
+    transform: rotate(7deg) translateX(6px);
+  }
+  45% {
+    transform: rotate(-6deg) translateX(-5px);
+  }
+  60% {
+    transform: rotate(6deg) translateX(5px);
+  }
+  75% {
+    transform: rotate(-3deg) translateX(-3px);
+  }
+}
+
+@keyframes droplet-fly {
+  0% {
+    opacity: 0;
+    transform: translate(0px, 0px) scale(0.6);
+  }
+  30% {
+    opacity: 1;
+    transform: translate(var(--drop-x, -16px), var(--drop-y, -14px)) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--drop-x, -16px) * 1.8), calc(var(--drop-y, -14px) + 18px)) scale(0.5);
+  }
+}
+
+@keyframes miau-yawn {
+  0%, 100% {
+    transform: scale(1, 1);
+  }
+  40% {
+    transform: scale(1.02, 1.05) translateY(-3px);
+  }
+  65% {
+    transform: scale(1.03, 1.06) translateY(-4px);
+  }
+}
+
+@keyframes miau-celebrate {
+  0%, 100% {
+    transform: translateY(0px) scale(1);
+  }
+  30% {
+    transform: translateY(-18px) scale(1.05, 0.96);
+  }
+  60% {
+    transform: translateY(-6px) scale(0.98, 1.03);
+  }
+  80% {
+    transform: translateY(-12px) scale(1.03, 0.98);
+  }
+}
+
+@keyframes miau-scratch {
+  0%, 100% {
+    transform: rotate(0deg) translateX(0px);
+  }
+  25% {
+    transform: rotate(-5deg) translateX(-6px) translateY(-4px);
+  }
+  55% {
+    transform: rotate(4deg) translateX(4px) translateY(-2px);
+  }
+}
+
+.animate-miau-chew {
+  animation: miau-chew 0.34s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-crumb-fall {
+  animation: crumb-fall 0.9s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-miau-shake {
+  animation: miau-shake 0.55s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+.animate-droplet-fly {
+  animation: droplet-fly 0.85s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.animate-miau-yawn {
+  animation: miau-yawn 1.4s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.animate-miau-celebrate {
+  animation: miau-celebrate 0.9s cubic-bezier(0.28, 0.84, 0.42, 1) infinite;
+  transform-origin: center bottom;
+}
+
+.animate-miau-scratch {
+  animation: miau-scratch 0.55s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+/* Etapa 2.4: Modo Leitura Fácil (Child Accessibility) */
+.miau-easy-read .easy-read-hide {
+  display: none !important;
+}
+
+.miau-easy-read #modal-fullscreen button {
+  min-height: 46px;
+}
+
+.miau-easy-read #modal-fullscreen p,
+.miau-easy-read #modal-fullscreen h2,
+.miau-easy-read #modal-fullscreen h3 {
+  line-height: 1.42;
+}
+
+.miau-easy-read #modal-fullscreen [data-el-option],
+.miau-easy-read #modal-fullscreen [data-cs-option],
+.miau-easy-read #modal-fullscreen [class*="-option"],
+.miau-easy-read #modal-fullscreen [data-learn-open-track] {
+  min-height: 60px;
+  font-size: 1rem;
+}
+
+/* Etapa 2.4: Synchronized Dark / Night Contrast for Modals */
+.miau-night-modal {
+  background: linear-gradient(180deg, #1b1338 0%, #24194a 55%, #2f205f 100%) !important;
+  color: #f3ecff !important;
+}
+
+.miau-night-modal .bg-white,
+.miau-night-modal .bg-white\/95,
+.miau-night-modal .bg-white\/90,
+.miau-night-modal .bg-white\/85,
+.miau-night-modal .bg-white\/80,
+.miau-night-modal .bg-white\/75,
+.miau-night-modal .bg-white\/60,
+.miau-night-modal .bg-white\/45,
+.miau-night-modal .glass-card,
+.miau-night-modal .glass-pill {
+  background: rgba(41, 29, 82, 0.92) !important;
+  border-color: rgba(167, 139, 250, 0.35) !important;
+  color: #f5f0ff !important;
+}
+
+.miau-night-modal .bg-purple-50,
+.miau-night-modal .bg-purple-50\/70,
+.miau-night-modal .bg-purple-100,
+.miau-night-modal .bg-purple-100\/80,
+.miau-night-modal .bg-purple-100\/90,
+.miau-night-modal .bg-indigo-50,
+.miau-night-modal .bg-indigo-100,
+.miau-night-modal .bg-sky-50,
+.miau-night-modal .bg-sky-100,
+.miau-night-modal .bg-amber-50,
+.miau-night-modal .bg-amber-100,
+.miau-night-modal .bg-pink-50,
+.miau-night-modal .bg-emerald-50,
+.miau-night-modal .from-indigo-50,
+.miau-night-modal .from-purple-50,
+.miau-night-modal .from-amber-50,
+.miau-night-modal .from-sky-50 {
+  background-image: none !important;
+  background-color: rgba(54, 40, 107, 0.9) !important;
+  border-color: rgba(167, 139, 250, 0.35) !important;
+}
+
+.miau-night-modal .text-\[\#3b1f6e\],
+.miau-night-modal .text-\[\#2d1b4e\],
+.miau-night-modal .text-\[\#4c2a85\],
+.miau-night-modal .text-\[\#4e3580\],
+.miau-night-modal .text-\[\#5a3696\],
+.miau-night-modal .text-\[\#5b468f\],
+.miau-night-modal .text-\[\#5e4294\],
+.miau-night-modal .text-purple-800,
+.miau-night-modal .text-indigo-700,
+.miau-night-modal .text-indigo-800,
+.miau-night-modal .text-sky-900,
+.miau-night-modal .text-amber-800,
+.miau-night-modal .text-amber-900,
+.miau-night-modal .text-amber-950,
+.miau-night-modal .text-emerald-700,
+.miau-night-modal .text-emerald-800,
+.miau-night-modal .text-emerald-950,
+.miau-night-modal .text-orange-800 {
+  color: #f3ecff !important;
+}
+
+.miau-night-modal .text-\[\#6b4d9e\],
+.miau-night-modal .text-\[\#7a60a8\] {
+  color: #d3c4fb !important;
+}
+
+.miau-night-modal input,
+.miau-night-modal textarea,
+.miau-night-modal select {
+  background-color: #191233 !important;
+  color: #ffffff !important;
+  border-color: rgba(167, 139, 250, 0.45) !important;
+}
+
+.miau-night-modal .miau-scroll::-webkit-scrollbar-thumb {
+  background: rgba(196, 181, 253, 0.45);
+}
+

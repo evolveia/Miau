@@ -72,7 +72,7 @@ export function renderLearnModalHtml(
         <button id="btn-learn-back" type="button" class="min-h-[40px] px-3.5 py-2 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-extrabold text-xs shadow-xs hover:bg-purple-50 active:scale-95 transition shrink-0">← Voltar</button>
         <div class="min-w-0">
           <h2 class="font-display text-xl sm:text-2xl font-bold text-[#3b1f6e] leading-tight truncate">Vamos Aprender 🎓</h2>
-          <p class="text-xs font-semibold text-[#6b4d9e] truncate">Trilhas educativas personalizadas com o Miau</p>
+          <p class="easy-read-hide text-xs font-semibold text-[#6b4d9e] truncate">Trilhas educativas personalizadas com o Miau</p>
         </div>
       </div>
       <button id="modal-close" type="button" class="w-10 h-10 rounded-full bg-white/95 border border-purple-200 text-purple-800 font-bold text-sm shadow-xs hover:bg-purple-50 active:scale-95 transition shrink-0">✕</button>
@@ -244,7 +244,7 @@ export function renderLearnModalHtml(
 
                 <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-2 border-t border-purple-100/80">
                   <div class="min-w-0 space-y-0.5">
-                    <div class="text-xs font-bold text-[#5a3696] truncate">
+                    <div class="easy-read-hide text-xs font-bold text-[#5a3696] truncate">
                       ${escapeHtml(metadataLine)}
                     </div>
                     <div class="text-xs font-extrabold ${

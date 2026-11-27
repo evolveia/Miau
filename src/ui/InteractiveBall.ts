@@ -1,3 +1,5 @@
+import { hapticService } from '../services/hapticService';
+
 export interface InteractiveBallController {
   dispose: () => void;
 }
@@ -58,6 +60,7 @@ export function mountInteractiveBall(
     ev.stopPropagation();
     if (disposed || animating) return;
     animating = true;
+    hapticService.tap();
 
     resetTransforms();
 
@@ -79,6 +82,7 @@ export function mountInteractiveBall(
     const start = performance.now();
     const durationMs = 960;
     const hitT = 0.56;
+    let catchImpactFired = false;
 
     const tick = (now: number) => {
       if (disposed) return;
@@ -93,6 +97,10 @@ export function mountInteractiveBall(
         const arcLift = Math.sin(p * Math.PI) * 95;
         curY = targetDy * easeOut - arcLift;
       } else {
+        if (!catchImpactFired) {
+          catchImpactFired = true;
+          hapticService.play();
+        }
         const p = (t - hitT) / (1 - hitT);
         const easeInOut = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
         curX = targetDx * (1 - easeInOut);

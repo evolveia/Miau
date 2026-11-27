@@ -11,6 +11,8 @@ class SoundService {
   private recRafId: number | null = null;
   private recPeakRms = 0;
   private recStartedAt = 0;
+  private lullabyTimer: number | null = null;
+  private lullabyStep = 0;
   public enabled = true;
 
   private getContext(): AudioContext | null {
@@ -53,6 +55,7 @@ class SoundService {
   }
 
   public stopAllAudio(): void {
+    this.stopLullaby();
     if (this.activeBufferSource) {
       try {
         this.activeBufferSource.onended = null;
@@ -216,6 +219,89 @@ class SoundService {
       osc.start(now + offset);
       osc.stop(now + offset + 0.1);
     });
+  }
+
+  playShakeDrops(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [0, 0.09, 0.18, 0.27].forEach((offset, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      const baseFreq = 520 + idx * 110;
+      osc.frequency.setValueAtTime(baseFreq, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.65, now + offset + 0.06);
+      gain.gain.setValueAtTime(0.09, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.09);
+    });
+  }
+
+  playScratch(): void {
+    if (!this.enabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [0, 0.11, 0.22].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(340, now + offset);
+      osc.frequency.exponentialRampToValueAtTime(160, now + offset + 0.07);
+      gain.gain.setValueAtTime(0.11, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.09);
+    });
+  }
+
+  public isLullabyPlaying(): boolean {
+    return this.lullabyTimer !== null;
+  }
+
+  public startLullaby(): void {
+    if (!this.enabled || typeof window === 'undefined') return;
+    if (this.lullabyTimer !== null) return;
+    const notes = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 659.25, 523.25];
+    const playNote = () => {
+      if (!this.enabled) {
+        this.stopLullaby();
+        return;
+      }
+      const ctx = this.getContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const freq = notes[this.lullabyStep % notes.length];
+      this.lullabyStep = (this.lullabyStep + 1) % notes.length;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.055, now + 0.06);
+      gain.gain.exponentialRampToValueAtTime(0.0008, now + 0.72);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.75);
+    };
+    playNote();
+    this.lullabyTimer = window.setInterval(playNote, 680);
+  }
+
+  public stopLullaby(): void {
+    if (this.lullabyTimer !== null && typeof window !== 'undefined') {
+      window.clearInterval(this.lullabyTimer);
+    }
+    this.lullabyTimer = null;
   }
 
   private base64ToArrayBuffer(base64: string): ArrayBuffer {

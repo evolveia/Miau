@@ -398,17 +398,28 @@ export function renderSettingsModalHtml(params: {
 
       <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2">
         <div class="flex items-center justify-between">
-          <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal (Sala)</span>
+          <span class="text-xs font-extrabold uppercase tracking-wide text-[#6b4d9e]">Tela Principal & Acessibilidade</span>
           <div class="flex gap-1.5">
             <button id="btn-preset-full" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-purple-100 text-[#4c2a85] hover:bg-purple-200">✨ Tudo</button>
             <button id="btn-preset-clean" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 hover:bg-emerald-200">🧘 Limpo</button>
           </div>
         </div>
 
+        ${renderToggleRow(params.screenPrefs, 'easyReadMode', '📖 Modo Leitura Fácil', 'Botões maiores, menos texto e leitura automática em voz alta')}
         ${renderToggleRow(params.screenPrefs, 'showStatusBars', '📊 Barras de Status', 'Fome, Higiene, Diversão, Sono e Felicidade')}
         ${renderToggleRow(params.screenPrefs, 'showStatusBadges', '🏆 Atalhos do Topo', 'Conquistas, Soneca e Nível')}
         ${renderToggleRow(params.screenPrefs, 'showSpeechAndChat', '💬 Balão de Fala e Chat', 'Caixa de conversa rápida na Sala')}
         ${renderToggleRow(params.screenPrefs, 'showCoinsBadge', '🪙 Moedas no Cabeçalho', 'Mostrar saldo de moedas no topo')}
+
+        <div class="pt-1 border-t border-purple-100 flex items-center justify-between gap-2">
+          <div class="min-w-0">
+            <div class="text-xs font-bold text-[#3b1f6e]">🎓 Tour Guiado de Primeiro Acesso</div>
+            <div class="text-[10px] text-[#7a60a8]">Reveja os 3 passos iniciais com o Miau</div>
+          </div>
+          <button id="btn-settings-replay-onboarding" type="button" class="px-3 py-1.5 rounded-full bg-purple-100 hover:bg-purple-200 text-[#4c2a85] text-xs font-extrabold transition shrink-0">
+            Refazer Tour
+          </button>
+        </div>
       </div>
 
       <div class="bg-white/85 rounded-2xl p-3 border border-purple-100 flex flex-col gap-2.5">
