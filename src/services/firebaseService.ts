@@ -898,6 +898,22 @@ function sanitizeRankingGameMap(
   return out;
 }
 
+const VALID_RANKING_SCHOOLINGS = new Set([
+  '',
+  'educacao_infantil',
+  'fundamental_1',
+  'fundamental_2',
+  'medio',
+  'superior_outro',
+]);
+
+function sanitizeRankingSchooling(raw: unknown): RankingEntry['schooling'] {
+  if (typeof raw !== 'string' || !VALID_RANKING_SCHOOLINGS.has(raw)) {
+    return '';
+  }
+  return raw as RankingEntry['schooling'];
+}
+
 export async function upsertRankingEntry(
   uid: string,
   entry: Omit<RankingEntry, 'id' | 'updatedAtMs'>
@@ -911,6 +927,7 @@ export async function upsertRankingEntry(
         .slice(0, 40) || 'Jogador';
     const gameScores = sanitizeRankingGameMap(entry.gameScores, 0, 10000000);
     const gameStages = sanitizeRankingGameMap(entry.gameStages, 1, 999);
+    const schooling = sanitizeRankingSchooling(entry.schooling);
     await setDoc(doc(db, 'rankings', uid), {
       ownerId: uid,
       playerName: safeName,
@@ -918,6 +935,7 @@ export async function upsertRankingEntry(
       totalScore: Math.max(0, Math.min(50000000, Math.round(entry.totalScore))),
       bestStage: Math.max(1, Math.min(999, Math.round(entry.bestStage))),
       coinsEarned: Math.max(0, Math.min(50000000, Math.round(entry.coinsEarned))),
+      schooling,
       gameScores,
       gameStages,
       updatedAt: serverTimestamp(),
@@ -945,6 +963,7 @@ export async function loadTopRankings(maxCount = 20): Promise<RankingEntry[]> {
         totalScore: Number(d.totalScore || 0),
         bestStage: Number(d.bestStage || 1),
         coinsEarned: Number(d.coinsEarned || 0),
+        schooling: sanitizeRankingSchooling(d.schooling),
         gameScores: d.gameScores
           ? sanitizeRankingGameMap(d.gameScores, 0, 10000000)
           : undefined,

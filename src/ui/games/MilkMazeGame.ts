@@ -1,6 +1,14 @@
 import { hapticService } from '../../services/hapticService';
 import { soundService } from '../../services/soundService';
 import type { MiniGameResult } from '../MiniGames';
+import {
+  MAZE_DIR_VECTORS,
+  MAZE_OPPOSITE_DIR,
+  TurnBufferQueue,
+  attachFullScreenMazeSwipe,
+  mountFloatingDpad,
+  renderPreGameRulesOverlayHtml,
+} from './mazeControls';
 
 type MazeCell = '#' | '.';
 type Dir = 'up' | 'down' | 'left' | 'right';
@@ -140,7 +148,10 @@ export function mountMilkMazeGame(
   onToggleMute?: () => boolean
 ): () => void {
   let stopped = false;
-  let paused = false;
+  let paused = true;
+  let gameStarted = false;
+  let countdownActive = false;
+  let countdownTimer: number | null = null;
   let stage = 1;
   let score = 0;
   let hearts = 3;
@@ -157,6 +168,10 @@ export function mountMilkMazeGame(
   let fishesCollectedStage = 0;
   let guards: PatrolGuard[] = [];
   let hurtInvuln = 0;
+  const turnBuffer = new TurnBufferQueue('right', 1400);
+  let isAutoMoving = false;
+  let stepAccumulator = 0;
+  const STEP_INTERVAL_SEC = 0.175;
 
   container.innerHTML = `
     <div class="flex-1 flex flex-col min-h-0 h-full select-none">
@@ -169,6 +184,7 @@ export function mountMilkMazeGame(
           <p id="mz-sub" class="text-[11px] text-[#6b4d9e] font-semibold truncate">Guie o Miau até o pratinho de leite no canto inferior direito!</p>
         </div>
         <div class="flex items-center gap-1.5 shrink-0">
+          <button id="mz-pause" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center hover:bg-purple-200 shrink-0">▶</button>
           <button id="mg-mute" type="button" aria-pressed="${!soundService.enabled}" class="w-8 h-8 rounded-full ${soundService.enabled ? 'bg-purple-100 text-purple-800' : 'bg-rose-100 text-rose-800'} font-bold flex items-center justify-center shrink-0">${soundService.enabled ? '🔊' : '🔇'}</button>
           <button id="mg-close" type="button" class="w-8 h-8 rounded-full bg-purple-100 text-purple-800 font-bold flex items-center justify-center hover:bg-purple-200 shrink-0">✕</button>
         </div>
@@ -201,18 +217,9 @@ export function mountMilkMazeGame(
         <div id="mz-overlay" class="hidden absolute inset-0 z-20 bg-purple-950/65 flex items-center justify-center p-4"></div>
       </div>
 
-      <div class="mt-2 flex items-center justify-between gap-3 shrink-0">
-        <div class="text-[10px] font-bold text-[#5e4294] leading-tight hidden sm:block max-w-[205px]">
-          Use <b>Setas / WASD</b>, deslize o dedo ou toque nas setas para levar o Miau ao 🥛!
-        </div>
-        <div class="mx-auto sm:mx-0 grid grid-cols-3 gap-1 w-[150px] shrink-0">
-          <div></div>
-          <button data-mz-dir="up" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">▲</button>
-          <div></div>
-          <button data-mz-dir="left" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">◀</button>
-          <button data-mz-dir="down" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">▼</button>
-          <button data-mz-dir="right" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">▶</button>
-        </div>
+      <div class="mt-1.5 flex items-center justify-between gap-2 px-1 shrink-0 text-[10px] font-bold text-[#5e4294]">
+        <span>👆 Deslize na tela inteira (curva automática) ou arraste o D-pad</span>
+        <span class="hidden sm:inline shrink-0">⌨️ Setas / WASD</span>
       </div>
     </div>
   `;
@@ -223,6 +230,7 @@ export function mountMilkMazeGame(
   const timeEl = container.querySelector('#mz-time') as HTMLElement;
   const badgeEl = container.querySelector('#mz-stage-badge') as HTMLElement;
   const subEl = container.querySelector('#mz-sub') as HTMLElement;
+  const pauseBtn = container.querySelector('#mz-pause') as HTMLButtonElement;
   const boardWrap = container.querySelector('#mz-board-wrap') as HTMLDivElement;
   const canvas = container.querySelector('#mz-canvas') as HTMLCanvasElement;
   const overlayEl = container.querySelector('#mz-overlay') as HTMLDivElement;
@@ -252,6 +260,9 @@ export function mountMilkMazeGame(
     movesCount = 0;
     fishesCollectedStage = 0;
     hurtInvuln = 0;
+    isAutoMoving = false;
+    stepAccumulator = 0;
+    turnBuffer.reset('right');
 
     const dists = bfsDistances(grid, player);
     parSteps = dists.get(`${goal.x},${goal.y}`) ?? cfg.cols * 2;
@@ -346,20 +357,23 @@ export function mountMilkMazeGame(
     overlayEl.innerHTML = '';
   };
 
-  const tryMove = (dir: Dir) => {
-    if (paused || stopped) return;
-    const delta: Record<Dir, Point> = {
-      up: { x: 0, y: -1 },
-      down: { x: 0, y: 1 },
-      left: { x: -1, y: 0 },
-      right: { x: 1, y: 0 },
-    };
-    const nx = player.x + delta[dir].x;
-    const ny = player.y + delta[dir].y;
-    if (nx < 0 || nx >= cfg.cols || ny < 0 || ny >= cfg.rows) return;
+  const canMoveDir = (dir: Dir): boolean => {
+    const v = MAZE_DIR_VECTORS[dir];
+    const nx = player.x + v.x;
+    const ny = player.y + v.y;
+    if (nx < 0 || nx >= cfg.cols || ny < 0 || ny >= cfg.rows) return false;
+    return grid[ny][nx] !== '#';
+  };
+
+  const tryMove = (dir: Dir): boolean => {
+    if (paused || stopped) return false;
+    const delta = MAZE_DIR_VECTORS[dir];
+    const nx = player.x + delta.x;
+    const ny = player.y + delta.y;
+    if (nx < 0 || nx >= cfg.cols || ny < 0 || ny >= cfg.rows) return false;
     if (grid[ny][nx] === '#') {
       hapticService.tap();
-      return;
+      return false;
     }
     player.x = nx;
     player.y = ny;
@@ -380,6 +394,7 @@ export function mountMilkMazeGame(
     // Chegou ao pratinho de leite!
     if (player.x === goal.x && player.y === goal.y) {
       paused = true;
+      isAutoMoving = false;
       const remainingSec = Math.max(0, Math.ceil(cfg.parSec - stageElapsedSec));
       const efficiencyBonus = movesCount <= parSteps + 6 ? 60 : 20;
       const stageBonus = 120 + stage * 45 + remainingSec * 4 + efficiencyBonus;
@@ -410,7 +425,9 @@ export function mountMilkMazeGame(
       overlayEl
         .querySelector('#mz-quit-btn')
         ?.addEventListener('click', finishGame);
+      return false;
     }
+    return true;
   };
 
   const handleGuardHit = () => {
@@ -541,6 +558,27 @@ export function mountMilkMazeGame(
       stageElapsedSec += dt;
       if (hurtInvuln > 0) hurtInvuln = Math.max(0, hurtInvuln - dt);
 
+      if (isAutoMoving) {
+        stepAccumulator += dt;
+        while (stepAccumulator >= STEP_INTERVAL_SEC && !paused && !stopped) {
+          stepAccumulator -= STEP_INTERVAL_SEC;
+          const resolved = turnBuffer.resolveTurn(canMoveDir, true);
+          let nextDir = resolved.dir;
+          if (!canMoveDir(nextDir)) {
+            const buffered = turnBuffer.getBufferedDirection();
+            if (buffered && canMoveDir(buffered)) {
+              nextDir = buffered;
+              turnBuffer.setCurrentDirection(buffered);
+            }
+          }
+          if (!canMoveDir(nextDir) || !tryMove(nextDir)) {
+            isAutoMoving = false;
+            stepAccumulator = 0;
+            break;
+          }
+        }
+      }
+
       // Patrulha dos cachorros sentinelas
       for (const g of guards) {
         const nx = g.x + g.dirX * g.speed * dt;
@@ -575,55 +613,161 @@ export function mountMilkMazeGame(
     rafId = window.requestAnimationFrame(tick);
   };
 
+  const handleDirectionInput = (dir: Dir) => {
+    if (paused || stopped || !gameStarted || countdownActive) return;
+    if (!isAutoMoving) {
+      if (tryMove(dir)) {
+        turnBuffer.reset(dir);
+        isAutoMoving = true;
+        stepAccumulator = 0;
+      } else {
+        turnBuffer.enqueue(dir);
+      }
+      return;
+    }
+    if (dir === MAZE_OPPOSITE_DIR[turnBuffer.getCurrentDirection()] && canMoveDir(dir)) {
+      turnBuffer.reset(dir);
+      stepAccumulator = 0;
+      if (!tryMove(dir)) isAutoMoving = false;
+      return;
+    }
+    turnBuffer.enqueue(dir);
+    // Se já houver esquina imediatamente aberta na frente, vira sem esperar!
+    const resolved = turnBuffer.resolveTurn(canMoveDir, stepAccumulator >= STEP_INTERVAL_SEC * 0.55);
+    if (resolved.turned && tryMove(resolved.dir)) {
+      stepAccumulator = 0;
+    }
+  };
+
   const handleKeyDown = (e: KeyboardEvent) => {
     const key = e.key.toLowerCase();
     if (key === 'arrowup' || key === 'w') {
       e.preventDefault();
-      tryMove('up');
+      handleDirectionInput('up');
     } else if (key === 'arrowdown' || key === 's') {
       e.preventDefault();
-      tryMove('down');
+      handleDirectionInput('down');
     } else if (key === 'arrowleft' || key === 'a') {
       e.preventDefault();
-      tryMove('left');
+      handleDirectionInput('left');
     } else if (key === 'arrowright' || key === 'd') {
       e.preventDefault();
-      tryMove('right');
+      handleDirectionInput('right');
     }
   };
 
-  let touchStartX = 0;
-  let touchStartY = 0;
-  const handleTouchStart = (e: TouchEvent) => {
-    const t = e.touches[0];
-    if (!t) return;
-    touchStartX = t.clientX;
-    touchStartY = t.clientY;
-  };
-  const handleTouchEnd = (e: TouchEvent) => {
-    const t = e.changedTouches[0];
-    if (!t) return;
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    if (Math.hypot(dx, dy) < 18) return;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      tryMove(dx > 0 ? 'right' : 'left');
-    } else {
-      tryMove(dy > 0 ? 'down' : 'up');
-    }
-  };
-
-  const dpadButtons = Array.from(
-    container.querySelectorAll('[data-mz-dir]')
-  ) as HTMLButtonElement[];
-  const dpadCleanups = dpadButtons.map((btn) => {
-    const fn = () => {
-      const d = btn.getAttribute('data-mz-dir') as Dir | null;
-      if (d) tryMove(d);
-    };
-    btn.addEventListener('pointerdown', fn);
-    return () => btn.removeEventListener('pointerdown', fn);
+  const swipeCleanup = attachFullScreenMazeSwipe(boardWrap, handleDirectionInput, {
+    shouldIgnoreTarget: (target) =>
+      Boolean(
+        (target as HTMLElement | null)?.closest?.(
+          '[data-floating-dpad], #mz-overlay button'
+        )
+      ),
+    isPaused: () => paused || !gameStarted || countdownActive,
   });
+
+  const dpadCleanup = mountFloatingDpad(boardWrap, {
+    storageKey: 'miau_dpad_pos_maze_v1',
+    theme: 'pastel',
+    repeatMs: 170,
+    onDirection: (dir) => handleDirectionInput(dir),
+  });
+
+  const startCountdownAndBegin = () => {
+    if (countdownActive || stopped) return;
+    countdownActive = true;
+    const steps = ['3', '2', '1', 'Leitinho! 🥛'];
+    let idx = 0;
+    const renderStep = () => {
+      if (stopped) return;
+      const val = steps[idx];
+      soundService.playMeow(idx === steps.length - 1 ? 1.55 : 1.15);
+      hapticService.tap();
+      showOverlay(`
+        <div class="bg-white border-2 border-purple-300 rounded-3xl px-8 py-6 text-center shadow-2xl">
+          <div class="font-display text-4xl font-extrabold text-[#6e45a5] animate-bounce">${val}</div>
+          <div class="text-[11px] font-bold text-[#6b4d9e] mt-1">Prepare-se!</div>
+        </div>
+      `);
+      if (idx >= steps.length - 1) {
+        countdownTimer = window.setTimeout(() => {
+          countdownTimer = null;
+          if (stopped) return;
+          countdownActive = false;
+          gameStarted = true;
+          paused = false;
+          pauseBtn.textContent = '⏸';
+          hideOverlay();
+        }, 420);
+      } else {
+        idx += 1;
+        countdownTimer = window.setTimeout(renderStep, 650);
+      }
+    };
+    renderStep();
+  };
+
+  const showPreGameRules = () => {
+    paused = true;
+    gameStarted = false;
+    pauseBtn.textContent = '▶';
+    showOverlay(
+      renderPreGameRulesOverlayHtml({
+        title: 'Labirinto do Leitinho 🥛',
+        subtitle: 'Deslize no corredor para virar automático na próxima esquina!',
+        theme: 'pastel',
+        objective: {
+          icon: '🥛',
+          label: 'Objetivo',
+          desc: 'Chegue ao pratinho de leite antes do tempo acabar.',
+        },
+        scoring: {
+          icon: '🐟',
+          label: 'Pontuação',
+          desc: 'Pegue peixinhos (+45 pts) e economize passos.',
+        },
+        bonus: {
+          icon: '⚡',
+          label: 'Bônus',
+          desc: 'Bônus de tempo restante e eficiência por fase!',
+        },
+        startBtnId: 'mz-start-rules-btn',
+        startLabel: 'Começar Contagem! ▶',
+      })
+    );
+    overlayEl
+      .querySelector('#mz-start-rules-btn')
+      ?.addEventListener('click', startCountdownAndBegin);
+  };
+
+  const handlePauseToggle = () => {
+    if (!gameStarted || countdownActive) return;
+    if (overlayEl.querySelector('#mz-next-btn, #mz-end-btn, #mz-timeout-btn')) return;
+    paused = !paused;
+    pauseBtn.textContent = paused ? '▶' : '⏸';
+    if (paused) {
+      isAutoMoving = false;
+      showOverlay(`
+        <div class="bg-white rounded-3xl p-5 max-w-xs w-full text-center shadow-2xl border-2 border-purple-300">
+          <div class="text-3xl mb-1">⏸️</div>
+          <h4 class="font-display text-lg font-bold text-[#3b1f6e]">Jogo Pausado</h4>
+          <p class="text-xs font-semibold text-[#6b4d9e] mt-1">Respire fundo e continue até o leitinho!</p>
+          <div class="flex gap-2 mt-3">
+            <button id="mz-resume-btn" type="button" class="flex-1 py-2.5 rounded-2xl bg-[#6e45a5] text-white font-extrabold text-xs">Continuar ▶</button>
+            <button id="mz-exit-run-btn" type="button" class="px-3 py-2.5 rounded-2xl bg-rose-100 text-rose-700 font-extrabold text-xs">Encerrar</button>
+          </div>
+        </div>
+      `);
+      overlayEl.querySelector('#mz-resume-btn')?.addEventListener('click', () => {
+        paused = false;
+        pauseBtn.textContent = '⏸';
+        hideOverlay();
+      });
+      overlayEl.querySelector('#mz-exit-run-btn')?.addEventListener('click', finishGame);
+    } else {
+      hideOverlay();
+    }
+  };
 
   const muteBtn = container.querySelector('#mg-mute') as HTMLButtonElement;
   const handleMuteClick = () => {
@@ -649,25 +793,29 @@ export function mountMilkMazeGame(
   resizeObs.observe(boardWrap);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('resize', resizeCanvas);
-  boardWrap.addEventListener('touchstart', handleTouchStart, { passive: true });
-  boardWrap.addEventListener('touchend', handleTouchEnd, { passive: true });
+  pauseBtn.addEventListener('click', handlePauseToggle);
   muteBtn.addEventListener('click', handleMuteClick);
   closeBtn.addEventListener('click', handleCloseClick);
 
   const cleanupListeners = () => {
     if (rafId) window.cancelAnimationFrame(rafId);
+    if (countdownTimer !== null) {
+      window.clearTimeout(countdownTimer);
+      countdownTimer = null;
+    }
     resizeObs.disconnect();
     window.removeEventListener('keydown', handleKeyDown);
     window.removeEventListener('resize', resizeCanvas);
-    boardWrap.removeEventListener('touchstart', handleTouchStart);
-    boardWrap.removeEventListener('touchend', handleTouchEnd);
+    pauseBtn.removeEventListener('click', handlePauseToggle);
     muteBtn.removeEventListener('click', handleMuteClick);
     closeBtn.removeEventListener('click', handleCloseClick);
-    dpadCleanups.forEach((off) => off());
+    swipeCleanup();
+    dpadCleanup();
   };
 
   setupStage(1);
   resizeCanvas();
+  showPreGameRules();
   rafId = window.requestAnimationFrame(tick);
 
   return () => {

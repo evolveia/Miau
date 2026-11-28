@@ -3,16 +3,26 @@ import {
   DEFAULT_OWNED_ITEMS,
   FOOD_ITEMS,
   ROUTINE_SCHEDULE,
+  SHOP_CONSUMABLES,
   SHOP_ITEMS,
 } from '../../constants';
+import {
+  SCHOOLING_OPTIONS,
+  getSchoolingLabel,
+} from '../../data/educationModules';
 import type {
   AchievementDef,
+  DailyMissionsSnapshot,
+  EquippedItems,
   GameId,
   GameMatchHistoryItem,
   GameStatsRecord,
+  MiauMood,
   RankingEntry,
   RoutineCategory,
   RoutineSlotDef,
+  SchoolingLevel,
+  ShopTab,
   UserPetProfile,
 } from '../../types';
 import { escapeHtml } from '../../utils/html';
@@ -20,12 +30,14 @@ import {
   getCoinEconomySnapshot,
   getOrganizedCareSchedule,
 } from '../../services/coinEconomyService';
+import { getRoomThemeClasses } from '../../services/roomThemeService';
 import {
   WRITING_DAILY_BONUS,
   WRITING_MEDALS,
   type WritingProgress,
 } from '../../modules/writing/writingEngine';
 import type { PushPermissionState } from '../../services/pushNotificationService';
+import { renderMiauSvg } from '../MiauIllustration';
 
 export function renderFeedModalHtml(): string {
   return `
@@ -177,64 +189,188 @@ export function renderGamesHubModalHtml(
 
 export function renderCustomizeModalHtml(
   profile: UserPetProfile,
-  shopTab: 'hat' | 'accessory' | 'background'
+  shopTab: ShopTab,
+  options?: {
+    previewEquipped?: Partial<EquippedItems> | null;
+    mood?: MiauMood;
+  }
 ): string {
-  const filtered = SHOP_ITEMS.filter((i) => i.category === shopTab);
+  const effectiveEquipped: EquippedItems = {
+    ...profile.equipped,
+    ...(options?.previewEquipped ?? {}),
+  };
+  const previewItem =
+    SHOP_ITEMS.find(
+      (item) =>
+        (item.category === 'hat' &&
+          options?.previewEquipped?.hat === item.id &&
+          item.id !== profile.equipped.hat) ||
+        (item.category === 'accessory' &&
+          options?.previewEquipped?.accessory === item.id &&
+          item.id !== profile.equipped.accessory) ||
+        (item.category === 'background' &&
+          options?.previewEquipped?.background === item.id &&
+          item.id !== profile.equipped.background)
+    ) || null;
+  const theme = getRoomThemeClasses(effectiveEquipped.background, false);
+  const previewMood = options?.mood ?? 'happy';
+  const filtered =
+    shopTab === 'consumable'
+      ? []
+      : SHOP_ITEMS.filter((i) => i.category === shopTab);
+
   return `
-    <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
+    <div class="flex items-center justify-between gap-2 mb-2.5 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
         <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
-        <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Personalizar Miau 👗</h2>
+        <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Loja 2.0 & Visual 🛍️</h2>
       </div>
-      <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
+      <div class="flex items-center gap-1.5 shrink-0">
+        <span class="px-2.5 py-1 rounded-full bg-amber-100 border border-amber-200 text-amber-900 text-xs font-extrabold">🪙 ${profile.coins}</span>
+        <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
+      </div>
     </div>
-    <div class="rounded-2xl px-3 py-2 mb-2.5 bg-amber-50/90 border border-amber-200 flex items-center justify-between gap-2 text-[11px] font-bold text-amber-900 shrink-0">
-      <span>💡 Ganhe mais moedas estudando no Vamos Aprender e cuidando do Miau nos horários!</span>
-      <span class="px-2 py-0.5 rounded-full bg-white text-amber-800 font-extrabold shrink-0">🪙 ${profile.coins}</span>
+
+    <!-- Palco de Pré-visualização ao Vivo (para "Experimentar" itens) -->
+    <div class="rounded-3xl p-2.5 mb-2.5 border-2 ${previewItem ? 'border-amber-300 shadow-md' : 'border-purple-200'} bg-gradient-to-b ${theme.wall} flex items-center gap-3 shrink-0 relative overflow-hidden">
+      <div class="w-20 h-20 rounded-2xl bg-white/25 backdrop-blur-sm border border-white/50 flex items-center justify-center shrink-0">
+        <div class="w-16 h-16">
+          ${renderMiauSvg(previewMood, effectiveEquipped, false, 'none')}
+        </div>
+      </div>
+      <div class="flex-1 min-w-0 rounded-2xl bg-white/92 backdrop-blur-sm px-3 py-2 border border-purple-100 shadow-sm">
+        ${
+          previewItem
+            ? `
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">✨ Experimentando</span>
+                <span class="text-xs font-display font-bold text-[#3b1f6e] truncate">${escapeHtml(previewItem.name)}</span>
+              </div>
+              <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+                <button data-shopitem="${previewItem.id}" type="button" class="px-2.5 py-1 rounded-full bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] text-white text-[11px] font-extrabold shadow-sm active:scale-95">
+                  Comprar 🪙 ${previewItem.price}
+                </button>
+                <button data-shop-try-stop type="button" class="px-2.5 py-1 rounded-full bg-purple-100 text-[#4c2a85] text-[11px] font-extrabold active:scale-95">
+                  Parar teste
+                </button>
+              </div>
+            `
+            : `
+              <div class="text-xs font-display font-bold text-[#3b1f6e] truncate">🐾 Visual de ${escapeHtml(profile.petName)}</div>
+              <p class="text-[11px] font-semibold text-[#5e4294] leading-tight mt-0.5">Toque em <b>Experimentar</b> para testar qualquer chapéu, acessório ou fundo antes de comprar!</p>
+            `
+        }
+      </div>
     </div>
-    <div class="flex gap-2 mb-3 shrink-0">
-      ${(['hat', 'accessory', 'background'] as const)
+
+    <div class="grid grid-cols-4 gap-1.5 mb-2.5 shrink-0">
+      ${(['hat', 'accessory', 'background', 'consumable'] as const)
         .map((tab) => {
           const label =
             tab === 'hat'
               ? '🎩 Chapéus'
               : tab === 'accessory'
                 ? '🎀 Acessórios'
-                : '🖼️ Fundos';
+                : tab === 'background'
+                  ? '🖼️ Fundos'
+                  : '🍽️ Comidas';
           const active = shopTab === tab;
-          return `<button data-shoptab="${tab}" class="flex-1 py-2 rounded-full text-xs font-extrabold transition ${active ? 'bg-[#6e45a5] text-white shadow' : 'bg-white/85 text-[#5e4294]'}">${label}</button>`;
+          return `<button data-shoptab="${tab}" type="button" class="py-2 px-1 rounded-full text-[11px] font-extrabold transition truncate ${active ? 'bg-[#6e45a5] text-white shadow' : 'bg-white/90 text-[#4c2a85] border border-purple-100'}">${label}</button>`;
         })
         .join('')}
     </div>
+
     <div class="flex-1 min-h-0 overflow-y-auto miau-scroll pr-1">
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
-        ${filtered
-          .map((item) => {
-            const owned = profile.ownedItems.includes(item.id);
-            const equipped =
-              (item.category === 'hat' && profile.equipped.hat === item.id) ||
-              (item.category === 'accessory' &&
-                profile.equipped.accessory === item.id) ||
-              (item.category === 'background' &&
-                profile.equipped.background === item.id);
-            return `
-              <button data-shopitem="${item.id}" class="bg-white/90 rounded-2xl p-3 border-2 ${equipped ? 'border-[#6e45a5]' : 'border-white'} shadow-sm flex flex-col gap-1.5 text-left hover:bg-white transition">
-                <div class="flex items-center justify-between">
-                  <span class="w-10 h-10 rounded-xl flex items-center justify-center text-2xl" style="background:${item.previewColor}">${item.emoji}</span>
-                  ${
-                    equipped
-                      ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-600 text-white">Equipado</span>'
-                      : owned
-                        ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Seu</span>'
-                        : `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">🪙 ${item.price}</span>`
-                  }
-                </div>
-                <div class="font-display text-xs font-bold text-[#3b1f6e]">${escapeHtml(item.name)}</div>
-              </button>
-            `;
-          })
-          .join('')}
-      </div>
+      ${
+        shopTab === 'consumable'
+          ? `
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pb-1">
+              ${SHOP_CONSUMABLES.map(
+                (food) => `
+                  <div class="bg-white/95 rounded-2xl p-3 border border-purple-100 shadow-sm flex flex-col gap-2">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="flex items-center gap-2.5 min-w-0">
+                        <span class="w-11 h-11 rounded-2xl flex items-center justify-center text-2xl shrink-0" style="background:${food.previewColor}">${food.emoji}</span>
+                        <div class="min-w-0">
+                          <div class="font-display text-sm font-bold text-[#3b1f6e] truncate">${escapeHtml(food.name)}</div>
+                          <div class="text-[11px] font-semibold text-[#5e4294] leading-tight">${escapeHtml(food.description)}</div>
+                        </div>
+                      </div>
+                      <span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 shrink-0">🪙 ${food.price}</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1 text-[10px] font-extrabold">
+                      <span class="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">+${food.hungerBoost}% Fome</span>
+                      <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">+${food.happinessBoost}% Feliz</span>
+                      <span class="px-2 py-0.5 rounded-full bg-sky-100 text-sky-800">+${food.funBoost}% Diversão</span>
+                      ${
+                        food.sleepBoost
+                          ? `<span class="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">+${food.sleepBoost}% Sono</span>`
+                          : ''
+                      }
+                      <span class="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800">+${food.xpReward} XP</span>
+                    </div>
+                    <button data-shop-consumable="${food.id}" type="button" class="w-full py-2 rounded-xl bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] text-white font-extrabold text-xs shadow-sm active:scale-95 transition">
+                      Comprar & Servir 🪙 ${food.price}
+                    </button>
+                  </div>
+                `
+              ).join('')}
+            </div>
+          `
+          : `
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pb-1">
+              ${filtered
+                .map((item) => {
+                  const owned = profile.ownedItems.includes(item.id);
+                  const equipped =
+                    (item.category === 'hat' && profile.equipped.hat === item.id) ||
+                    (item.category === 'accessory' &&
+                      profile.equipped.accessory === item.id) ||
+                    (item.category === 'background' &&
+                      profile.equipped.background === item.id);
+                  const isPreviewing = previewItem?.id === item.id;
+                  return `
+                    <div class="bg-white/95 rounded-2xl p-3 border-2 ${
+                      equipped
+                        ? 'border-[#6e45a5]'
+                        : isPreviewing
+                          ? 'border-amber-400'
+                          : 'border-white'
+                    } shadow-sm flex flex-col gap-2 text-left transition">
+                      <div class="flex items-center justify-between gap-1">
+                        <span class="w-10 h-10 rounded-xl flex items-center justify-center text-2xl shrink-0" style="background:${item.previewColor}">${item.emoji}</span>
+                        ${
+                          equipped
+                            ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-purple-600 text-white">Equipado</span>'
+                            : owned
+                              ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Seu</span>'
+                              : `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900">🪙 ${item.price}</span>`
+                        }
+                      </div>
+                      <div class="font-display text-xs font-bold text-[#3b1f6e] leading-tight">${escapeHtml(item.name)}</div>
+                      ${
+                        owned
+                          ? `<button data-shopitem="${item.id}" type="button" class="mt-auto w-full py-1.5 rounded-xl text-[11px] font-extrabold ${
+                              equipped
+                                ? 'bg-purple-100 text-[#4c2a85]'
+                                : 'bg-[#6e45a5] text-white shadow-sm'
+                            } active:scale-95 transition">${equipped ? 'Em uso' : 'Equipar'}</button>`
+                          : `<div class="mt-auto flex gap-1.5">
+                               <button data-shop-try="${item.id}" type="button" class="flex-1 py-1.5 rounded-xl text-[10px] font-extrabold ${
+                                 isPreviewing
+                                   ? 'bg-amber-200 text-amber-950'
+                                   : 'bg-purple-100 text-[#4c2a85]'
+                               } active:scale-95 transition">${isPreviewing ? 'Testando' : 'Experimentar'}</button>
+                               <button data-shopitem="${item.id}" type="button" class="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-[#6e45a5] to-[#9b5de5] text-white text-[10px] font-extrabold shadow-sm active:scale-95 transition">🪙 ${item.price}</button>
+                             </div>`
+                      }
+                    </div>
+                  `;
+                })
+                .join('')}
+            </div>
+          `
+      }
     </div>
   `;
 }
@@ -347,26 +483,88 @@ function formatHistoryDate(ms: number): string {
   }
 }
 
+export type RankingSchoolingFilter = 'all' | SchoolingLevel;
+
+export const SCHOOLING_RANKING_FILTERS: Array<{
+  id: RankingSchoolingFilter;
+  label: string;
+  emoji: string;
+}> = [
+  { id: 'all', label: 'Todas Escolaridades', emoji: '🌐' },
+  ...SCHOOLING_OPTIONS.map((opt) => ({
+    id: opt.id as RankingSchoolingFilter,
+    label:
+      opt.id === 'educacao_infantil'
+        ? 'Ed. Infantil'
+        : opt.id === 'fundamental_1'
+          ? 'Fund. I'
+          : opt.id === 'fundamental_2'
+            ? 'Fund. II'
+            : opt.id === 'medio'
+              ? 'Ens. Médio'
+              : 'Superior',
+    emoji:
+      opt.id === 'educacao_infantil'
+        ? '🧸'
+        : opt.id === 'fundamental_1'
+          ? '📘'
+          : opt.id === 'fundamental_2'
+            ? '🔬'
+            : opt.id === 'medio'
+              ? '📐'
+              : '🎓',
+  })),
+];
+
+export function filterAndSortRankingEntries(params: {
+  entries: RankingEntry[];
+  gameTab: 'all' | GameId;
+  schoolingFilter: RankingSchoolingFilter;
+}): Array<{ entry: RankingEntry; score: number; stage: number }> {
+  const { entries, gameTab, schoolingFilter } = params;
+  return [...entries]
+    .filter((entry) =>
+      schoolingFilter === 'all'
+        ? true
+        : (entry.schooling || '') === schoolingFilter
+    )
+    .map((entry) => ({
+      entry,
+      ...getEntryScoreForTab(entry, gameTab),
+    }))
+    .filter((row) => gameTab === 'all' || row.score > 0 || row.entry.isCurrentUser)
+    .sort((a, b) => b.score - a.score || b.stage - a.stage);
+}
+
 export function renderRankingModalHtml(params: {
   currentEntry: RankingEntry;
   leaderboard: RankingEntry[];
   rankingLoading: boolean;
   activeTab: 'all' | GameId;
+  schoolingFilter?: RankingSchoolingFilter;
   gameRecords: Record<GameId, GameStatsRecord>;
   matchHistory: GameMatchHistoryItem[];
 }): string {
-  const { currentEntry, leaderboard, rankingLoading, activeTab, gameRecords, matchHistory } =
-    params;
+  const {
+    currentEntry,
+    leaderboard,
+    rankingLoading,
+    activeTab,
+    schoolingFilter = 'all',
+    gameRecords,
+    matchHistory,
+  } = params;
   const activeTabInfo =
     RANKING_TABS.find((t) => t.id === activeTab) ?? RANKING_TABS[0];
+  const activeSchoolingInfo =
+    SCHOOLING_RANKING_FILTERS.find((s) => s.id === schoolingFilter) ??
+    SCHOOLING_RANKING_FILTERS[0];
 
-  const sortedBoard = [...leaderboard]
-    .map((entry) => ({
-      entry,
-      ...getEntryScoreForTab(entry, activeTab),
-    }))
-    .filter((row) => activeTab === 'all' || row.score > 0 || row.entry.isCurrentUser)
-    .sort((a, b) => b.score - a.score || b.stage - a.stage);
+  const sortedBoard = filterAndSortRankingEntries({
+    entries: leaderboard,
+    gameTab: activeTab,
+    schoolingFilter,
+  });
 
   const myStats = getEntryScoreForTab(currentEntry, activeTab);
   const filteredHistory =
@@ -395,14 +593,27 @@ export function renderRankingModalHtml(params: {
       </div>
     </div>
 
-    <div class="flex gap-1.5 overflow-x-auto pb-1.5 mb-2 shrink-0 miau-scroll">
+    <!-- Segmento por Jogo -->
+    <div class="flex gap-1.5 overflow-x-auto pb-1 mb-1.5 shrink-0 miau-scroll">
       ${RANKING_TABS.map((tab) => {
         const active = tab.id === activeTab;
         return `<button data-ranking-tab="${tab.id}" type="button" class="px-3 py-1.5 rounded-full text-[11px] font-extrabold whitespace-nowrap transition shrink-0 ${
           active
             ? 'bg-[#6e45a5] text-white shadow-sm'
-            : 'bg-white/85 text-[#5e4294] border border-purple-100 hover:bg-white'
+            : 'bg-white/90 text-[#4c2a85] border border-purple-100 hover:bg-white'
         }">${tab.emoji} ${tab.label}</button>`;
+      }).join('')}
+    </div>
+
+    <!-- Segmento por Escolaridade -->
+    <div class="flex gap-1.5 overflow-x-auto pb-1.5 mb-2 shrink-0 miau-scroll">
+      ${SCHOOLING_RANKING_FILTERS.map((sch) => {
+        const active = sch.id === schoolingFilter;
+        return `<button data-ranking-schooling="${sch.id}" type="button" class="px-2.5 py-1 rounded-full text-[10px] font-extrabold whitespace-nowrap transition shrink-0 ${
+          active
+            ? 'bg-sky-600 text-white shadow-sm'
+            : 'bg-white/90 text-[#4c2a85] border border-sky-200 hover:bg-sky-50'
+        }">${sch.emoji} ${sch.label}</button>`;
       }).join('')}
     </div>
 
@@ -411,7 +622,7 @@ export function renderRankingModalHtml(params: {
         ? `<div class="flex-1 flex items-center justify-center text-xs font-bold text-[#6b4d9e]">Carregando ranking...</div>`
         : `<div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
             <!-- Melhores Pontuações por Jogo -->
-            <div class="bg-white/80 rounded-2xl p-3 border border-purple-100 shrink-0">
+            <div class="bg-white/90 rounded-2xl p-3 border border-purple-100 shrink-0">
               <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e] mb-2">📊 Seus Melhores por Jogo</div>
               <div class="grid grid-cols-2 gap-2">
                 ${perGameCards
@@ -422,7 +633,7 @@ export function renderRankingModalHtml(params: {
                       <button data-ranking-tab="${g.id}" type="button" class="rounded-xl p-2 text-left border transition ${
                         selected
                           ? 'bg-purple-100/90 border-purple-400 shadow-sm'
-                          : 'bg-white/90 border-purple-100 hover:bg-purple-50/70'
+                          : 'bg-white/95 border-purple-100 hover:bg-purple-50/70'
                       }">
                         <div class="flex items-center justify-between gap-1">
                           <span class="text-xs font-extrabold text-[#3b1f6e] truncate">${g.emoji} ${g.name}</span>
@@ -439,33 +650,40 @@ export function renderRankingModalHtml(params: {
 
             <!-- Classificação -->
             <div class="flex flex-col gap-2">
-              <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e] px-1">🏅 Classificação — ${escapeHtml(activeTabInfo.shortName)}</div>
-              ${sortedBoard
-                .map(({ entry, score, stage }, idx) => {
-                  const rank = idx + 1;
-                  const medal =
-                    rank === 1
-                      ? '🥇'
-                      : rank === 2
-                        ? '🥈'
-                        : rank === 3
-                          ? '🥉'
-                          : `#${rank}`;
-                  return `
-                    <div class="rounded-2xl p-3 border flex items-center gap-2.5 ${entry.isCurrentUser ? 'bg-gradient-to-r from-amber-50 to-purple-50 border-purple-400 shadow-sm' : 'bg-white/85 border-purple-100'}">
-                      <div class="w-9 h-9 rounded-xl ${rank <= 3 ? 'bg-amber-100 text-base' : 'bg-purple-100 text-xs'} font-extrabold text-[#4c2a85] flex items-center justify-center shrink-0">${medal}</div>
-                      <div class="flex-1 min-w-0">
-                        <div class="font-display text-sm font-bold text-[#3b1f6e] truncate">${escapeHtml(entry.playerName)} ${entry.isCurrentUser ? '(Você)' : ''}</div>
-                        <div class="text-[10px] font-semibold text-[#6b4d9e]">Pet: ${escapeHtml(entry.petName)} • Fase Máx ${stage}</div>
-                      </div>
-                      <div class="text-right shrink-0">
-                        <div class="text-xs font-extrabold text-[#3b1f6e]">${score} pts</div>
-                        <div class="text-[10px] font-bold text-amber-700">🪙 ${entry.coinsEarned}</div>
-                      </div>
-                    </div>
-                  `;
-                })
-                .join('')}
+              <div class="text-[11px] font-extrabold uppercase tracking-wide text-[#6b4d9e] px-1">🏅 Classificação — ${escapeHtml(activeTabInfo.shortName)} • ${escapeHtml(activeSchoolingInfo.label)}</div>
+              ${
+                sortedBoard.length === 0
+                  ? `<div class="rounded-2xl p-4 bg-white/90 border border-purple-100 text-xs font-semibold text-[#5e4294] text-center">Nenhum jogador nesta escolaridade e jogo ainda. Defina sua escolaridade no Perfil para competir aqui!</div>`
+                  : sortedBoard
+                      .map(({ entry, score, stage }, idx) => {
+                        const rank = idx + 1;
+                        const medal =
+                          rank === 1
+                            ? '🥇'
+                            : rank === 2
+                              ? '🥈'
+                              : rank === 3
+                                ? '🥉'
+                                : `#${rank}`;
+                        const schLabel = entry.schooling
+                          ? getSchoolingLabel(entry.schooling)
+                          : '';
+                        return `
+                          <div class="rounded-2xl p-3 border flex items-center gap-2.5 ${entry.isCurrentUser ? 'bg-gradient-to-r from-amber-50 to-purple-50 border-purple-400 shadow-sm' : 'bg-white/90 border-purple-100'}">
+                            <div class="w-9 h-9 rounded-xl ${rank <= 3 ? 'bg-amber-100 text-base' : 'bg-purple-100 text-xs'} font-extrabold text-[#4c2a85] flex items-center justify-center shrink-0">${medal}</div>
+                            <div class="flex-1 min-w-0">
+                              <div class="font-display text-sm font-bold text-[#3b1f6e] truncate">${escapeHtml(entry.playerName)} ${entry.isCurrentUser ? '(Você)' : ''}</div>
+                              <div class="text-[10px] font-semibold text-[#6b4d9e] truncate">Pet: ${escapeHtml(entry.petName)} • Fase Máx ${stage}${schLabel ? ` • ${escapeHtml(schLabel)}` : ''}</div>
+                            </div>
+                            <div class="text-right shrink-0">
+                              <div class="text-xs font-extrabold text-[#3b1f6e]">${score} pts</div>
+                              <div class="text-[10px] font-bold text-amber-700">🪙 ${entry.coinsEarned}</div>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join('')
+              }
             </div>
 
             <!-- Histórico Recente de Partidas -->
@@ -529,7 +747,8 @@ export function renderRoutineModalHtml(
     enabled: boolean;
     permission: PushPermissionState;
     threshold: number;
-  }
+  },
+  dailyMissions?: DailyMissionsSnapshot
 ): string {
   const completed = profile.dailyRoutine?.completedSlots || [];
   const now = new Date();
@@ -573,18 +792,90 @@ export function renderRoutineModalHtml(
     now
   );
   const economySnap = getCoinEconomySnapshot(profile.ownerId || 'guest');
+  const missionsCompletedCount = dailyMissions
+    ? dailyMissions.missions.filter((m) => m.completed).length
+    : 0;
   return `
     <div class="flex items-center justify-between gap-2 mb-3 shrink-0">
       <div class="flex items-center gap-2 min-w-0">
         <button data-modal-close type="button" class="px-3 py-1.5 rounded-full bg-white/90 border border-purple-200 text-[#4c2a85] font-extrabold text-xs shadow-sm hover:bg-purple-50 transition shrink-0">← Voltar</button>
         <div class="min-w-0">
-          <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Rotina Diária 📅</h2>
-          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Cuide do Miau e pratique escrita (${nowTimeStr}) para ganhar recompensas!</p>
+          <h2 class="font-display text-xl font-bold text-[#3b1f6e] truncate">Missões & Rotina 📅</h2>
+          <p class="text-[11px] font-semibold text-[#6b4d9e] truncate">Cuide do Miau, cumpra missões (${nowTimeStr}) e mantenha sua sequência!</p>
         </div>
       </div>
       <button id="modal-close" type="button" class="w-9 h-9 rounded-full bg-white/90 border border-purple-200 text-purple-800 font-bold shrink-0">✕</button>
     </div>
     <div class="flex-1 min-h-0 flex flex-col gap-3 overflow-y-auto miau-scroll pr-1">
+      ${
+        dailyMissions
+          ? `
+            <!-- Missões Diárias + Sequência de Dias (Streak) -->
+            <div class="bg-gradient-to-br from-amber-50 via-white to-purple-50 rounded-2xl p-3 border-2 border-amber-300 shadow-sm flex flex-col gap-2">
+              <div class="flex items-center justify-between gap-2 flex-wrap">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs font-extrabold text-[#3b1f6e]">🎯 Missões Diárias (${missionsCompletedCount}/${dailyMissions.missions.length})</span>
+                  <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 border border-orange-200">
+                    🔥 ${dailyMissions.currentStreak} dia(s) seguido(s)
+                  </span>
+                </div>
+                <span class="text-[10px] font-bold text-[#6b4d9e]">Recorde: ${dailyMissions.bestStreak}d</span>
+              </div>
+              <div class="flex flex-col gap-1.5">
+                ${dailyMissions.missions
+                  .map((m) => {
+                    const pct = Math.min(
+                      100,
+                      Math.round((m.progress / Math.max(1, m.target)) * 100)
+                    );
+                    return `
+                      <div class="rounded-xl p-2 border ${
+                        m.completed
+                          ? 'bg-emerald-50 border-emerald-200'
+                          : 'bg-white/95 border-purple-100'
+                      } flex items-center gap-2.5">
+                        <span class="w-8 h-8 rounded-lg flex items-center justify-center text-lg shrink-0 ${
+                          m.completed ? 'bg-emerald-100' : 'bg-purple-100'
+                        }">${m.emoji}</span>
+                        <div class="flex-1 min-w-0">
+                          <div class="flex items-center justify-between gap-1">
+                            <span class="text-xs font-bold text-[#3b1f6e] truncate">${escapeHtml(m.title)}</span>
+                            <span class="text-[10px] font-extrabold shrink-0 ${
+                              m.completed
+                                ? 'text-emerald-700'
+                                : 'text-amber-800'
+                            }">${m.completed ? '✅ Concluída' : `+🪙 ${m.coinReward}`}</span>
+                          </div>
+                          <div class="mt-1 flex items-center gap-2">
+                            <div class="flex-1 h-1.5 rounded-full bg-purple-100 overflow-hidden">
+                              <div class="h-full rounded-full ${
+                                m.completed ? 'bg-emerald-500' : 'bg-[#7b52b8]'
+                              }" style="width: ${Math.max(4, pct)}%"></div>
+                            </div>
+                            <span class="text-[10px] font-extrabold text-[#5e4294] shrink-0">${m.progress}/${m.target}</span>
+                          </div>
+                        </div>
+                      </div>
+                    `;
+                  })
+                  .join('')}
+              </div>
+              <div class="rounded-xl px-2.5 py-1.5 text-[10px] font-extrabold flex items-center justify-between gap-2 ${
+                dailyMissions.allCompletedBonusClaimed
+                  ? 'bg-emerald-100 text-emerald-900'
+                  : 'bg-amber-100/90 text-amber-950'
+              }">
+                <span>🎁 Bônus ao completar todas as 3 missões</span>
+                <span>${
+                  dailyMissions.allCompletedBonusClaimed
+                    ? '✅ Resgatado!'
+                    : `+🪙 ${dailyMissions.allCompletedBonusCoins}`
+                }</span>
+              </div>
+            </div>
+          `
+          : ''
+      }
       <!-- Cronograma Organizado de Fome, Banho e Sono -->
       <div class="bg-white/90 rounded-2xl p-3 border border-purple-200 shadow-sm flex flex-col gap-2">
         <div class="flex items-center justify-between gap-2">

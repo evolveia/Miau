@@ -7,6 +7,7 @@ import {
   MIAU_AVATAR_URL,
   ROUTINE_SCHEDULE,
   SEED_RANKING_ENTRIES,
+  SHOP_CONSUMABLES,
   SHOP_ITEMS,
   SUPPORT_WHATSAPP_NUMBER,
   XP_PER_LEVEL,
@@ -78,6 +79,7 @@ import type {
   ActiveModal,
   AppScreen,
   ChatMessage,
+  EquippedItems,
   GameId,
   GameMatchHistoryItem,
   HouseRoomId,
@@ -87,6 +89,7 @@ import type {
   RoutineCategory,
   RoutineSlotDef,
   ScreenVisibilityPrefs,
+  ShopTab,
   UserPetProfile,
 } from '../types';
 import {
@@ -157,7 +160,14 @@ import {
   renderGamesHubModalHtml,
   renderRankingModalHtml,
   renderRoutineModalHtml,
+  type RankingSchoolingFilter,
 } from './modals/CareAndGamesModals';
+import {
+  isMathEducationTrack,
+  loadDailyMissionsSnapshot,
+  recordDailyMissionEvent,
+  type DailyMissionEvent,
+} from '../services/dailyMissionsService';
 import {
   renderChatHistoryItemsHtml,
   renderChatModalHtml,
@@ -266,12 +276,14 @@ export class MiauAppUI {
   private isCleaningMode = false;
   private activeModal: ActiveModal = 'none';
   private legalDoc: 'terms' | 'privacy' = 'terms';
-  private shopTab: 'hat' | 'accessory' | 'background' = 'hat';
+  private shopTab: ShopTab = 'hat';
+  private previewEquipped: Partial<EquippedItems> | null = null;
   private activeMiniGame: 'none' | GameId = 'none';
   private miniGameCleanup: (() => void) | null = null;
   private leaderboard: RankingEntry[] = [];
   private rankingLoading = false;
   private rankingTab: 'all' | GameId = 'all';
+  private rankingSchoolingFilter: RankingSchoolingFilter = 'all';
   private progressReportTab: ProgressReportFilter = 'all';
   private decayTickCount = 0;
   private lastSleepRewardAtMs = 0;
@@ -486,6 +498,9 @@ export class MiauAppUI {
         ) {
           this.render();
         }
+      },
+      onLessonCompleted: ({ trackId }) => {
+        this.recordMissionProgress({ type: 'math_lesson', trackId });
       },
       onToast: (msg) => this.showToast(msg),
     });
@@ -1174,6 +1189,7 @@ export class MiauAppUI {
       id,
       playerName: this.getPlayerDisplayName(),
       petName: this.profile.petName || 'Miau',
+      schooling: this.humanProfile.schooling || '',
       totalScore,
       bestStage,
       coinsEarned,
@@ -1202,6 +1218,7 @@ export class MiauAppUI {
       await upsertRankingEntry(this.firebaseUser.uid, {
         playerName: entry.playerName,
         petName: entry.petName,
+        schooling: entry.schooling || '',
         totalScore: entry.totalScore,
         bestStage: entry.bestStage,
         coinsEarned: entry.coinsEarned,
@@ -1250,6 +1267,37 @@ export class MiauAppUI {
     this.rankingLoading = false;
     if (this.activeModal === 'ranking') {
       this.render();
+    }
+  }
+
+  private recordMissionProgress(event: DailyMissionEvent): void {
+    const ownerId =
+      this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+    const res = recordDailyMissionEvent(ownerId, event);
+    if (res.coinsAwarded > 0 || res.xpAwarded > 0) {
+      this.ensureProfileDefaults();
+      this.addRewards(res.coinsAwarded, res.xpAwarded);
+      this.evaluateAchievements();
+      soundService.playCoin();
+      hapticService.achievement();
+      this.updateStatusBarsDOM();
+      void this.persistStats();
+      const titles = res.newlyCompleted
+        .map((m) => `${m.emoji} ${m.title}`)
+        .join(' + ');
+      const extras: string[] = [];
+      if (res.allCompletedBonusCoins > 0) {
+        extras.push(`Bônus 3/3 (+🪙 ${res.allCompletedBonusCoins})`);
+      }
+      if (res.streakBonusCoins > 0) {
+        extras.push(
+          `Sequência ${res.snapshot.currentStreak} dias (+🪙 ${res.streakBonusCoins})`
+        );
+      }
+      const extraSuffix = extras.length > 0 ? ` • ${extras.join(' • ')}` : '';
+      this.showToast(
+        `Missão diária concluída: ${titles}! +🪙 ${res.coinsAwarded}${extraSuffix}`
+      );
     }
   }
 
@@ -1716,6 +1764,7 @@ export class MiauAppUI {
     this.addRewards(neededBath ? 12 : 0, 10);
     const claimedRoutine = this.claimRoutineSlot('bath');
     this.evaluateAchievements();
+    this.recordMissionProgress({ type: 'bath' });
     this.mood = 'happy';
     this.triggerMiauReaction('spin');
     this.spawnFloatingParticle('🫧');
@@ -2269,6 +2318,9 @@ export class MiauAppUI {
 
     this.addRewards(totalCoinsGained, res.xpEarned);
     const unlockedNew = this.evaluateAchievements();
+    if (res.gameId === 'pacmiau') {
+      this.recordMissionProgress({ type: 'pacmiau_score', score: res.score });
+    }
     soundService.playCoin();
     if (res.performanceTier === 'gold' || isNewRecord) {
       hapticService.achievement();
@@ -3127,7 +3179,10 @@ export class MiauAppUI {
     } else if (this.activeModal === 'games') {
       body = renderGamesHubModalHtml(this.profile, this.activeMiniGame);
     } else if (this.activeModal === 'customize') {
-      body = renderCustomizeModalHtml(this.profile, this.shopTab);
+      body = renderCustomizeModalHtml(this.profile, this.shopTab, {
+        previewEquipped: this.previewEquipped,
+        mood: this.mood,
+      });
     } else if (this.activeModal === 'chat') {
       body = renderChatModalHtml({
         petName: this.profile.petName,
@@ -3147,6 +3202,7 @@ export class MiauAppUI {
         leaderboard: this.leaderboard,
         rankingLoading: this.rankingLoading,
         activeTab: this.rankingTab,
+        schoolingFilter: this.rankingSchoolingFilter,
         gameRecords: this.profile.gameRecords!,
         matchHistory: this.loadGameMatchHistory(),
       });
@@ -3155,6 +3211,7 @@ export class MiauAppUI {
         this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
       pushNotificationService.setOwner(ownerId);
       const pushPrefs = pushNotificationService.getPrefs(ownerId);
+      const dailyMissions = loadDailyMissionsSnapshot(ownerId);
       body = renderRoutineModalHtml(
         this.profile,
         this.isSleeping,
@@ -3165,9 +3222,13 @@ export class MiauAppUI {
           enabled: pushPrefs.enabled,
           permission: pushNotificationService.getPermission(),
           threshold: pushPrefs.threshold,
-        }
+        },
+        dailyMissions
       );
     } else if (this.activeModal === 'menu') {
+      const ownerId =
+        this.firebaseUser?.uid || (this.isDemoSession ? 'demo' : 'guest');
+      const dailyMissionsSnap = loadDailyMissionsSnapshot(ownerId);
       const unlockedCount = (this.profile.unlockedAchievements || []).length;
       const routineDone = this.profile.dailyRoutine?.completedSlots.length || 0;
       const visibleHudCount = [
@@ -3185,6 +3246,12 @@ export class MiauAppUI {
         humanProfile: this.humanProfile,
         unlockedCount,
         routineDoneCount: routineDone,
+        dailyMissions: {
+          completedCount: dailyMissionsSnap.missions.filter((m) => m.completed)
+            .length,
+          totalCount: dailyMissionsSnap.missions.length,
+          currentStreak: dailyMissionsSnap.currentStreak,
+        },
         visibleHudCount,
       });
     } else if (this.activeModal === 'profile') {
@@ -3400,6 +3467,7 @@ export class MiauAppUI {
       this.addRewards(neededBath ? 14 : 0, 12);
       const claimedRoutine = this.claimRoutineSlot('bath');
       this.evaluateAchievements();
+      this.recordMissionProgress({ type: 'bath' });
       this.mood = 'happy';
       this.currentSpeech = claimedRoutine
         ? {
@@ -3531,6 +3599,7 @@ export class MiauAppUI {
           this.profile.progress.cleanCount += 1;
           const claimedRoutine = this.claimRoutineSlot('bath');
           this.evaluateAchievements();
+          this.recordMissionProgress({ type: 'bath' });
           hapticService.coin();
           this.currentSpeech = claimedRoutine
             ? {
@@ -3669,6 +3738,7 @@ export class MiauAppUI {
       btn.addEventListener('click', () => {
         hapticService.tap();
         const target = btn.getAttribute('data-nav') as ActiveModal;
+        this.previewEquipped = null;
         this.profileModal.disposeCameraStream();
         this.isCleaningMode = false;
         this.activeMiniGame = 'none';
@@ -3775,6 +3845,7 @@ export class MiauAppUI {
       this.addRewards(neededBath ? 15 : 0, 12);
       const claimedRoutine = this.claimRoutineSlot('bath');
       this.evaluateAchievements();
+      this.recordMissionProgress({ type: 'bath' });
       this.currentSpeech = claimedRoutine
         ? {
             meowPrefix: 'Purrr~ ⏰',
@@ -3813,6 +3884,16 @@ export class MiauAppUI {
         const tab = btn.getAttribute('data-ranking-tab') as 'all' | GameId | null;
         if (!tab) return;
         this.rankingTab = tab;
+        this.render();
+      });
+    });
+    this.root.querySelectorAll('[data-ranking-schooling]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const filter = btn.getAttribute(
+          'data-ranking-schooling'
+        ) as RankingSchoolingFilter | null;
+        if (!filter) return;
+        this.rankingSchoolingFilter = filter;
         this.render();
       });
     });
@@ -3941,14 +4022,115 @@ export class MiauAppUI {
         this.render();
       });
 
-    // Customize tabs & items
+    // Customize tabs & items (Loja 2.0: Chapéus, Acessórios, Fundos, Comidas & Experimentar)
     this.root.querySelectorAll('[data-shoptab]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        this.shopTab = btn.getAttribute('data-shoptab') as
-          | 'hat'
-          | 'accessory'
-          | 'background';
+        const nextTab = btn.getAttribute('data-shoptab') as ShopTab | null;
+        if (!nextTab) return;
+        this.shopTab = nextTab;
         this.render();
+      });
+    });
+
+    this.root.querySelectorAll('[data-shop-try]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-shop-try');
+        const item = SHOP_ITEMS.find((s) => s.id === id);
+        if (!item) return;
+        hapticService.tap();
+        const currentlyPreviewed =
+          this.previewEquipped?.[item.category] === item.id;
+        if (currentlyPreviewed) {
+          const nextPreview = { ...(this.previewEquipped ?? {}) };
+          delete nextPreview[item.category];
+          this.previewEquipped =
+            Object.keys(nextPreview).length > 0 ? nextPreview : null;
+        } else {
+          this.previewEquipped = {
+            ...(this.previewEquipped ?? {}),
+            [item.category]: item.id,
+          };
+        }
+        this.render();
+      });
+    });
+
+    this.root
+      .querySelectorAll('[data-shop-try-stop]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          hapticService.tap();
+          this.previewEquipped = null;
+          this.render();
+        });
+      });
+
+    this.root.querySelectorAll('[data-shop-consumable]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-shop-consumable');
+        const food = SHOP_CONSUMABLES.find((f) => f.id === id);
+        if (!food) return;
+        if (this.profile.coins < food.price) {
+          hapticService.warning();
+          this.showToast(
+            'Moedas insuficientes! Brinque nos Minijogos ou estude para ganhar.'
+          );
+          return;
+        }
+        if (this.isSleeping) {
+          this.toggleSleep();
+        }
+        this.ensureProfileDefaults();
+        this.profile.coins -= food.price;
+        this.profile.stats.hunger = Math.min(
+          100,
+          this.profile.stats.hunger + food.hungerBoost
+        );
+        this.profile.stats.fun = Math.min(
+          100,
+          this.profile.stats.fun + food.funBoost
+        );
+        this.profile.stats.happiness = Math.min(
+          100,
+          this.profile.stats.happiness + food.happinessBoost
+        );
+        if (food.sleepBoost) {
+          this.profile.stats.sleep = Math.min(
+            100,
+            this.profile.stats.sleep + food.sleepBoost
+          );
+        }
+        this.profile.progress.mealsFed += 1;
+        this.addRewards(0, food.xpReward);
+        const claimedRoutine = this.claimRoutineSlot('food');
+        this.evaluateAchievements();
+        soundService.playCrunch();
+        hapticService.chomp();
+        this.kitchenFridgeOpen = false;
+        this.previewEquipped = null;
+        this.mood = 'eating';
+        this.currentSpeech = claimedRoutine
+          ? {
+              meowPrefix: `Nham nham! ${food.emoji}⏰`,
+              text: `(Adorei o ${food.name} no horário! +${claimedRoutine.bonusCoins} moedas bônus!)`,
+            }
+          : {
+              meowPrefix: `Nham nham! ${food.emoji}`,
+              text: `(Que delícia de ${food.name}! Estou me sentindo super bem!)`,
+            };
+        this.activeModal = 'none';
+        this.render();
+        this.setTemporaryMiauEffect('chewing', 1700);
+        this.triggerMiauReaction('spin');
+        this.spawnFloatingParticle(food.emoji);
+        this.speakCurrentCaption();
+        void this.persistStats();
+        window.setTimeout(() => {
+          if (this.mood === 'eating') {
+            this.mood = 'happy';
+            this.updateCharacterSvgDOM();
+          }
+        }, 1600);
       });
     });
 
@@ -3980,6 +4162,12 @@ export class MiauAppUI {
           this.profile.equipped.accessory = item.id;
         if (item.category === 'background')
           this.profile.equipped.background = item.id;
+        if (this.previewEquipped) {
+          const nextPreview = { ...this.previewEquipped };
+          delete nextPreview[item.category];
+          this.previewEquipped =
+            Object.keys(nextPreview).length > 0 ? nextPreview : null;
+        }
 
         const actionSpeech: Record<
           'hat' | 'accessory' | 'background',
@@ -4285,6 +4473,12 @@ export class MiauAppUI {
           this.parentalConfig = recordCompletedLesson(ownerId);
           this.ensureProfileDefaults();
           this.addRewards(res.coinsReward, res.xpReward);
+          if (srState.session.questions.some((q) => isMathEducationTrack(q.trackId))) {
+            this.recordMissionProgress({
+              type: 'math_lesson',
+              trackId: 'fund1_matematica',
+            });
+          }
           this.updateStatusBarsDOM();
           void this.persistStats();
           return res;
@@ -4845,6 +5039,7 @@ export class MiauAppUI {
       this.profileModal.disposeCameraStream();
       this.liveSession?.stop();
       this.liveSession = null;
+      this.previewEquipped = null;
       this.activeModal = 'none';
       this.isDemoSession = false;
       this.alertedLowNeeds.clear();
@@ -4921,6 +5116,7 @@ export class MiauAppUI {
     this.miniGameCleanup?.();
     this.miniGameCleanup = null;
     this.activeMiniGame = 'none';
+    this.previewEquipped = null;
     this.activeModal = 'none';
     this.render();
   }

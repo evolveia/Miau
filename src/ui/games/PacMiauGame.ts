@@ -1,6 +1,12 @@
 import { hapticService } from '../../services/hapticService';
 import { soundService } from '../../services/soundService';
 import type { MiniGameResult } from '../MiniGames';
+import {
+  TurnBufferQueue,
+  attachFullScreenMazeSwipe,
+  mountFloatingDpad,
+  renderPreGameRulesOverlayHtml,
+} from './mazeControls';
 
 // Labirinto clássico 28x31:
 // 240 pastilhas comuns (.) + 4 super-pastilhas (o) = 244 itens coletáveis exatos por fase!
@@ -115,7 +121,10 @@ export function mountPacMiauGame(
   onToggleMute?: () => boolean
 ): () => void {
   let stopped = false;
-  let paused = false;
+  let paused = true;
+  let gameStarted = false;
+  let countdownActive = false;
+  let countdownTimer: number | null = null;
   let stage = 1;
   let score = 0;
   let lives = 3;
@@ -127,7 +136,7 @@ export function mountPacMiauGame(
   let miauX = 13.5;
   let miauY = 23;
   let miauDir: DirName = 'left';
-  let queuedDir: DirName = 'left';
+  const turnBuffer = new TurnBufferQueue('left', 1400);
   let mouthTimer = 0;
 
   let frightenedLeft = 0;
@@ -197,19 +206,9 @@ export function mountPacMiauGame(
         <div id="pac-overlay" class="hidden absolute inset-0 z-20 bg-slate-950/80 flex items-center justify-center p-4"></div>
       </div>
 
-      <!-- D-Pad Responsivo (Toque e Desktop) -->
-      <div class="mt-2 flex items-center justify-between gap-3 shrink-0">
-        <div class="text-[10px] font-bold text-[#5e4294] leading-tight hidden sm:block max-w-[190px]">
-          Use as <b>Setas / WASD</b> ou deslize o dedo no labirinto. Bônus de vida extra aos 10.000 pts!
-        </div>
-        <div class="mx-auto sm:mx-0 grid grid-cols-3 gap-1 w-[150px] shrink-0">
-          <div></div>
-          <button data-pac-dir="up" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">▲</button>
-          <div></div>
-          <button data-pac-dir="left" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">◀</button>
-          <button data-pac-dir="down" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">▼</button>
-          <button data-pac-dir="right" type="button" class="h-9 rounded-xl bg-[#6e45a5] active:scale-95 text-white font-extrabold text-sm shadow">▶</button>
-        </div>
+      <div class="mt-1.5 flex items-center justify-between gap-2 px-1 shrink-0 text-[10px] font-bold text-[#5e4294]">
+        <span>👆 Deslize na tela inteira (curva automática) ou arraste o D-pad</span>
+        <span class="hidden sm:inline shrink-0">⌨️ Setas / WASD</span>
       </div>
     </div>
   `;
@@ -262,7 +261,7 @@ export function mountPacMiauGame(
     miauX = 13.5;
     miauY = 23;
     miauDir = 'left';
-    queuedDir = 'left';
+    turnBuffer.reset('left');
     frightenedLeft = 0;
     ratComboIndex = 0;
     const cfg = getPacStageConfig(stage);
@@ -439,20 +438,19 @@ export function mountPacMiauGame(
     const moveDist = speed * dt;
     const centerC = Math.round(miauX);
     const centerR = Math.round(miauY);
-    const alignedX = Math.abs(miauX - centerC) <= 0.14;
-    const alignedY = Math.abs(miauY - centerR) <= 0.14;
+    const alignedX = Math.abs(miauX - centerC) <= 0.22;
+    const alignedY = Math.abs(miauY - centerR) <= 0.22;
 
-    if (queuedDir !== miauDir) {
-      const qv = DIR_VECTORS[queuedDir];
-      if (queuedDir === OPPOSITE_DIR[miauDir]) {
-        miauDir = queuedDir;
-      } else if (alignedX && alignedY) {
-        if (isWalkableForMiau(centerC + qv.x, centerR + qv.y)) {
-          miauX = centerC;
-          miauY = centerR;
-          miauDir = queuedDir;
-        }
+    const resolved = turnBuffer.resolveTurn(
+      (dir) => isWalkableForMiau(centerC + DIR_VECTORS[dir].x, centerR + DIR_VECTORS[dir].y),
+      alignedX && alignedY
+    );
+    if (resolved.turned) {
+      if (resolved.dir !== OPPOSITE_DIR[miauDir]) {
+        miauX = centerC;
+        miauY = centerR;
       }
+      miauDir = resolved.dir;
     }
 
     const v = DIR_VECTORS[miauDir];
@@ -466,6 +464,17 @@ export function mountPacMiauGame(
         miauX = wrapX(nextX);
       } else {
         miauX = centerC;
+        const buffered = turnBuffer.getBufferedDirection();
+        if (
+          buffered &&
+          isWalkableForMiau(
+            centerC + DIR_VECTORS[buffered].x,
+            centerR + DIR_VECTORS[buffered].y
+          )
+        ) {
+          miauDir = buffered;
+          turnBuffer.setCurrentDirection(buffered);
+        }
       }
     } else if (v.y !== 0) {
       miauX += (centerC - miauX) * Math.min(1, dt * 16);
@@ -474,6 +483,17 @@ export function mountPacMiauGame(
         miauY = nextY;
       } else {
         miauY = centerR;
+        const buffered = turnBuffer.getBufferedDirection();
+        if (
+          buffered &&
+          isWalkableForMiau(
+            centerC + DIR_VECTORS[buffered].x,
+            centerR + DIR_VECTORS[buffered].y
+          )
+        ) {
+          miauDir = buffered;
+          turnBuffer.setCurrentDirection(buffered);
+        }
       }
     }
 
@@ -1031,7 +1051,8 @@ export function mountPacMiauGame(
   };
 
   const setDirectionInput = (dir: DirName) => {
-    queuedDir = dir;
+    if (!gameStarted || countdownActive || paused || stopped) return;
+    turnBuffer.enqueue(dir);
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -1051,45 +1072,91 @@ export function mountPacMiauGame(
     }
   };
 
-  let touchStartX = 0;
-  let touchStartY = 0;
-  const handleTouchStart = (e: TouchEvent) => {
-    const t = e.touches[0];
-    if (!t) return;
-    touchStartX = t.clientX;
-    touchStartY = t.clientY;
-  };
-  const handleTouchMove = (e: TouchEvent) => {
-    const t = e.touches[0];
-    if (!t) return;
-    const dx = t.clientX - touchStartX;
-    const dy = t.clientY - touchStartY;
-    if (Math.hypot(dx, dy) < 18) return;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      setDirectionInput(dx > 0 ? 'right' : 'left');
-    } else {
-      setDirectionInput(dy > 0 ? 'down' : 'up');
-    }
-    touchStartX = t.clientX;
-    touchStartY = t.clientY;
-  };
-
-  const dpadButtons = Array.from(
-    container.querySelectorAll('[data-pac-dir]')
-  ) as HTMLButtonElement[];
-  const dpadHandlers = dpadButtons.map((btn) => {
-    const fn = () => {
-      const d = btn.getAttribute('data-pac-dir') as DirName | null;
-      if (d) {
-        hapticService.tap();
-        setDirectionInput(d);
-      }
-    };
-    btn.addEventListener('pointerdown', fn);
-    return () => btn.removeEventListener('pointerdown', fn);
+  const swipeCleanup = attachFullScreenMazeSwipe(boardWrap, setDirectionInput, {
+    shouldIgnoreTarget: (target) =>
+      Boolean(
+        (target as HTMLElement | null)?.closest?.(
+          '[data-floating-dpad], #pac-overlay button'
+        )
+      ),
+    isPaused: () => paused || !gameStarted || countdownActive,
   });
 
+  const dpadCleanup = mountFloatingDpad(boardWrap, {
+    storageKey: 'miau_dpad_pos_pacmiau_v1',
+    theme: 'neon',
+    onDirection: (dir) => setDirectionInput(dir),
+  });
+
+  const startCountdownAndBegin = () => {
+    if (countdownActive || stopped) return;
+    countdownActive = true;
+    const steps = ['3', '2', '1', 'Miau! 🟡'];
+    let idx = 0;
+    const renderStep = () => {
+      if (stopped) return;
+      const val = steps[idx];
+      soundService.playMeow(idx === steps.length - 1 ? 1.55 : 1.15);
+      hapticService.tap();
+      showOverlay(`
+        <div class="bg-slate-950/90 border-2 border-amber-400 rounded-3xl px-8 py-6 text-center shadow-2xl">
+          <div class="font-display text-4xl font-extrabold text-amber-300 animate-bounce">${val}</div>
+          <div class="text-[11px] font-bold text-blue-200 mt-1">Prepare-se!</div>
+        </div>
+      `);
+      if (idx >= steps.length - 1) {
+        countdownTimer = window.setTimeout(() => {
+          countdownTimer = null;
+          if (stopped) return;
+          countdownActive = false;
+          gameStarted = true;
+          paused = false;
+          pauseBtn.textContent = '⏸';
+          hideOverlay();
+        }, 420);
+      } else {
+        idx += 1;
+        countdownTimer = window.setTimeout(renderStep, 650);
+      }
+    };
+    renderStep();
+  };
+
+  const showPreGameRules = () => {
+    paused = true;
+    gameStarted = false;
+    pauseBtn.textContent = '▶';
+    showOverlay(
+      renderPreGameRulesOverlayHtml({
+        title: 'Pac-Miau: Ratos e Cachorros 🟡',
+        subtitle: 'Deslize para virar automaticamente na próxima esquina!',
+        theme: 'neon',
+        objective: {
+          icon: '🟡',
+          label: 'Objetivo',
+          desc: 'Coma as 244 bolinhas e fuja dos cachorros.',
+        },
+        scoring: {
+          icon: '🐭',
+          label: 'Pontuação',
+          desc: 'Super-pílula vira ratos (+200 a +1600 pts).',
+        },
+        bonus: {
+          icon: '🍓',
+          label: 'Bônus',
+          desc: 'Frutas centrais + vida extra aos 10.000 pts!',
+        },
+        startBtnId: 'pac-start-rules-btn',
+        startLabel: 'Começar Contagem! ▶',
+      })
+    );
+    overlayEl
+      .querySelector('#pac-start-rules-btn')
+      ?.addEventListener('click', startCountdownAndBegin);
+  };
+
   const handlePauseToggle = () => {
+    if (!gameStarted || countdownActive) return;
     if (overlayEl.querySelector('#pac-next-stage, #pac-finish-btn')) return;
     paused = !paused;
     pauseBtn.textContent = paused ? '▶' : '⏸';
@@ -1144,28 +1211,30 @@ export function mountPacMiauGame(
   resizeObs.observe(boardWrap);
   window.addEventListener('keydown', handleKeyDown);
   window.addEventListener('resize', resizeCanvas);
-  boardWrap.addEventListener('touchstart', handleTouchStart, { passive: true });
-  boardWrap.addEventListener('touchmove', handleTouchMove, { passive: true });
   pauseBtn.addEventListener('click', handlePauseToggle);
   muteBtn.addEventListener('click', handleMuteClick);
   closeBtn.addEventListener('click', handleCloseClick);
 
   const cleanupListeners = () => {
     if (rafId) window.cancelAnimationFrame(rafId);
+    if (countdownTimer !== null) {
+      window.clearTimeout(countdownTimer);
+      countdownTimer = null;
+    }
     resizeObs.disconnect();
     window.removeEventListener('keydown', handleKeyDown);
     window.removeEventListener('resize', resizeCanvas);
-    boardWrap.removeEventListener('touchstart', handleTouchStart);
-    boardWrap.removeEventListener('touchmove', handleTouchMove);
     pauseBtn.removeEventListener('click', handlePauseToggle);
     muteBtn.removeEventListener('click', handleMuteClick);
     closeBtn.removeEventListener('click', handleCloseClick);
-    dpadHandlers.forEach((off) => off());
+    swipeCleanup();
+    dpadCleanup();
   };
 
   buildGridForStage();
   resetPositions();
   resizeCanvas();
+  showPreGameRules();
   rafId = window.requestAnimationFrame(tick);
 
   return () => {

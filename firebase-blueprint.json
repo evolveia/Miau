@@ -238,6 +238,11 @@
           "minLength": 1,
           "maxLength": 32
         },
+        "schooling": {
+          "type": "string",
+          "enum": ["", "educacao_infantil", "fundamental_1", "fundamental_2", "medio", "superior_outro"],
+          "description": "Optional schooling level segment for leaderboard filtering."
+        },
         "totalScore": {
           "type": "integer"
         },

@@ -189,10 +189,11 @@ service cloud.firestore {
 
     function isValidRankingEntry(data, userId) {
       return data.keys().hasAll(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'updatedAt'])
-        && data.keys().hasOnly(['ownerId', 'playerName', 'petName', 'totalScore', 'bestStage', 'coinsEarned', 'gameScores', 'gameStages', 'updatedAt'])
+        && data.keys().hasOnly(['ownerId', 'playerName', 'petName', 'schooling', 'totalScore', 'bestStage', 'coinsEarned', 'gameScores', 'gameStages', 'updatedAt'])
         && data.ownerId is string && data.ownerId.size() <= 128 && data.ownerId == userId && data.ownerId == request.auth.uid
         && data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 40
         && data.petName is string && data.petName.size() >= 1 && data.petName.size() <= 32
+        && (!('schooling' in data) || (data.schooling is string && data.schooling.size() <= 32 && data.schooling in ['', 'educacao_infantil', 'fundamental_1', 'fundamental_2', 'medio', 'superior_outro']))
         && data.totalScore is int && data.totalScore >= 0 && data.totalScore <= 50000000
         && data.bestStage is int && data.bestStage >= 1 && data.bestStage <= 999
         && data.coinsEarned is int && data.coinsEarned >= 0 && data.coinsEarned <= 50000000

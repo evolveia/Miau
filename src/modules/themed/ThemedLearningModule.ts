@@ -32,6 +32,11 @@ export interface ThemedModuleDeps {
   isSoundEnabled: () => boolean;
   onToggleSoundMute: () => boolean;
   onGrantRewards: (coinsDelta: number, xpDelta: number) => void;
+  onLessonCompleted?: (info: {
+    trackId: string;
+    unitId: string | null;
+    stars: number;
+  }) => void;
   onExitToLearnHub: () => void;
   onExitToMainMenu?: () => void;
   onRequestRerender: () => void;
@@ -1632,6 +1637,11 @@ export class ThemedLearningModuleController {
     }
 
     recordCompletedLesson(this.getProgress().ownerId);
+    this.deps.onLessonCompleted?.({
+      trackId: this.config.trackId,
+      unitId: lesson.unit?.id ?? null,
+      stars,
+    });
     this.stage = 'celebration';
     this.lesson = null;
     hapticService.achievement();

@@ -15,6 +15,11 @@ export interface MenuModalRenderParams {
   unlockedCount: number;
   routineDoneCount: number;
   visibleHudCount: number;
+  dailyMissions?: {
+    completedCount: number;
+    totalCount: number;
+    currentStreak: number;
+  };
 }
 
 export function renderMenuModalHtml(params: MenuModalRenderParams): string {
@@ -115,8 +120,14 @@ export function renderMenuModalHtml(params: MenuModalRenderParams): string {
       <button id="btn-menu-routine" class="w-full py-2.5 px-3 rounded-2xl bg-sky-50 border border-sky-200 text-sky-900 font-bold text-sm flex items-center gap-3 text-left hover:bg-sky-100/70 transition">
         <span class="w-9 h-9 rounded-xl bg-sky-200/70 flex items-center justify-center text-lg shrink-0">📅</span>
         <div class="flex-1 min-w-0 text-left">
-          <div class="font-bold leading-tight">Rotina Diária do Miau</div>
-          <div class="text-[11px] font-semibold text-sky-700/85">Comida, banho e soneca com bônus</div>
+          <div class="font-bold leading-tight">Missões & Rotina Diária</div>
+          <div class="text-[11px] font-semibold text-sky-700/85">
+            ${
+              params.dailyMissions
+                ? `🎯 ${params.dailyMissions.completedCount}/${params.dailyMissions.totalCount} missões • 🔥 ${params.dailyMissions.currentStreak}d sequência`
+                : 'Comida, banho e soneca com bônus'
+            }
+          </div>
         </div>
         <span class="text-xs font-extrabold bg-sky-200/80 px-2.5 py-0.5 rounded-full shrink-0">${params.routineDoneCount}/${ROUTINE_SCHEDULE.length}</span>
       </button>

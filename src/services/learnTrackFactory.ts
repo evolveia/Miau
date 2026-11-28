@@ -32,6 +32,11 @@ export interface LearnTrackFactoryDeps {
   isSoundEnabled: () => boolean;
   onToggleSoundMute: () => boolean;
   onGrantRewards: (coinsDelta: number, xpDelta: number) => void;
+  onLessonCompleted?: (info: {
+    trackId: string;
+    unitId: string | null;
+    stars: number;
+  }) => void;
   onExitToLearnHub: () => void;
   onExitToMainMenu: () => void;
   onRequestTrackRerender: (trackId: ConcreteLearnTrackId) => void;
@@ -56,6 +61,7 @@ export function createLearnTrackControllers(
     isSoundEnabled: deps.isSoundEnabled,
     onToggleSoundMute: deps.onToggleSoundMute,
     onGrantRewards: deps.onGrantRewards,
+    onLessonCompleted: deps.onLessonCompleted,
     onExitToLearnHub: deps.onExitToLearnHub,
     onExitToMainMenu: deps.onExitToMainMenu,
     onRequestRerender: () => deps.onRequestTrackRerender(trackId),

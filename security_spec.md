@@ -11,6 +11,7 @@
 8. Educational track progress under `/users/{userId}/educationProgress/{trackId}` requires `trackId` in the 15 allowlisted modules (Infantil, Fundamental I, and Fundamental II), parent `/users/{userId}` ownership, `totalStars in [0, 500]`, bounded arrays (`completedUnits <= 30`, `masteredTargets <= 150`, `unlockedStickers <= 60`), immutable `ownerId`/`trackId`/`createdAt`, and `resource.data.ownerId == request.auth.uid` on `list`.
 9. Daily coin economy under `/users/{userId}/economy/daily` requires `docId == 'daily'`, valid `YYYY-MM-DD` `dateKey`, bounded integer caps (`petCoinsToday <= 500`, `ballCoinsToday <= 500`, `minigameCoinsToday <= 2000`), and parent `/users/{userId}` ownership.
 10. Parental control configuration under `/users/{userId}/private/parental` requires `docId == 'parental'`, `ownerId == request.auth.uid == userId`, hashed PIN (`pinHash.size() <= 64`), `dailyScreenLimitMin in [0, 480]`, valid `HH:MM` quiet hours strings, bounded 14-entry daily maps, and immutable `ownerId`/`createdAt`.
+11. Public minigame leaderboard entries under `/rankings/{userId}` require `ownerId == request.auth.uid == userId`, bounded `playerName`/`petName`/`totalScore`/`bestStage`/`coinsEarned`, optional `schooling` validated against the schooling enum (`''`, `educacao_infantil`, `fundamental_1`, `fundamental_2`, `medio`, `superior_outro`), and `updatedAt == request.time`.
 
 
 ## Dirty Dozen Payloads (Expected: PERMISSION_DENIED)

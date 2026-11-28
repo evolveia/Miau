@@ -122,10 +122,41 @@ export interface RankingEntry {
   totalScore: number;
   bestStage: number;
   coinsEarned: number;
+  schooling?: SchoolingLevel | '';
   gameScores?: Partial<Record<GameId, number>>;
   gameStages?: Partial<Record<GameId, number>>;
   isCurrentUser?: boolean;
   updatedAtMs: number;
+}
+
+export type DailyMissionId =
+  | 'daily_math_lesson'
+  | 'daily_bath'
+  | 'daily_pacmiau_500';
+
+export interface DailyMissionItem {
+  id: DailyMissionId;
+  title: string;
+  description: string;
+  emoji: string;
+  coinReward: number;
+  xpReward: number;
+  target: number;
+  progress: number;
+  completed: boolean;
+  completedAtMs: number | null;
+}
+
+export interface DailyMissionsSnapshot {
+  ownerId: string;
+  dateKey: string;
+  missions: DailyMissionItem[];
+  allCompletedBonusClaimed: boolean;
+  allCompletedBonusCoins: number;
+  currentStreak: number;
+  bestStreak: number;
+  lastActiveDateKey: string;
+  lastStreakBonusDateKey: string;
 }
 
 export type RoutineCategory = 'food' | 'bath' | 'sleep';
@@ -249,6 +280,8 @@ export interface FoodItem {
   description: string;
 }
 
+export type ShopTab = 'hat' | 'accessory' | 'background' | 'consumable';
+
 export interface ShopItem {
   id: string;
   category: 'hat' | 'accessory' | 'background';
@@ -256,4 +289,19 @@ export interface ShopItem {
   emoji: string;
   price: number;
   previewColor: string;
+}
+
+export interface ConsumableShopItem {
+  id: string;
+  category: 'consumable';
+  name: string;
+  emoji: string;
+  price: number;
+  previewColor: string;
+  hungerBoost: number;
+  funBoost: number;
+  happinessBoost: number;
+  sleepBoost?: number;
+  xpReward: number;
+  description: string;
 }
